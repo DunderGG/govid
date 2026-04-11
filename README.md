@@ -7,7 +7,7 @@ GoVid is a high-performance, cross-platform video downloader built with Go. It p
 
 ## 📥 Download
 
-You can download the latest pre-compiled executables from the **[Releases Page](https://github.com/dunder/govid/releases/latest)**.
+You can download the latest pre-compiled executables from the **[Releases Page](https://github.com/DunderGG/govid/releases/latest)**.
 
 1. Download the executable for your operating system.
 2. Ensure you have the [Prerequisites](#-prerequisites) installed.
