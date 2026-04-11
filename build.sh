@@ -12,9 +12,15 @@ if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     go-winres make --in release/winres/winres.json --out rsrc
 fi
 
-# 3. Build the application
+# 3. Build the application (Optimized for size)
+# -s: Omit the symbol table and debug information
+# -w: Omit DWARF symbol table
 echo "[GoVid] Compiling GoVid..."
-go build -o "GoVid" .
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+    go build -ldflags="-s -w -H windowsgui" -o "GoVid.exe" .
+else
+    go build -ldflags="-s -w" -o "GoVid" .
+fi
 
 if [ $? -eq 0 ]; then
     echo -e "\nBuild Successful! You can now run ./GoVid."
