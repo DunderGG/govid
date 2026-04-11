@@ -214,8 +214,17 @@ func (app *DownloaderApp) createUI() {
 
 	ui.entry.SetPlaceHolder("https://www.youtube.com/watch?v=...")
 	ui.path.SetPlaceHolder("Download folder...")
-	cwd, _ := os.Getwd()
-	ui.path.SetText(cwd)
+
+	// Load previously saved path from preferences. If none is found, default to the current working directory.
+	prefs := fyne.CurrentApp().Preferences()
+	savedPath := prefs.String("savedPath")
+
+	if savedPath != "" {
+		ui.path.SetText(savedPath)
+	} else {
+		cwd, _ := os.Getwd()
+		ui.path.SetText(cwd)
+	}
 
 	browseBtn := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
 		dialog.ShowFolderOpen(func(list fyne.ListableURI, err error) {
@@ -238,7 +247,14 @@ func (app *DownloaderApp) createUI() {
 		"MP3 (Audio Only)",
 		"M4A (Apple Audio)",
 	}
-	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+
+	// Load saved format and quality preferences.
+	savedFormat := prefs.String("format")
+	savedQuality := prefs.String("quality")
+
+	if savedFormat != "" {
+		ui.format.SetSelected(savedFormat)
+	} else if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
 		ui.format.SetSelected("MP4")
 	} else {
 		ui.format.SetSelected("MKV")
@@ -251,7 +267,12 @@ func (app *DownloaderApp) createUI() {
 		"480p",
 		"360p",
 	}
-	ui.quality.SetSelected("Best Quality")
+
+	if savedQuality != "" {
+		ui.quality.SetSelected(savedQuality)
+	} else {
+		ui.quality.SetSelected("Best Quality")
+	}
 
 	openFolderBtn := widget.NewButtonWithIcon("Open Folder", theme.FolderIcon(), func() {
 		app.openDownloadFolder()
@@ -349,6 +370,10 @@ func (app *DownloaderApp) startDownload() {
 		dialog.ShowError(fmt.Errorf("save path cannot be empty"), app.window)
 		return
 	}
+
+	// Persist user preferences such as save destination and checkbox state.
+	// Extracted into a separate function to allow for more scalable preference management.
+	app.savePreferences(savePath)
 
 	// Reset UI and stats for new session
 	app.updateStatus("Status: Initializing...")
@@ -643,6 +668,14 @@ func (app *DownloaderApp) setProgressNow(val float64) {
 	fyne.Do(func() {
 		app.ui.progress.SetValue(val)
 	})
+}
+
+// savePreferences handles the persistence of user settings across application restarts.
+func (app *DownloaderApp) savePreferences(savePath string) {
+	prefs := fyne.CurrentApp().Preferences()
+	prefs.SetString("savedPath", savePath)
+	prefs.SetString("format", app.ui.format.Selected)
+	prefs.SetString("quality", app.ui.quality.Selected)
 }
 
 // openDownloadFolder utilizes OS-specific shell commands (explorer, open, xdg-open)
