@@ -35,3 +35,4 @@ go.work.sum
 *.txt
 *.log
 GoVid
+/release/*

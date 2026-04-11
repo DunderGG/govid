@@ -5,6 +5,14 @@
 
 GoVid is a high-performance, cross-platform video downloader built with Go. It provides a clean graphical interface for the powerful `yt-dlp` tool, allowing you to easily download and convert videos from various online platforms.
 
+## 📥 Download
+
+You can download the latest pre-compiled executables from the **[Releases Page](https://github.com/dunder/govid/releases/latest)**.
+
+1. Download the executable for your operating system.
+2. Ensure you have the [Prerequisites](#-prerequisites) installed.
+3. Run the app and start downloading!
+
 ## ✨ Features
 
 - **Cross-Platform GUI**: Modern interface built with the [Fyne toolkit](https://fyne.io/).

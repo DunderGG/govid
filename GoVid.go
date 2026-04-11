@@ -175,6 +175,7 @@ func (app *DownloaderApp) runUpdateInUI() {
 
 	go func() {
 		cmd := exec.Command("yt-dlp", "-U")
+		hideWindow(cmd) // Hide the external console window on Windows
 		output, err := cmd.CombinedOutput()
 
 		fyne.Do(func() {
@@ -222,8 +223,15 @@ func (app *DownloaderApp) createUI() {
 	if savedPath != "" {
 		ui.path.SetText(savedPath)
 	} else {
-		cwd, _ := os.Getwd()
-		ui.path.SetText(cwd)
+		// Use the directory of the current executable as the default save path.
+		// This is more intuitive for users when they move the app to a new folder.
+		exePath, err := os.Executable()
+		if err == nil {
+			ui.path.SetText(filepath.Dir(exePath))
+		} else {
+			cwd, _ := os.Getwd()
+			ui.path.SetText(cwd)
+		}
 	}
 
 	browseBtn := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
@@ -515,6 +523,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, url string, savePath str
 	// exec.CommandContext is used to run yt-dlp with the ability to cancel it via the context.
 	// This allows for graceful termination when the user hits the Cancel button.
 	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
+	hideWindow(cmd) // Hide the external terminal window on Windows platforms
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
 
@@ -725,6 +734,7 @@ func (app *DownloaderApp) checkDependencies() {
 func updateYtDlp() {
 	fmt.Println("Updating yt-dlp...")
 	cmd := exec.Command("yt-dlp", "-U")
+	hideWindow(cmd) // Don't show external console window if called from main.exe
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
