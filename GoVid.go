@@ -128,20 +128,16 @@ func main() {
 
 	myApp := app.NewWithID("com.govid.downloader") // Using a fixed app ID allows for consistent settings storage across sessions
 
-	// Set the custom brand icon from the user provided file
-	appIcon, err := fyne.LoadResourceFromPath("appicon.png")
-	if err == nil {
-		myApp.SetIcon(appIcon)
-	}
+	// Set the custom brand icon using the bundled resource.
+	// This ensures the icon works even when the .exe is moved to another folder.
+	myApp.SetIcon(resourceAppiconPng)
 
 	myWindow := myApp.NewWindow("GoVid")
 
 	myWindow.Resize(fyne.NewSize(windowWidth, windowHeight))
 
 	// Ensure the window icon matches
-	if err == nil {
-		myWindow.SetIcon(appIcon)
-	}
+	myWindow.SetIcon(resourceAppiconPng)
 
 	// Use our new constructor to initialize the app
 	downloader := newDownloaderApp(myWindow)
@@ -174,7 +170,13 @@ func (app *DownloaderApp) runUpdateInUI() {
 	app.updateStatus("Status: Updating yt-dlp...")
 
 	go func() {
-		cmd := exec.Command("yt-dlp", "-U")
+		// Use local binary if it exists
+		ytDlpPath := app.getLocalBinPath("yt-dlp")
+		if _, err := os.Stat(ytDlpPath); err != nil {
+			ytDlpPath = "yt-dlp"
+		}
+
+		cmd := exec.Command(ytDlpPath, "-U")
 		hideWindow(cmd) // Hide the external console window on Windows
 		output, err := cmd.CombinedOutput()
 
@@ -201,17 +203,12 @@ func (app *DownloaderApp) runUpdateInUI() {
 func (app *DownloaderApp) createUI() {
 	ui := app.ui
 
-	// 1. Branding - Load the logo to be used in the top row
-	var brandLogo fyne.CanvasObject
-	logo, err := fyne.LoadResourceFromPath("appicon.png")
-	if err == nil {
-		image := canvas.NewImageFromResource(logo)
-		image.FillMode = canvas.ImageFillContain
-		image.SetMinSize(fyne.NewSize(128, 128))
-		brandLogo = image
-	} else {
-		brandLogo = layout.NewSpacer() // Placeholder if image fails
-	}
+	// 1. Branding - Load the logo from the bundled resources.
+	// This ensures the logo stays with the app even when moved.
+	image := canvas.NewImageFromResource(resourceAppiconPng)
+	image.FillMode = canvas.ImageFillContain
+	image.SetMinSize(fyne.NewSize(128, 128))
+	brandLogo := image
 
 	ui.entry.SetPlaceHolder("https://www.youtube.com/watch?v=...")
 	ui.path.SetPlaceHolder("Download folder...")
@@ -510,6 +507,12 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, url string, savePath str
 		"-f", formatFlag, "-P", savePath, "-o", outputTemplate,
 	}
 
+	// Always provide ffmpeg location if found locally to ensure yt-dlp uses our bundled version
+	ffmpegPath := app.getLocalBinPath("ffmpeg")
+	if _, err := os.Stat(ffmpegPath); err == nil {
+		args = append(args, "--ffmpeg-location", ffmpegPath)
+	}
+
 	// Format-specific handling using FFMPEG post-processing if available
 	if extension == "mp3" || extension == "m4a" {
 		// Use audio extraction flags for audio-only formats
@@ -522,7 +525,13 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, url string, savePath str
 
 	// exec.CommandContext is used to run yt-dlp with the ability to cancel it via the context.
 	// This allows for graceful termination when the user hits the Cancel button.
-	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
+	// Check for local 'yt-dlp' first.
+	ytDlpPath := app.getLocalBinPath("yt-dlp")
+	if _, err := os.Stat(ytDlpPath); err != nil {
+		ytDlpPath = "yt-dlp" // Default to system PATH
+	}
+
+	cmd := exec.CommandContext(ctx, ytDlpPath, args...)
 	hideWindow(cmd) // Hide the external terminal window on Windows platforms
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
@@ -709,24 +718,47 @@ func (app *DownloaderApp) openDownloadFolder() {
 }
 
 // checkDependencies verifies that external requirements (yt-dlp, ffmpeg) are
-// present in the system PATH. It logs warnings to the terminal output if any
-// dependencies are missing.
+// present in the system PATH or in a local 'bin' directory.
 func (app *DownloaderApp) checkDependencies() {
 	deps := []string{"yt-dlp", "ffmpeg"}
 	var missing []string
-	for _, d := range deps {
-		_, err := exec.LookPath(d)
+
+	for _, dep := range deps {
+		// First check for a local 'bin' folder next to the executable
+		localPath := app.getLocalBinPath(dep)
+		if _, err := os.Stat(localPath); err == nil {
+			continue // Found locally!
+		}
+
+		// Then check the system PATH
+		_, err := exec.LookPath(dep)
 		if err != nil {
-			missing = append(missing, d)
+			missing = append(missing, dep)
 		}
 	}
+
 	// If any dependencies are missing, log a warning and show an information dialog to the user.
-	// This helps ensure that users are aware of the requirements for the application to function properly.
 	if len(missing) > 0 {
-		msg := fmt.Sprintf("Missing dependencies: %s\nPlease install them to use all features.", strings.Join(missing, ", "))
+		msg := fmt.Sprintf("Missing dependencies: %s\nPlease install them or place them in a 'bin' folder next to the app.", strings.Join(missing, ", "))
 		app.appendOutput("[WARN] "+msg, color.RGBA{R: 255, G: 165, B: 0, A: 255})
 		dialog.ShowInformation("Dependencies Missing", msg, app.window)
 	}
+}
+
+// getLocalBinPath returns the absolute path to a tool if it exists in a 'bin'
+// folder next to the current GoVid executable.
+func (app *DownloaderApp) getLocalBinPath(toolName string) string {
+	exePath, err := os.Executable()
+	if err != nil {
+		return toolName // Fallback to just the name for PATH lookups
+	}
+
+	// append .exe extension on Windows for local file checks
+	if runtime.GOOS == "windows" && !strings.HasSuffix(toolName, ".exe") {
+		toolName += ".exe"
+	}
+
+	return filepath.Join(filepath.Dir(exePath), "bin", toolName)
 }
 
 // updateYtDlp runs the 'yt-dlp -U' command to ensure the tool is up to date.

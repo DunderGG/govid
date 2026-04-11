@@ -34,5 +34,8 @@ go.work.sum
 # CUSTOM
 *.txt
 *.log
+*.zip
+*.ps1
+*.syso
 GoVid
 /release/*

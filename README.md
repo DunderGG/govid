@@ -34,23 +34,33 @@ To use GoVid, you must have the following tools installed and available in your 
 
 ### Installation
 
-Ensure you have [Go](https://go.dev/dl/) installed.
+Ensure you have [Go 1.22+](https://go.dev/dl/) installed.
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/dunder/govid.git
-   cd govid
-   ```
+1.  **Clone the Repository**:
+    ```bash
+    git clone https://github.com/DunderGG/govid.git
+    cd govid
+    ```
 
-2. Build the application:
-   ```bash
-   go build -o GoVid
-   ```
+2.  **Build the application**:
+    Run the build script for your platform:
 
-3. Run the application:
-   ```bash
-   ./GoVid
-   ```
+    **On Windows**:
+    ```cmd
+    build.bat
+    ```
+
+    **On Linux / macOS**:
+    ```bash
+    chmod +x build.sh
+    ./build.sh
+    ```
+
+3.  **Run the application**:
+    ```bash
+    ./GoVid.exe  # Windows
+    ./GoVid      # Linux/macOS
+    ```
 
 ## 📖 Usage
 
