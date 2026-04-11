@@ -24,6 +24,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"image/color"
 	"os"
@@ -117,6 +118,14 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 // sets up the DownloaderApp coordinator, starts the UI creation process,
 // and shows the main window.
 func main() {
+	updateFlag := flag.Bool("update", false, "Update yt-dlp to the latest version")
+	flag.Parse()
+
+	if *updateFlag {
+		updateYtDlp()
+		os.Exit(0)
+	}
+
 	myApp := app.NewWithID("com.govid.downloader") // Using a fixed app ID allows for consistent settings storage across sessions
 
 	// Set the custom brand icon from the user provided file
@@ -136,10 +145,53 @@ func main() {
 
 	// Use our new constructor to initialize the app
 	downloader := newDownloaderApp(myWindow)
+	downloader.createMainMenu()
 	downloader.createUI()
 	downloader.checkDependencies()
 
 	myWindow.ShowAndRun()
+}
+
+// createMainMenu builds the application's top-level menu bar.
+func (app *DownloaderApp) createMainMenu() {
+	updateMenu := fyne.NewMenuItem("Update yt-dlp", func() {
+		dialog.ShowConfirm("Update yt-dlp", "This will run 'yt-dlp -U' to update the tool. Continue?", func(ok bool) {
+			if ok {
+				app.runUpdateInUI()
+			}
+		}, app.window)
+	})
+
+	mainMenu := fyne.NewMainMenu(
+		fyne.NewMenu("Tools", updateMenu),
+	)
+	app.window.SetMainMenu(mainMenu)
+}
+
+// runUpdateInUI executes the update command in a background goroutine so it doesn't freeze the GUI.
+func (app *DownloaderApp) runUpdateInUI() {
+	app.appendOutput("[SYSTEM] Starting yt-dlp update...", color.RGBA{R: 0, G: 255, B: 255, A: 255})
+	app.updateStatus("Status: Updating yt-dlp...")
+
+	go func() {
+		cmd := exec.Command("yt-dlp", "-U")
+		output, err := cmd.CombinedOutput()
+
+		fyne.Do(func() {
+			outStr := string(output)
+			app.appendOutput(outStr, theme.ForegroundColor())
+
+			if err != nil {
+				app.appendOutput(fmt.Sprintf("[ERROR] Update failed: %v", err), color.RGBA{R: 255, G: 0, B: 0, A: 255})
+				app.updateStatus("Status: Update Failed.")
+				dialog.ShowError(fmt.Errorf("Update failed: %v", err), app.window)
+			} else {
+				app.appendOutput("[SYSTEM] yt-dlp update complete.", color.RGBA{R: 0, G: 255, B: 0, A: 255})
+				app.updateStatus("Status: Update Success.")
+				dialog.ShowInformation("Update Complete", "yt-dlp has been updated successfully.", app.window)
+			}
+		})
+	}()
 }
 
 // createUI constructs the graphical user interface by organizing widgets into
@@ -633,4 +685,19 @@ func (app *DownloaderApp) checkDependencies() {
 		app.appendOutput("[WARN] "+msg, color.RGBA{R: 255, G: 165, B: 0, A: 255})
 		dialog.ShowInformation("Dependencies Missing", msg, app.window)
 	}
+}
+
+// updateYtDlp runs the 'yt-dlp -U' command to ensure the tool is up to date.
+// It redirects output to the terminal so users can see the progress of the update.
+func updateYtDlp() {
+	fmt.Println("Updating yt-dlp...")
+	cmd := exec.Command("yt-dlp", "-U")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err != nil {
+		fmt.Printf("Error updating yt-dlp: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("yt-dlp update complete.")
 }

@@ -52,6 +52,10 @@ Ensure you have [Go](https://go.dev/dl/) installed.
 4. **Save Location**: Choose the directory where you want to save the file.
 5. **Download**: Click the "Download" button to start the process. You can monitor the progress in real-time.
 
+### Command Line Options
+
+- `--update`: Updates the underlying `yt-dlp` tool to the latest version.
+
 ## 🛠️ Built With
 
 - [Fyne](https://fyne.io/) - An easy-to-use UI toolkit and app API written in Go
