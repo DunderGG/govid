@@ -1,17 +1,6 @@
 # <img width="64" height="64" alt="appicon" src="https://github.com/user-attachments/assets/d81ed71e-cc17-4944-aafc-d94f7af758b4" /> &emsp; **GoVid**
 
-
-
-
 GoVid is a high-performance, cross-platform video downloader built with Go. It provides a clean graphical interface for the powerful `yt-dlp` tool, allowing you to easily download and convert videos from various online platforms.
-
-## 📥 Download
-
-You can download the latest pre-compiled executables from the **[Releases Page](https://github.com/DunderGG/govid/releases/latest)**.
-
-1. Download the executable for your operating system.
-2. Ensure you have the [Prerequisites](#-prerequisites) installed, or download the bundled zip instead.
-3. Run the app and start downloading!
 
 ## ✨ Features
 
@@ -22,6 +11,14 @@ You can download the latest pre-compiled executables from the **[Releases Page](
 - **Professional Post-Processing**: Seamless integration with FFMPEG for high-quality encoding.
 - **Download Management**: Easily start, monitor, and cancel active downloads.
 - **Log Export**: Option to save download logs to `.txt` files for troubleshooting.
+
+## 📥 Download
+
+You can download the latest pre-compiled executables from the **[Releases Page](https://github.com/DunderGG/govid/releases/latest)**.
+
+1. Download the executable for your operating system.
+2. Ensure you have the [Prerequisites](#-prerequisites) installed, or download the bundled zip instead.
+3. Run the app and start downloading!
 
 ## 🚀 Getting Started
 
