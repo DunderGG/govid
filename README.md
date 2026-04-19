@@ -1,4 +1,4 @@
-# <img width="64" height="64" alt="appicon" src="https://github.com/user-attachments/assets/d81ed71e-cc17-4944-aafc-d94f7af758b4" /> &emsp; **GoVid**
+# <img width="64" height="64" alt="appicon" src="https://github.com/user-attachments/assets/d81ed71e-cc17-4944-aafc-d94f7af758b4" />  **GoVid**
 
 GoVid is a high-performance, cross-platform video downloader built with Go. It provides a clean graphical interface for the powerful `yt-dlp` tool, allowing you to easily download and convert videos from various online platforms.
 
