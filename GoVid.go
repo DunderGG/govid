@@ -27,6 +27,7 @@ import (
 	"flag"
 	"fmt"
 	"image/color"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -163,10 +164,102 @@ func (app *DownloaderApp) createMainMenu() {
 		}, app.window)
 	})
 
+	configHelpMenu := fyne.NewMenuItem("Configuration Guide", func() {
+		app.showConfigHelp()
+	})
+
+	aboutMenu := fyne.NewMenuItem("About GoVid", func() {
+		app.showAbout()
+	})
+
 	mainMenu := fyne.NewMainMenu(
 		fyne.NewMenu("Tools", updateMenu),
+		fyne.NewMenu("Help", configHelpMenu, fyne.NewMenuItemSeparator(), aboutMenu),
 	)
 	app.window.SetMainMenu(mainMenu)
+}
+
+// showConfigHelp opens a scrollable window explaining all configuration options.
+func (app *DownloaderApp) showConfigHelp() {
+	type helpItem struct {
+		label string
+		desc  string
+	}
+
+	items := []helpItem{
+		{"Video URL", "Paste any URL supported by yt-dlp, such as a YouTube, Vimeo, or Twitter/X link."},
+		{"Save Destination", "The folder where the downloaded file will be saved. GoVid remembers this between sessions."},
+		{"Output Format", "The container format for the downloaded file:\n  • MP4 – widely compatible, recommended for most uses\n  • MKV – flexible container, ideal for high-quality archiving\n  • WebM – open format, good for web use\n  • MP3 – audio only, compressed\n  • M4A – audio only, Apple/iTunes compatible"},
+		{"Max Quality", "Sets the maximum resolution yt-dlp will request:\n  • Best Quality – downloads the highest resolution available\n  • 1080p / 720p / 480p / 360p – caps the resolution to save space or bandwidth"},
+		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\nAccepted formats:\n  • HH:MM:SS  (e.g. 01:30:00)\n  • MM:SS      (e.g. 01:30)\n  • Seconds    (e.g. 90)\nBoth fields must be filled or both left empty."},
+		{"Allow Duplicate Downloads", "When checked, a timestamp is added to the filename so re-downloading the same video does not overwrite the previous file."},
+		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a GoVid_log.txt file in your save destination folder."},
+		{"Cancel", "Stops the active download immediately. Partially downloaded files are discarded (due to --no-part mode)."},
+		{"Open Folder", "Opens your chosen save destination in the system file manager."},
+	}
+
+	content := container.NewVBox()
+	for _, item := range items {
+		title := canvas.NewText(item.label, theme.PrimaryColor())
+		title.TextStyle = fyne.TextStyle{Bold: true}
+		title.TextSize = 13
+
+		body := widget.NewLabel(item.desc)
+		body.Wrapping = fyne.TextWrapWord
+
+		content.Add(title)
+		content.Add(body)
+		content.Add(widget.NewSeparator())
+	}
+
+	scroll := container.NewScroll(content)
+	scroll.SetMinSize(fyne.NewSize(520, 420))
+
+	w := fyne.CurrentApp().NewWindow("Configuration Guide")
+	w.SetContent(container.NewPadded(scroll))
+	w.Resize(fyne.NewSize(540, 460))
+	w.Show()
+}
+
+// showAbout opens a small window with information about the creator and the app.
+func (app *DownloaderApp) showAbout() {
+	logo := canvas.NewImageFromResource(resourceAppiconPng)
+	logo.FillMode = canvas.ImageFillContain
+	logo.SetMinSize(fyne.NewSize(80, 80))
+
+	appName := canvas.NewText("GoVid", theme.PrimaryColor())
+	appName.TextSize = 24
+	appName.TextStyle = fyne.TextStyle{Bold: true}
+	appName.Alignment = fyne.TextAlignCenter
+
+	tagline := widget.NewLabelWithStyle("A high-performance video downloader\nbuilt with Go and Fyne.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
+
+	author := widget.NewLabelWithStyle("Created by David Bennehag", fyne.TextAlignCenter, fyne.TextStyle{})
+	website := widget.NewHyperlink("dunder.gg", parseURL("https://dunder.gg"))
+	github := widget.NewHyperlink("github.com/DunderGG/govid", parseURL("https://github.com/DunderGG/govid"))
+
+	links := container.NewHBox(layout.NewSpacer(), website, widget.NewLabel("•"), github, layout.NewSpacer())
+
+	content := container.NewVBox(
+		container.NewCenter(logo),
+		container.NewCenter(appName),
+		container.NewCenter(tagline),
+		widget.NewSeparator(),
+		container.NewCenter(author),
+		links,
+	)
+
+	w := fyne.CurrentApp().NewWindow("About GoVid")
+	w.SetContent(container.NewPadded(content))
+	w.Resize(fyne.NewSize(360, 280))
+	w.SetFixedSize(true)
+	w.Show()
+}
+
+// parseURL is a small helper to safely parse a URL string for use in hyperlinks.
+func parseURL(rawURL string) *url.URL {
+	u, _ := url.Parse(rawURL)
+	return u
 }
 
 // runUpdateInUI executes the update command in a background goroutine so it doesn't freeze the GUI.
