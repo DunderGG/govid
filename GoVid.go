@@ -30,6 +30,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -68,6 +69,8 @@ type UIWidgets struct {
 	duplicates *widget.Check       // Option to force unique filenames
 	saveLog    *widget.Check       // Option to persist output to a .txt file
 	cancelBtn  *widget.Button      // Stop button for active downloads
+	trimStart  *widget.Entry       // Optional start time for video trimming (HH:MM:SS)
+	trimEnd    *widget.Entry       // Optional end time for video trimming (HH:MM:SS)
 }
 
 // DownloadStats tracks the real-time metrics of a download session.
@@ -108,6 +111,8 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			cancelBtn:  widget.NewButton("", nil),
 			progress:   widget.NewProgressBar(),
 			status:     widget.NewLabel("Status: Idle"),
+			trimStart:  widget.NewEntry(),
+			trimEnd:    widget.NewEntry(),
 		},
 		stats: &DownloadStats{},
 		log:   &LogManager{},
@@ -302,6 +307,11 @@ func (app *DownloaderApp) createUI() {
 		brandLogo,
 	)
 
+	ui.trimStart.SetPlaceHolder("e.g. 00:01:30  (optional)")
+	ui.trimEnd.SetPlaceHolder("e.g. 00:05:00  (optional)")
+	ui.trimStart.Validator = validateTimestamp
+	ui.trimEnd.Validator = validateTimestamp
+
 	inputCard := widget.NewCard("", "Specify the source and destination",
 		container.NewVBox(
 			widget.NewLabelWithStyle("Video URL:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
@@ -316,6 +326,16 @@ func (app *DownloaderApp) createUI() {
 				container.NewVBox(
 					widget.NewLabelWithStyle("Max Quality:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 					ui.quality,
+				),
+			),
+			container.NewGridWithColumns(2,
+				container.NewVBox(
+					widget.NewLabelWithStyle("Trim Start: (leave blank for full video)", fyne.TextAlignLeading, fyne.TextStyle{}),
+					ui.trimStart,
+				),
+				container.NewVBox(
+					widget.NewLabelWithStyle("Trim End:", fyne.TextAlignLeading, fyne.TextStyle{}),
+					ui.trimEnd,
 				),
 			),
 			container.NewHBox(ui.duplicates, ui.saveLog),
@@ -365,6 +385,8 @@ func (app *DownloaderApp) createUI() {
 func (app *DownloaderApp) startDownload() {
 	url := strings.TrimSpace(app.ui.entry.Text)
 	savePath := strings.TrimSpace(app.ui.path.Text)
+	trimStart := strings.TrimSpace(app.ui.trimStart.Text)
+	trimEnd := strings.TrimSpace(app.ui.trimEnd.Text)
 
 	// Input validation: Ensure URL and save path are provided before starting the download.
 	if url == "" {
@@ -373,6 +395,17 @@ func (app *DownloaderApp) startDownload() {
 	}
 	if savePath == "" {
 		dialog.ShowError(fmt.Errorf("save path cannot be empty"), app.window)
+		return
+	}
+
+	// Trim validation: both fields must be provided together, or both left empty.
+	if (trimStart == "") != (trimEnd == "") {
+		dialog.ShowError(fmt.Errorf("both Trim Start and Trim End must be filled in, or both left empty"), app.window)
+		return
+	}
+	// Reject if either field has an invalid format (validator will have shown a red border inline).
+	if validateTimestamp(trimStart) != nil || validateTimestamp(trimEnd) != nil {
+		dialog.ShowError(fmt.Errorf("invalid trim time format — use HH:MM:SS, MM:SS, or plain seconds"), app.window)
 		return
 	}
 
@@ -441,7 +474,7 @@ func (app *DownloaderApp) startDownload() {
 	}()
 
 	// Run yt-dlp in a separate goroutine to avoid blocking the UI. This allows the application to remain responsive while the download is in progress.
-	go app.runYtDlp(ctx, url, savePath)
+	go app.runYtDlp(ctx, url, savePath, trimStart, trimEnd)
 }
 
 // runYtDlp manages the external lifecycle of the yt-dlp process. It builds
@@ -451,7 +484,9 @@ func (app *DownloaderApp) startDownload() {
 //   - ctx: context handle for process cancellation.
 //   - url: the target media link.
 //   - savePath: the local directory to save the file.
-func (app *DownloaderApp) runYtDlp(ctx context.Context, url string, savePath string) {
+//   - trimStart: optional start timestamp for trimming (HH:MM:SS), empty string means no trim.
+//   - trimEnd: optional end timestamp for trimming (HH:MM:SS), empty string means no trim.
+func (app *DownloaderApp) runYtDlp(ctx context.Context, url string, savePath string, trimStart string, trimEnd string) {
 	startTime := time.Now()
 	formatFlag := "bestvideo+bestaudio/best"
 	extension := "mp4"
@@ -521,6 +556,15 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, url string, savePath str
 		// For video, ensure the output container matches the user selection precisely
 		args = append(args, "--recode-video", extension)
 	}
+
+	// Trim: if the user provided a start and end time, pass them to yt-dlp.
+	// --force-keyframes-at-cuts ensures clean frame-accurate cuts with ffmpeg.
+	if trimStart != "" && trimEnd != "" {
+		args = append(args, "--download-sections", fmt.Sprintf("*%s-%s", trimStart, trimEnd))
+		args = append(args, "--force-keyframes-at-cuts")
+		app.appendOutput(fmt.Sprintf("[SYSTEM] Trimming: %s → %s", trimStart, trimEnd), color.RGBA{R: 0, G: 255, B: 255, A: 255})
+	}
+
 	args = append(args, url)
 
 	// exec.CommandContext is used to run yt-dlp with the ability to cancel it via the context.
@@ -743,6 +787,22 @@ func (app *DownloaderApp) checkDependencies() {
 		app.appendOutput("[WARN] "+msg, color.RGBA{R: 255, G: 165, B: 0, A: 255})
 		dialog.ShowInformation("Dependencies Missing", msg, app.window)
 	}
+}
+
+// validateTimestamp checks that a trim time entry is either empty (meaning no trim)
+// or a valid timestamp in one of the formats yt-dlp accepts:
+//   - HH:MM:SS  (e.g. 01:30:00)
+//   - MM:SS     (e.g. 01:30)
+//   - plain seconds, optionally with decimals (e.g. 90 or 90.5)
+func validateTimestamp(s string) error {
+	if s == "" {
+		return nil
+	}
+	matched, _ := regexp.MatchString(`^\d+:\d{2}:\d{2}$|^\d+:\d{2}$|^\d+(\.\d+)?$`, s)
+	if !matched {
+		return fmt.Errorf("use HH:MM:SS, MM:SS or seconds (e.g. 90)")
+	}
+	return nil
 }
 
 // getLocalBinPath returns the absolute path to a tool if it exists in a 'bin'

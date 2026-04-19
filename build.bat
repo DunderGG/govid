@@ -25,5 +25,3 @@ if %ERRORLEVEL% equ 0 (
     echo.
     echo Build Failed. Please check the errors above.
 )
-
-pause

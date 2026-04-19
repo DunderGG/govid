@@ -5,8 +5,9 @@ GoVid is a high-performance, cross-platform video downloader built with Go. It p
 ## ✨ Features
 
 - **Cross-Platform GUI**: Modern interface built with the [Fyne toolkit](https://fyne.io/).
-- **Multiple Formats**: Support for MP4, MKV, and MP3 (audio only).
+- **Multiple Formats**: Support for MP4, MKV, WebM, MP3, and M4A (audio only).
 - **Quality Control**: Select your preferred maximum resolution for downloads.
+- **Video Trimming**: Download only a specific segment by specifying a start and end time (`HH:MM:SS`).
 - **Real-time Progress**: Visual progress bars and a live scrollable log view.
 - **Professional Post-Processing**: Seamless integration with FFMPEG for high-quality encoding.
 - **Download Management**: Easily start, monitor, and cancel active downloads.
@@ -63,9 +64,10 @@ Ensure you have [Go 1.22+](https://go.dev/dl/) installed.
 
 1. **Launch**: Open the GoVid application.
 2. **URL**: Paste the video URL into the input field.
-3. **Configuration**: Select your desired output format (MP4, MKV, or MP3) and maximum resolution.
-4. **Save Location**: Choose the directory where you want to save the file.
-5. **Download**: Click the "Download" button to start the process. You can monitor the progress in real-time.
+3. **Configuration**: Select your desired output format (MP4, MKV, WebM, or MP3) and maximum resolution.
+4. **Trim (optional)**: Enter a start and end time (e.g. `00:01:30` and `00:05:00`) to download only a specific portion of the video. Leave both fields blank to download the full video.
+5. **Save Location**: Choose the directory where you want to save the file.
+6. **Download**: Click the "Download" button to start the process. You can monitor the progress in real-time.
 
 ### Command Line Options
 
