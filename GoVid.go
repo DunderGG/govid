@@ -598,17 +598,22 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, url string, savePath str
 	}()
 
 	// Goroutine to read standard error from yt-dlp.
-	// It scans for error messages and logs them in red, while warnings are logged in orange.
-	// This helps users quickly identify issues during the download process.
+	// yt-dlp writes most verbose/info output to stderr, not just errors.
+	// We only colour lines red if they contain an explicit "ERROR:" prefix.
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			line := scanner.Text()
-			logColor := color.RGBA{R: 255, G: 0, B: 0, A: 255}
-			if strings.Contains(line, "[debug]") {
-				logColor = color.RGBA{R: 255, G: 255, B: 0, A: 255}
-			} else if strings.Contains(line, "WARNING:") {
+			var logColor color.Color
+			switch {
+			case strings.Contains(line, "ERROR:"):
+				logColor = color.RGBA{R: 255, G: 0, B: 0, A: 255}
+			case strings.Contains(line, "WARNING:"):
 				logColor = color.RGBA{R: 255, G: 165, B: 0, A: 255}
+			case strings.Contains(line, "[debug]"):
+				logColor = color.RGBA{R: 180, G: 180, B: 180, A: 255}
+			default:
+				logColor = theme.ForegroundColor()
 			}
 			app.appendOutput(line, logColor)
 		}
