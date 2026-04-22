@@ -27,6 +27,7 @@ import (
 	"flag"
 	"fmt"
 	"image/color"
+	"math"
 	"net/url"
 	"os"
 	"os/exec"
@@ -70,6 +71,7 @@ type UIWidgets struct {
 	duplicates *widget.Check       // Option to force unique filenames
 	saveLog    *widget.Check       // Option to persist output to a .txt file
 	cancelBtn  *widget.Button      // Stop button for active downloads
+	statusDot  *canvas.Circle      // Animated state indicator dot next to the status label
 	trimStart  *widget.Entry       // Optional start time for video trimming (HH:MM:SS)
 	trimEnd    *widget.Entry       // Optional end time for video trimming (HH:MM:SS)
 }
@@ -90,11 +92,12 @@ type LogManager struct {
 
 // DownloaderApp acts as a coordinator, holding pointers to the specialized sub-structs and handling application lifecycle.
 type DownloaderApp struct {
-	window   fyne.Window        // The primary application window
-	ui       *UIWidgets         // The graphical interface components
-	stats    *DownloadStats     // Statistics tracked during a session
-	log      *LogManager        // Logging and persistence manager
-	cancelFn context.CancelFunc // Function used to signal yt-dlp to stop
+	window    fyne.Window        // The primary application window
+	ui        *UIWidgets         // The graphical interface components
+	stats     *DownloadStats     // Statistics tracked during a session
+	log       *LogManager        // Logging and persistence manager
+	cancelFn  context.CancelFunc // Function used to signal yt-dlp to stop
+	stopPulse chan struct{}      // Closed to stop the status dot pulse goroutine
 }
 
 // newDownloaderApp constructs the complex DownloaderApp structure.
@@ -110,6 +113,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			duplicates: widget.NewCheck("Allow Duplicate Downloads", nil),
 			saveLog:    widget.NewCheck("Save output to log file", nil),
 			cancelBtn:  widget.NewButton("", nil),
+			statusDot:  canvas.NewCircle(color.RGBA{R: 100, G: 100, B: 115, A: 255}),
 			progress:   widget.NewProgressBar(),
 			status:     widget.NewLabel("Status: Idle"),
 			trimStart:  widget.NewEntry(),
@@ -133,6 +137,9 @@ func main() {
 	}
 
 	myApp := app.NewWithID("com.govid.downloader") // Using a fixed app ID allows for consistent settings storage across sessions
+
+	// Apply the custom GoVid theme before any windows are created.
+	myApp.Settings().SetTheme(&goVidTheme{})
 
 	// Set the custom brand icon using the bundled resource.
 	// This ensures the icon works even when the .exe is moved to another folder.
@@ -200,9 +207,8 @@ func (app *DownloaderApp) showConfigHelp() {
 
 	content := container.NewVBox()
 	for _, item := range items {
-		title := canvas.NewText(item.label, theme.PrimaryColor())
-		title.TextStyle = fyne.TextStyle{Bold: true}
-		title.TextSize = 13
+		title := widget.NewRichTextFromMarkdown("### " + item.label)
+		title.Wrapping = fyne.TextWrapOff
 
 		body := widget.NewLabel(item.desc)
 		body.Wrapping = fyne.TextWrapWord
@@ -266,6 +272,7 @@ func parseURL(rawURL string) *url.URL {
 func (app *DownloaderApp) runUpdateInUI() {
 	app.appendOutput("[SYSTEM] Starting yt-dlp update...", color.RGBA{R: 0, G: 255, B: 255, A: 255})
 	app.updateStatus("Status: Updating yt-dlp...")
+	app.setStatusIndicator("active")
 
 	go func() {
 		// Use local binary if it exists
@@ -282,13 +289,16 @@ func (app *DownloaderApp) runUpdateInUI() {
 			outStr := string(output)
 			app.appendOutput(outStr, theme.ForegroundColor())
 
+			app.setStatusIndicator("idle")
 			if err != nil {
 				app.appendOutput(fmt.Sprintf("[ERROR] Update failed: %v", err), color.RGBA{R: 255, G: 0, B: 0, A: 255})
 				app.updateStatus("Status: Update Failed.")
+				app.setStatusIndicator("failed")
 				dialog.ShowError(fmt.Errorf("Update failed: %v", err), app.window)
 			} else {
 				app.appendOutput("[SYSTEM] yt-dlp update complete.", color.RGBA{R: 0, G: 255, B: 0, A: 255})
 				app.updateStatus("Status: Update Success.")
+				app.setStatusIndicator("success")
 				dialog.ShowInformation("Update Complete", "yt-dlp has been updated successfully.", app.window)
 			}
 		})
@@ -329,7 +339,7 @@ func (app *DownloaderApp) createUI() {
 		}
 	}
 
-	browseBtn := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
+	browseBtn := widget.NewButtonWithIcon("", iconFolderOpen, func() {
 		dialog.ShowFolderOpen(func(list fyne.ListableURI, err error) {
 			if err != nil || list == nil {
 				return
@@ -338,7 +348,7 @@ func (app *DownloaderApp) createUI() {
 		}, app.window)
 	})
 
-	downloadBtn := widget.NewButtonWithIcon("Download Now!", theme.DownloadIcon(), func() {
+	downloadBtn := widget.NewButtonWithIcon("Download Now!", iconDownload, func() {
 		app.startDownload()
 	})
 	downloadBtn.Importance = widget.HighImportance
@@ -377,11 +387,11 @@ func (app *DownloaderApp) createUI() {
 		ui.quality.SetSelected("Best Quality")
 	}
 
-	openFolderBtn := widget.NewButtonWithIcon("Open Folder", theme.FolderIcon(), func() {
+	openFolderBtn := widget.NewButtonWithIcon("Open Folder", iconFolder, func() {
 		app.openDownloadFolder()
 	})
 
-	ui.cancelBtn.Icon = theme.CancelIcon()
+	ui.cancelBtn.Icon = iconCancel
 	ui.cancelBtn.Text = "Cancel"
 	ui.cancelBtn.OnTapped = func() {
 		if app.cancelFn != nil {
@@ -390,9 +400,8 @@ func (app *DownloaderApp) createUI() {
 		}
 	}
 	// Create header with "Media Selection" and logo
-	headerText := canvas.NewText("Media Selection", theme.PrimaryColor())
-	headerText.TextSize = 28
-	headerText.TextStyle = fyne.TextStyle{Bold: true}
+	headerText := widget.NewRichTextFromMarkdown("# Media Selection")
+	headerText.Wrapping = fyne.TextWrapOff
 
 	header := container.NewHBox(
 		headerText,
@@ -405,7 +414,15 @@ func (app *DownloaderApp) createUI() {
 	ui.trimStart.Validator = validateTimestamp
 	ui.trimEnd.Validator = validateTimestamp
 
-	inputCard := widget.NewCard("", "Specify the source and destination",
+	// accentBar returns a 4px wide rectangle in the theme's primary colour,
+	// used as a decorative left-edge bar on cards.
+	accentBar := func() *canvas.Rectangle {
+		bar := canvas.NewRectangle(accentCyan)
+		bar.SetMinSize(fyne.NewSize(4, 0))
+		return bar
+	}
+
+	inputCard := roundedCard("Specify the source and destination",
 		container.NewVBox(
 			widget.NewLabelWithStyle("Video URL:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			ui.entry,
@@ -435,13 +452,18 @@ func (app *DownloaderApp) createUI() {
 			container.NewGridWithColumns(3, downloadBtn, openFolderBtn, ui.cancelBtn),
 		),
 	)
+	inputCardAccented := container.NewBorder(nil, nil, accentBar(), nil, inputCard)
 
-	statusCard := widget.NewCard("Progress", "",
+	// Wrap the status dot in a fixed-size container so the circle renders at 12×12.
+	dotContainer := container.New(layout.NewGridWrapLayout(fyne.NewSize(34, 34)), ui.statusDot)
+
+	statusCard := roundedCard("",
 		container.NewVBox(
 			ui.progress,
-			container.NewHBox(widget.NewIcon(theme.InfoIcon()), ui.status),
+			container.NewHBox(dotContainer, ui.status),
 		),
 	)
+	statusCardAccented := container.NewBorder(nil, nil, accentBar(), nil, statusCard)
 
 	ui.logList = container.NewVBox()
 	spacer := canvas.NewRectangle(color.Transparent)
@@ -457,8 +479,8 @@ func (app *DownloaderApp) createUI() {
 
 	topContent := container.NewVBox(
 		header,
-		inputCard,
-		statusCard,
+		inputCardAccented,
+		statusCardAccented,
 		widget.NewSeparator(),
 		widget.NewLabelWithStyle("Terminal Output:", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
 	)
@@ -513,6 +535,7 @@ func (app *DownloaderApp) startDownload() {
 	app.ui.logList.Objects = nil
 	app.ui.logList.Refresh()
 	app.ui.cancelBtn.Enable()
+	app.setStatusIndicator("active")
 
 	// Initialize logging to file if the option is checked. This allows users to keep a record of their download sessions.
 	if app.ui.saveLog.Checked {
@@ -677,6 +700,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, url string, savePath str
 		app.updateStatus(fmt.Sprintf("Failed to launch yt-dlp: %v", err))
 		return
 	}
+	app.updateStatus("Status: Downloading...")
 
 	// Goroutine to read standard output from yt-dlp.
 	// It scans each line of output, updates the progress based on percentage markers,
@@ -736,14 +760,17 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, url string, savePath str
 				summary := fmt.Sprintf("────────────────────────────────────────\nDOWNLOAD ABORTED\n   ├─ Runtime:    %s\n   ├─ Avg Speed:  %s\n   ├─ Downloaded: %s\n────────────────────────────────────────", durationFormatted, avgSpeed, app.stats.lastSize)
 				app.appendOutput(summary, color.RGBA{R: 255, G: 165, B: 0, A: 255})
 				app.updateStatus("Status: Canceled.")
+				app.setStatusIndicator("canceled")
 			} else {
 				app.updateStatus("Status: Failed. Check logs above.")
+				app.setStatusIndicator("failed")
 			}
 		} else {
 			summary := fmt.Sprintf("────────────────────────────────────────\nDOWNLOAD COMPLETE\n   ├─ Duration:   %s\n   ├─ Avg Speed:  %s\n   ├─ Downloaded: %s\n────────────────────────────────────────", durationFormatted, avgSpeed, app.stats.lastSize)
 			app.appendOutput(summary, color.RGBA{R: 0, G: 200, B: 0, A: 255})
 			app.updateStatus("Status: Success!")
 			app.setProgressNow(1)
+			app.setStatusIndicator("success")
 		}
 
 		// Lock mutex, close the file and clean up log file pointer if it was created for this session.
@@ -756,6 +783,21 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, url string, savePath str
 		}
 		app.log.mutex.Unlock()
 	})
+}
+
+// roundedCard wraps content in a rounded-rectangle background panel, giving
+// cards a softer, more modern look than the default widget.Card. It renders
+// a dark background with a subtle 1px border and 10px corner radius, then
+// layers an optional italic subtitle and the provided content on top.
+func roundedCard(subtitle string, content fyne.CanvasObject) fyne.CanvasObject {
+	bg := canvas.NewRectangle(color.RGBA{R: 26, G: 26, B: 36, A: 255})
+	bg.CornerRadius = 10
+	bg.StrokeColor = color.RGBA{R: 45, G: 45, B: 60, A: 255}
+	bg.StrokeWidth = 1
+
+	sub := widget.NewLabelWithStyle(subtitle, fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+	inner := container.NewVBox(sub, content)
+	return container.NewStack(bg, container.NewPadded(inner))
 }
 
 // parseProgress scans a line of output from the downloader for percentage
@@ -816,6 +858,68 @@ func (app *DownloaderApp) appendOutput(inString string, color color.Color) {
 		}
 		app.ui.output.ScrollToBottom()
 	})
+}
+
+// setStatusIndicator updates the status dot colour and controls the pulse animation.
+// Valid states: "idle", "active", "success", "failed", "canceled".
+// The "active" state starts a background goroutine that breathes the dot's alpha
+// using a sine wave, giving a smooth pulsing effect. All other states are static.
+func (app *DownloaderApp) setStatusIndicator(state string) {
+	// Stop any existing pulse goroutine before starting a new state.
+	if app.stopPulse != nil {
+		close(app.stopPulse)
+		app.stopPulse = nil
+	}
+
+	type rgbf struct{ r, g, b float64 }
+	var base rgbf
+	switch state {
+	case "active":
+		base = rgbf{28, 155, 190} // accentCyan
+	case "success":
+		base = rgbf{0, 200, 120}
+	case "failed":
+		base = rgbf{220, 60, 60}
+	case "canceled":
+		base = rgbf{255, 165, 0}
+	default: // "idle"
+		base = rgbf{100, 100, 115}
+	}
+
+	setDot := func(alpha float64) {
+		a := uint8(alpha * 255)
+		fyne.Do(func() {
+			app.ui.statusDot.FillColor = color.RGBA{
+				R: uint8(base.r), G: uint8(base.g), B: uint8(base.b), A: a,
+			}
+			app.ui.statusDot.Refresh()
+		})
+	}
+
+	if state != "active" {
+		setDot(1.0)
+		return
+	}
+
+	// Active: breathe between 30% and 100% alpha using a sine wave.
+	stop := make(chan struct{})
+	app.stopPulse = stop
+	go func() {
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
+		var t float64
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				t += 0.1
+				// Sine oscillates -1..1; map to 0.3..1.0
+				alpha := 0.3 + 0.35*(1+math.Sin(t))
+				setDot(alpha)
+			}
+		}
+	}()
 }
 
 // setProgress updates the target percentage for the progress smoothing goroutine.
