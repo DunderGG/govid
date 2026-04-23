@@ -46,6 +46,7 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Use `--embed-thumbnail` and `--embed-chapters` yt-dlp flags.
 - [ ] Embed title, artist, and upload date tags into MP3 and M4A files.
 - [ ] Allow the user to toggle thumbnail embedding from the UI options.
+- [ ] Automatic thumbnail and chapter injection via FFMPEG.
 
 ### Download History
 > Keep a record of previously downloaded files.
