@@ -48,6 +48,7 @@ type UIWidgets struct {
 	statusDot  *canvas.Circle      // Animated state indicator dot next to the status label
 	trimStart  *widget.Entry       // Optional start time for video trimming (HH:MM:SS)
 	trimEnd    *widget.Entry       // Optional end time for video trimming (HH:MM:SS)
+	maxSpeed   *widget.Entry       // Download speed limit (e.g. 5M)
 }
 
 // DownloadStats tracks the real-time metrics of a download session.
@@ -92,6 +93,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			status:     widget.NewLabel("Status: Idle"),
 			trimStart:  widget.NewEntry(),
 			trimEnd:    widget.NewEntry(),
+			maxSpeed:   widget.NewEntry(),
 		},
 		stats: &DownloadStats{},
 		log:   &LogManager{},

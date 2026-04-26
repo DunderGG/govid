@@ -88,9 +88,9 @@ This document outlines planned features, improvements, and known limitations for
 ### Speed & Concurrency Limits
 > Prevent downloads from saturating the user's connection.
 
-- [ ] Add a "Max Download Speed" input (e.g., `5M` for 5 MB/s).
+- [X] Add a "Max Download Speed" input (e.g., `5M` for 5 MB/s).
 - [ ] Pass the value to yt-dlp via `--limit-rate`.
-- [ ] Persist the setting alongside other preferences.
+- [X] Persist the setting alongside other preferences.
 
 ---
 
@@ -164,7 +164,6 @@ This document outlines planned features, improvements, and known limitations for
 
 - [ ] Support a `govid.json` or `govid.toml` config file in the app directory.
 - [ ] Override format, quality, path, and speed limit defaults from the file.
-- [ ] Useful for IT deployments or power users who script workflows.
 
 ### macOS & Linux Polish
 > Close the gap on non-Windows platforms.
@@ -182,3 +181,4 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Very long video titles can overflow the log panel horizontally — add text wrapping or truncation to log label widgets.
 - [ ] The app has no minimum window size enforced — add `SetFixedSize` or `SetMinSize` guards on the main window.
 - [ ] Log buffer is capped at 200 lines, which may truncate long download sessions — make the buffer limit user-configurable.
+- [ ] No support for CLI flags. Not sure if there is much point, cause then you might as well use yt-dlp directly?

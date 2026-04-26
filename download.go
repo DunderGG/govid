@@ -149,11 +149,13 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		qualitySuffix = "_" + quality
 	}
 
+	// Output template: includes title and quality, with optional epoch timestamp for duplicates.
 	outputTemplate := "GoVid_%(title)s" + qualitySuffix + "." + extension
 	if app.ui.duplicates.Checked {
 		outputTemplate = "GoVid_%(title)s" + qualitySuffix + "_%(epoch)s." + extension
 	}
 
+	// Build the full argument list for yt-dlp.
 	args := []string{
 		"--newline", "--progress", "--verbose", "--no-part", "--no-continue",
 		"-f", formatFlag, "-P", savePath, "-o", outputTemplate,
@@ -163,6 +165,17 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	ffmpegPath := app.getLocalBinPath("ffmpeg")
 	if _, err := os.Stat(ffmpegPath); err == nil {
 		args = append(args, "--ffmpeg-location", ffmpegPath)
+	}
+
+	// Apply speed limit if set.
+	limit := strings.TrimSpace(app.ui.maxSpeed.Text)
+	// If the user didn't enter a limit this time, check if there's a saved preference from before.
+	if limit == "" {
+		limit = fyne.CurrentApp().Preferences().String("maxSpeed")
+	}
+	// Append the limit argument if we found a value after checking both the current input and saved preferences.
+	if limit != "" {
+		args = append(args, "--limit-rate", limit)
 	}
 
 	if extension == "mp3" || extension == "m4a" {

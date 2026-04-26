@@ -126,6 +126,7 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 	prefs.SetString("savedPath", savePath)
 	prefs.SetString("format", app.ui.format.Selected)
 	prefs.SetString("quality", app.ui.quality.Selected)
+	prefs.SetString("maxSpeed", strings.TrimSpace(app.ui.maxSpeed.Text))
 }
 
 // openDownloadFolder launches the system file manager pointing at the current

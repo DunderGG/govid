@@ -26,6 +26,10 @@ func (app *DownloaderApp) createMainMenu() {
 		}, app.window)
 	})
 
+	prefsMenu := fyne.NewMenuItem("Preferences", func() {
+		app.showPreferences()
+	})
+
 	configHelpMenu := fyne.NewMenuItem("Configuration Guide", func() {
 		app.showConfigHelp()
 	})
@@ -35,10 +39,35 @@ func (app *DownloaderApp) createMainMenu() {
 	})
 
 	mainMenu := fyne.NewMainMenu(
-		fyne.NewMenu("Tools", updateMenu),
+		fyne.NewMenu("Tools", updateMenu, prefsMenu),
 		fyne.NewMenu("Help", configHelpMenu, fyne.NewMenuItemSeparator(), aboutMenu),
 	)
 	app.window.SetMainMenu(mainMenu)
+}
+
+// showPreferences opens a window for general application settings.
+func (app *DownloaderApp) showPreferences() {
+	ui := app.ui
+	prefs := fyne.CurrentApp().Preferences()
+
+	// Speed Limit field
+	ui.maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
+	ui.maxSpeed.SetText(prefs.String("maxSpeed"))
+
+	form := &widget.Form{
+		Items: []*widget.FormItem{
+			{Text: "Max Download Speed", Widget: ui.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
+		},
+		OnSubmit: func() {
+			app.savePreferences(ui.path.Text)
+			dialog.ShowInformation("Success", "Preferences saved successfully.", fyne.CurrentApp().Driver().AllWindows()[len(fyne.CurrentApp().Driver().AllWindows())-1])
+		},
+	}
+
+	w := fyne.CurrentApp().NewWindow("Preferences")
+	w.SetContent(container.NewPadded(form))
+	w.Resize(fyne.NewSize(400, 150))
+	w.Show()
 }
 
 // showConfigHelp opens a scrollable window explaining all configuration options.
@@ -56,6 +85,7 @@ func (app *DownloaderApp) showConfigHelp() {
 		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\nAccepted formats:\n  • HH:MM:SS  (e.g. 01:30:00)\n  • MM:SS      (e.g. 01:30)\n  • Seconds    (e.g. 90)\nBoth fields must be filled or both left empty."},
 		{"Allow Duplicate Downloads", "When checked, a timestamp is added to the filename so re-downloading the same video does not overwrite the previous file."},
 		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a GoVid_log.txt file in your save destination folder."},
+		{"Max Download Speed", "Found in Tools → Preferences. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  • 50K – Very slow (dial-up speed)\n  • 5M – Moderate (standard HD streaming speed)\n  • 10G – Virtually unlimited\nLeave blank to use full available bandwidth."},
 		{"Cancel", "Stops the active download immediately. Partially downloaded files are discarded (due to --no-part mode)."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
 	}
