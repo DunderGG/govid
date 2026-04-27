@@ -17,7 +17,9 @@ var _ fyne.Theme = (*goVidTheme)(nil)
 // Matched to the steel-cyan of the GoVid app icon background.
 var accentCyan = color.RGBA{R: 28, G: 155, B: 190, A: 255} // #1C9BBE
 
-func (t *goVidTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+func (t *goVidTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
+	// We always render in dark mode regardless of the OS system variant.
+	// The variant argument is intentionally ignored here.
 	switch name {
 	case theme.ColorNameBackground:
 		return color.RGBA{R: 18, G: 18, B: 24, A: 255} // near-black
@@ -64,22 +66,46 @@ func (t *goVidTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) 
 	case theme.ColorNameSelection:
 		return color.RGBA{R: 28, G: 155, B: 190, A: 60}
 	}
-	// Fall through to the built-in dark theme for anything not explicitly overridden.
-	return theme.DarkTheme().Color(name, variant)
+	// Fall through to the built-in default dark theme for anything not explicitly overridden.
+	return theme.DefaultTheme().Color(name, theme.VariantDark)
+}
+
+// lightThemeWrapper wraps Fyne's DefaultTheme and forces the Light variant
+// regardless of what the OS system theme is. This ensures the Light option
+// in Preferences always produces a genuine light UI.
+type lightThemeWrapper struct{}
+
+var _ fyne.Theme = (*lightThemeWrapper)(nil)
+
+func (t *lightThemeWrapper) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
+	return theme.DefaultTheme().Color(name, theme.VariantLight)
+}
+
+func (t *lightThemeWrapper) Font(style fyne.TextStyle) fyne.Resource {
+	return theme.DefaultTheme().Font(style)
+}
+
+func (t *lightThemeWrapper) Icon(name fyne.ThemeIconName) fyne.Resource {
+	return theme.DefaultTheme().Icon(name)
+}
+
+func (t *lightThemeWrapper) Size(name fyne.ThemeSizeName) float32 {
+	return theme.DefaultTheme().Size(name)
 }
 
 func (t *goVidTheme) Font(style fyne.TextStyle) fyne.Resource {
-	return theme.DarkTheme().Font(style)
+	return theme.DefaultTheme().Font(style)
 }
 
 func (t *goVidTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
-	return theme.DarkTheme().Icon(name)
+	return theme.DefaultTheme().Icon(name)
 }
 
 func (t *goVidTheme) Size(name fyne.ThemeSizeName) float32 {
-	switch name {
-	case theme.SizeNameText:
+	if name == theme.SizeNameText {
 		return 13 // slightly larger than default (12)
+	}
+	switch name {
 	case theme.SizeNamePadding:
 		return 6
 	case theme.SizeNameInnerPadding:
@@ -91,5 +117,5 @@ func (t *goVidTheme) Size(name fyne.ThemeSizeName) float32 {
 	case theme.SizeNameScrollBarSmall:
 		return 4
 	}
-	return theme.DarkTheme().Size(name)
+	return theme.DefaultTheme().Size(name)
 }

@@ -54,19 +54,32 @@ func (app *DownloaderApp) showPreferences() {
 	ui.maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
 	ui.maxSpeed.SetText(prefs.String("maxSpeed"))
 
+	// Theme Mode field
+	ui.themeMode.SetSelected(prefs.StringWithFallback("themeMode", "Dark"))
+
 	form := &widget.Form{
 		Items: []*widget.FormItem{
 			{Text: "Max Download Speed", Widget: ui.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
+			{Text: "Application Theme", Widget: ui.themeMode, HintText: "Restart may be required for some changes"},
 		},
 		OnSubmit: func() {
 			app.savePreferences(ui.path.Text)
-			dialog.ShowInformation("Success", "Preferences saved successfully.", fyne.CurrentApp().Driver().AllWindows()[len(fyne.CurrentApp().Driver().AllWindows())-1])
+
+			// Apply theme change and rebuild the UI so canvas.Rectangle colors
+			// (which are snapshotted at construction time) get fresh theme values.
+			switch ui.themeMode.Selected {
+			case "Light":
+				fyne.CurrentApp().Settings().SetTheme(&lightThemeWrapper{})
+			default:
+				fyne.CurrentApp().Settings().SetTheme(&goVidTheme{})
+			}
+			app.createUI()
 		},
 	}
 
 	w := fyne.CurrentApp().NewWindow("Preferences")
 	w.SetContent(container.NewPadded(form))
-	w.Resize(fyne.NewSize(400, 150))
+	w.Resize(fyne.NewSize(500, 250))
 	w.Show()
 }
 
@@ -183,7 +196,7 @@ func (app *DownloaderApp) createUI() {
 		}
 	}
 
-	browseBtn := widget.NewButtonWithIcon("", iconFolderOpen, func() {
+	browseBtn := widget.NewButtonWithIcon("", themedIcon(IconFolderOpen), func() {
 		dialog.ShowFolderOpen(func(list fyne.ListableURI, err error) {
 			if err != nil || list == nil {
 				return
@@ -192,7 +205,7 @@ func (app *DownloaderApp) createUI() {
 		}, app.window)
 	})
 
-	downloadBtn := widget.NewButtonWithIcon("Download Now!", iconDownload, func() {
+	downloadBtn := widget.NewButtonWithIcon("Download Now!", themedIcon(IconDownload), func() {
 		app.startDownload()
 	})
 	downloadBtn.Importance = widget.HighImportance
@@ -218,11 +231,11 @@ func (app *DownloaderApp) createUI() {
 		ui.quality.SetSelected("Best Quality")
 	}
 
-	openFolderBtn := widget.NewButtonWithIcon("Open Folder", iconFolder, func() {
+	openFolderBtn := widget.NewButtonWithIcon("Open Folder", themedIcon(IconFolder), func() {
 		app.openDownloadFolder()
 	})
 
-	ui.cancelBtn.Icon = iconCancel
+	ui.cancelBtn.Icon = themedIcon(IconCancel)
 	ui.cancelBtn.Text = "Cancel"
 	ui.cancelBtn.OnTapped = func() {
 		if app.cancelFn != nil {
@@ -315,12 +328,13 @@ func (app *DownloaderApp) createUI() {
 
 // roundedCard wraps content in a rounded-rectangle background panel, giving
 // cards a softer, more modern look than the default widget.Card. It renders
-// a dark background with a subtle 1px border and 10px corner radius, then
+// a themed background with a subtle 1px border and 10px corner radius, then
 // layers an optional italic subtitle and the provided content on top.
+// Colors are sourced from the active theme so they work in both dark and light modes.
 func roundedCard(subtitle string, content fyne.CanvasObject) fyne.CanvasObject {
-	bg := canvas.NewRectangle(color.RGBA{R: 26, G: 26, B: 36, A: 255})
+	bg := canvas.NewRectangle(theme.Color(theme.ColorNameInputBackground))
 	bg.CornerRadius = 10
-	bg.StrokeColor = color.RGBA{R: 45, G: 45, B: 60, A: 255}
+	bg.StrokeColor = theme.Color(theme.ColorNameSeparator)
 	bg.StrokeWidth = 1
 
 	sub := widget.NewLabelWithStyle(subtitle, fyne.TextAlignLeading, fyne.TextStyle{Italic: true})

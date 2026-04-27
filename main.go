@@ -49,6 +49,7 @@ type UIWidgets struct {
 	trimStart  *widget.Entry       // Optional start time for video trimming (HH:MM:SS)
 	trimEnd    *widget.Entry       // Optional end time for video trimming (HH:MM:SS)
 	maxSpeed   *widget.Entry       // Download speed limit (e.g. 5M)
+	themeMode  *widget.Select      // Theme mode selector (System, Dark, Light)
 }
 
 // DownloadStats tracks the real-time metrics of a download session.
@@ -78,7 +79,7 @@ type DownloaderApp struct {
 
 // newDownloaderApp constructs and fully initialises a DownloaderApp.
 func newDownloaderApp(window fyne.Window) *DownloaderApp {
-	return &DownloaderApp{
+	app := &DownloaderApp{
 		window: window,
 		ui: &UIWidgets{
 			entry:      widget.NewEntry(),
@@ -94,10 +95,16 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			trimStart:  widget.NewEntry(),
 			trimEnd:    widget.NewEntry(),
 			maxSpeed:   widget.NewEntry(),
+			themeMode:  widget.NewSelect([]string{"Dark", "Light"}, nil),
 		},
 		stats: &DownloadStats{},
 		log:   &LogManager{},
 	}
+	// Ensure the theme selector always has a valid value so savePreferences never
+	// writes an empty string, which would suppress the "Dark" fallback on next launch.
+	savedTheme := fyne.CurrentApp().Preferences().StringWithFallback("themeMode", "Dark")
+	app.ui.themeMode.SetSelected(savedTheme)
+	return app
 }
 
 // main is the entry point of the application. It initializes the Fyne app,
@@ -114,8 +121,15 @@ func main() {
 
 	myApp := app.NewWithID("com.govid.downloader")
 
-	// Apply the custom GoVid theme before any windows are created.
-	myApp.Settings().SetTheme(&goVidTheme{})
+	// Apply the user's preferred theme or the custom GoVid theme.
+	themePref := myApp.Preferences().StringWithFallback("themeMode", "Dark")
+	switch themePref {
+	case "Light":
+		myApp.Settings().SetTheme(&lightThemeWrapper{})
+	default:
+		// Force the custom theme to use Dark variant for its base
+		myApp.Settings().SetTheme(&goVidTheme{})
+	}
 
 	// Set the custom brand icon using the bundled resource.
 	myApp.SetIcon(resourceAppiconPng)
