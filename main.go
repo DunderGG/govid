@@ -143,5 +143,11 @@ func main() {
 	downloader.createUI()
 	downloader.checkDependencies()
 
+	// Ensure the whole process exits when the main window is closed,
+	// even if secondary windows (Preferences, About, etc.) are still open.
+	myWindow.SetCloseIntercept(func() {
+		myApp.Quit()
+	})
+
 	myWindow.ShowAndRun()
 }
