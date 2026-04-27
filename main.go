@@ -49,7 +49,7 @@ type UIWidgets struct {
 	trimStart  *widget.Entry       // Optional start time for video trimming (HH:MM:SS)
 	trimEnd    *widget.Entry       // Optional end time for video trimming (HH:MM:SS)
 	maxSpeed   *widget.Entry       // Download speed limit (e.g. 5M)
-	themeMode  *widget.Select      // Theme mode selector (System, Dark, Light)
+	themeMode  *widget.RadioGroup   // Theme mode selector (Dark / Light)
 }
 
 // DownloadStats tracks the real-time metrics of a download session.
@@ -95,7 +95,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			trimStart:  widget.NewEntry(),
 			trimEnd:    widget.NewEntry(),
 			maxSpeed:   widget.NewEntry(),
-			themeMode:  widget.NewSelect([]string{"Dark", "Light"}, nil),
+			themeMode:  widget.NewRadioGroup([]string{"Dark", "Light"}, nil),
 		},
 		stats: &DownloadStats{},
 		log:   &LogManager{},

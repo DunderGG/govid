@@ -54,7 +54,8 @@ func (app *DownloaderApp) showPreferences() {
 	ui.maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
 	ui.maxSpeed.SetText(prefs.String("maxSpeed"))
 
-	// Theme Mode field
+	// Theme Mode field — horizontal radio group for a simple two-option toggle.
+	ui.themeMode.Horizontal = true
 	ui.themeMode.SetSelected(prefs.StringWithFallback("themeMode", "Dark"))
 
 	form := &widget.Form{
