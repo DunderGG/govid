@@ -125,10 +125,10 @@ func main() {
 	themePref := myApp.Preferences().StringWithFallback("themeMode", "Dark")
 	switch themePref {
 	case "Light":
-		myApp.Settings().SetTheme(&lightThemeWrapper{})
+		myApp.Settings().SetTheme(&lightTheme{})
 	default:
 		// Force the custom theme to use Dark variant for its base
-		myApp.Settings().SetTheme(&goVidTheme{})
+		myApp.Settings().SetTheme(&darkTheme{})
 	}
 
 	// Set the custom brand icon using the bundled resource.

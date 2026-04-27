@@ -108,8 +108,8 @@ This document outlines planned features, improvements, and known limitations for
 ### Dark / Light Mode Toggle
 > Give users manual control over the application theme.
 
-- [ ] Add a "Theme" option in the Tools menu or a toggle button in the header.
-- [ ] Persist the theme preference using `fyne.CurrentApp().Preferences()`.
+- [X] Add a "Theme" option in the Tools menu or a toggle button in the header.
+- [X] Persist the theme preference using `fyne.CurrentApp().Preferences()`.
 - [ ] Default to the OS system theme, but allow override.
 
 ### Resizable & Responsive Layout

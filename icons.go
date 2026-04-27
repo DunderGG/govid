@@ -13,7 +13,7 @@ const (
 	IconFolder
 	IconCancel
 )
-
+// Each icon is a 24×24 Material-style filled SVG using a single solid colour for the fill.
 // Each icon exists in two colour variants stored in a lookup table:
 //   - dark variant: soft-white fill (#E6E6F0) — readable on the dark theme background.
 //   - light variant: accent-cyan fill (#1C9BBE) — matches the card border on the light theme.

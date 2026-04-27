@@ -7,17 +7,17 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
-// goVidTheme is a custom Fyne theme that gives GoVid a dark "media app" look
-// with a vivid cyan accent colour, tighter padding, and a slightly larger base font.
-type goVidTheme struct{}
+// darkTheme is a custom Fyne theme that gives GoVid a dark look with a
+// vivid cyan accent colour, tighter padding, and a slightly larger base font.
+type darkTheme struct{}
 
-var _ fyne.Theme = (*goVidTheme)(nil)
+var _ fyne.Theme = (*darkTheme)(nil)
 
 // Accent is the primary highlight colour used on focused widgets, buttons, etc.
 // Matched to the steel-cyan of the GoVid app icon background.
 var accentCyan = color.RGBA{R: 28, G: 155, B: 190, A: 255} // #1C9BBE
 
-func (t *goVidTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
+func (t *darkTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
 	// We always render in dark mode regardless of the OS system variant.
 	// The variant argument is intentionally ignored here.
 	switch name {
@@ -70,38 +70,15 @@ func (t *goVidTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.
 	return theme.DefaultTheme().Color(name, theme.VariantDark)
 }
 
-// lightThemeWrapper wraps Fyne's DefaultTheme and forces the Light variant
-// regardless of what the OS system theme is. This ensures the Light option
-// in Preferences always produces a genuine light UI.
-type lightThemeWrapper struct{}
-
-var _ fyne.Theme = (*lightThemeWrapper)(nil)
-
-func (t *lightThemeWrapper) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
-	return theme.DefaultTheme().Color(name, theme.VariantLight)
-}
-
-func (t *lightThemeWrapper) Font(style fyne.TextStyle) fyne.Resource {
+func (t *darkTheme) Font(style fyne.TextStyle) fyne.Resource {
 	return theme.DefaultTheme().Font(style)
 }
 
-func (t *lightThemeWrapper) Icon(name fyne.ThemeIconName) fyne.Resource {
+func (t *darkTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
 	return theme.DefaultTheme().Icon(name)
 }
 
-func (t *lightThemeWrapper) Size(name fyne.ThemeSizeName) float32 {
-	return theme.DefaultTheme().Size(name)
-}
-
-func (t *goVidTheme) Font(style fyne.TextStyle) fyne.Resource {
-	return theme.DefaultTheme().Font(style)
-}
-
-func (t *goVidTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
-	return theme.DefaultTheme().Icon(name)
-}
-
-func (t *goVidTheme) Size(name fyne.ThemeSizeName) float32 {
+func (t *darkTheme) Size(name fyne.ThemeSizeName) float32 {
 	if name == theme.SizeNameText {
 		return 13 // slightly larger than default (12)
 	}
@@ -117,5 +94,28 @@ func (t *goVidTheme) Size(name fyne.ThemeSizeName) float32 {
 	case theme.SizeNameScrollBarSmall:
 		return 4
 	}
+	return theme.DefaultTheme().Size(name)
+}
+
+// lightTheme wraps Fyne's DefaultTheme and forces the Light variant
+// regardless of what the OS system theme is. This ensures the Light option
+// in Preferences always produces a genuine light UI.
+type lightTheme struct{}
+
+var _ fyne.Theme = (*lightTheme)(nil)
+
+func (t *lightTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
+	return theme.DefaultTheme().Color(name, theme.VariantLight)
+}
+
+func (t *lightTheme) Font(style fyne.TextStyle) fyne.Resource {
+	return theme.DefaultTheme().Font(style)
+}
+
+func (t *lightTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
+	return theme.DefaultTheme().Icon(name)
+}
+
+func (t *lightTheme) Size(name fyne.ThemeSizeName) float32 {
 	return theme.DefaultTheme().Size(name)
 }

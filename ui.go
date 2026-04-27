@@ -69,9 +69,9 @@ func (app *DownloaderApp) showPreferences() {
 			// (which are snapshotted at construction time) get fresh theme values.
 			switch ui.themeMode.Selected {
 			case "Light":
-				fyne.CurrentApp().Settings().SetTheme(&lightThemeWrapper{})
+				fyne.CurrentApp().Settings().SetTheme(&lightTheme{})
 			default:
-				fyne.CurrentApp().Settings().SetTheme(&goVidTheme{})
+				fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
 			}
 			app.createUI()
 		},
