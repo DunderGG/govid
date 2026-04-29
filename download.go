@@ -36,11 +36,8 @@ func (app *DownloaderApp) startDownload() {
 		return
 	}
 
-	// Trim validation: both fields must be provided together, or both left empty.
-	if (trimStart == "") != (trimEnd == "") {
-		dialog.ShowError(fmt.Errorf("both Trim Start and Trim End must be filled in, or both left empty"), app.window)
-		return
-	}
+	// Trim validation: at least one of trimStart/trimEnd must be provided for trimming,
+	// but either can be used alone.
 	if validateTimestamp(trimStart) != nil || validateTimestamp(trimEnd) != nil {
 		dialog.ShowError(fmt.Errorf("invalid trim time format — use HH:MM:SS, MM:SS, or plain seconds"), app.window)
 		return
@@ -153,6 +150,9 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	outputTemplate := "GoVid_%(title)s" + qualitySuffix + "." + extension
 	if app.ui.duplicates.Checked {
 		outputTemplate = "GoVid_%(title)s" + qualitySuffix + "_%(epoch)s." + extension
+	// To make sure multiple parts of the same video can be downloaded, we need a unique ID for each.
+		} else if trimStart != "" || trimEnd != "" {
+		outputTemplate = "GoVid_%(title)s" + qualitySuffix + "_TRIM%(epoch)s." + extension
 	}
 
 	// Build the full argument list for yt-dlp.
@@ -185,10 +185,23 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	}
 
 	// Trim: pass start/end to yt-dlp with keyframe-accurate cuts.
-	if trimStart != "" && trimEnd != "" {
-		args = append(args, "--download-sections", fmt.Sprintf("*%s-%s", trimStart, trimEnd))
+	if trimStart != "" || trimEnd != "" {
+		// Start downloading from 0 or the specified time.
+		start, displayStart := trimStart, trimStart
+		if start == "" {
+			start = "0"
+			displayStart = "start"
+		}
+		// Stop downloading at the specified time or the end of the video.
+		end, displayEnd := trimEnd, trimEnd
+		if end == "" {
+			end  = "inf"
+			displayEnd = "end"
+		}
+
+		args = append(args, "--download-sections", fmt.Sprintf("*%s-%s", start, end))
 		args = append(args, "--force-keyframes-at-cuts")
-		app.appendOutput(fmt.Sprintf("[SYSTEM] Trimming: %s → %s", trimStart, trimEnd), color.RGBA{R: 0, G: 255, B: 255, A: 255})
+		app.appendOutput(fmt.Sprintf("[SYSTEM] Trimming: %s → %s", displayStart, displayEnd), color.RGBA{R: 0, G: 255, B: 255, A: 255})
 	}
 
 	args = append(args, rawURL)

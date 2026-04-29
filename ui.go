@@ -96,7 +96,7 @@ func (app *DownloaderApp) showConfigHelp() {
 		{"Save Destination", "The folder where the downloaded file will be saved. GoVid remembers this between sessions."},
 		{"Output Format", "The container format for the downloaded file:\n  • MP4 – widely compatible, recommended for most uses\n  • MKV – flexible container, ideal for high-quality archiving\n  • WebM – open format, good for web use\n  • MP3 – audio only, compressed\n  • M4A – audio only, Apple/iTunes compatible"},
 		{"Max Quality", "Sets the maximum resolution yt-dlp will request:\n  • Best Quality – downloads the highest resolution available\n  • 1080p / 720p / 480p / 360p – caps the resolution to save space or bandwidth"},
-		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\nAccepted formats:\n  • HH:MM:SS  (e.g. 01:30:00)\n  • MM:SS      (e.g. 01:30)\n  • Seconds    (e.g. 90)\nBoth fields must be filled or both left empty."},
+		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\nAccepted formats:\n  • HH:MM:SS  (e.g. 01:30:00)\n  • MM:SS      (e.g. 01:30)\n  • Seconds    (e.g. 90)\n\nEither field can be used alone:\n  • Trim Start only → downloads from that point to the end\n  • Trim End only   → downloads from the start to that point"},
 		{"Allow Duplicate Downloads", "When checked, a timestamp is added to the filename so re-downloading the same video does not overwrite the previous file."},
 		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a GoVid_log.txt file in your save destination folder."},
 		{"Max Download Speed", "Found in Tools → Preferences. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  • 50K – Very slow (dial-up speed)\n  • 5M – Moderate (standard HD streaming speed)\n  • 10G – Virtually unlimited\nLeave blank to use full available bandwidth."},
@@ -280,11 +280,11 @@ func (app *DownloaderApp) createUI() {
 			),
 			container.NewGridWithColumns(2,
 				container.NewVBox(
-					widget.NewLabelWithStyle("Trim Start: (leave blank for full video)", fyne.TextAlignLeading, fyne.TextStyle{}),
+					widget.NewLabelWithStyle("Trim Start: (optional)", fyne.TextAlignLeading, fyne.TextStyle{}),
 					ui.trimStart,
 				),
 				container.NewVBox(
-					widget.NewLabelWithStyle("Trim End:", fyne.TextAlignLeading, fyne.TextStyle{}),
+					widget.NewLabelWithStyle("Trim End: (optional)", fyne.TextAlignLeading, fyne.TextStyle{}),
 					ui.trimEnd,
 				),
 			),
