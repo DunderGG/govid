@@ -273,6 +273,12 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 			} else {
 				app.updateStatus("Status: Failed. Check logs above.")
 				app.setStatusIndicator("failed")
+				if app.ui.notify.Checked {
+					fyne.CurrentApp().SendNotification(&fyne.Notification{
+						Title:   "GoVid — Download Failed",
+						Content: "The download encountered an error. Check the log for details.",
+					})
+				}
 			}
 		} else {
 			summary := fmt.Sprintf("────────────────────────────────────────\nDOWNLOAD COMPLETE\n   ├─ Duration:   %s\n   ├─ Avg Speed:  %s\n   ├─ Downloaded: %s\n────────────────────────────────────────", durationFormatted, avgSpeed, app.stats.lastSize)
@@ -280,6 +286,12 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 			app.updateStatus("Status: Success!")
 			app.setProgressNow(1)
 			app.setStatusIndicator("success")
+			if app.ui.notify.Checked {
+				fyne.CurrentApp().SendNotification(&fyne.Notification{
+					Title:   "GoVid — Download Complete",
+					Content: fmt.Sprintf("Duration: %s  •  Downloaded: %s", durationFormatted, app.stats.lastSize),
+				})
+			}
 		}
 
 		app.log.mutex.Lock()

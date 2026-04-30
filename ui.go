@@ -99,6 +99,7 @@ func (app *DownloaderApp) showConfigHelp() {
 		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\nAccepted formats:\n  • HH:MM:SS  (e.g. 01:30:00)\n  • MM:SS      (e.g. 01:30)\n  • Seconds    (e.g. 90)\n\nEither field can be used alone:\n  • Trim Start only → downloads from that point to the end\n  • Trim End only   → downloads from the start to that point"},
 		{"Allow Duplicate Downloads", "When checked, a timestamp is added to the filename so re-downloading the same video does not overwrite the previous file."},
 		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a GoVid_log.txt file in your save destination folder."},
+		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
 		{"Max Download Speed", "Found in Tools → Preferences. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  • 50K – Very slow (dial-up speed)\n  • 5M – Moderate (standard HD streaming speed)\n  • 10G – Virtually unlimited\nLeave blank to use full available bandwidth."},
 		{"Cancel", "Stops the active download immediately. Partially downloaded files are discarded (due to --no-part mode)."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
@@ -288,7 +289,7 @@ func (app *DownloaderApp) createUI() {
 					ui.trimEnd,
 				),
 			),
-			container.NewHBox(ui.duplicates, ui.saveLog),
+			container.NewHBox(ui.duplicates, ui.saveLog, ui.notify),
 			container.NewGridWithColumns(3, downloadBtn, openFolderBtn, ui.cancelBtn),
 		),
 	)

@@ -44,6 +44,7 @@ type UIWidgets struct {
 	quality    *widget.Select      // Maximum resolution selector
 	duplicates *widget.Check       // Option to force unique filenames
 	saveLog    *widget.Check       // Option to persist output to a .txt file
+	notify     *widget.Check       // Option to send a system notification on completion
 	cancelBtn  *widget.Button      // Stop button for active downloads
 	statusDot  *canvas.Circle      // Animated state indicator dot next to the status label
 	trimStart  *widget.Entry       // Optional start time for video trimming (HH:MM:SS)
@@ -88,6 +89,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			quality:    widget.NewSelect(nil, nil),
 			duplicates: widget.NewCheck("Allow Duplicate Downloads", nil),
 			saveLog:    widget.NewCheck("Save output to log file", nil),
+			notify:     widget.NewCheck("Notify on Completion", nil),
 			cancelBtn:  widget.NewButton("", nil),
 			statusDot:  canvas.NewCircle(color.RGBA{R: 100, G: 100, B: 115, A: 255}),
 			progress:   widget.NewProgressBar(),

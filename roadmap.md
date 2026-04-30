@@ -122,9 +122,9 @@ This document outlines planned features, improvements, and known limitations for
 ### Notifications on Completion
 > Alert the user when a download finishes, even if the window is minimized.
 
-- [ ] Use OS-native notifications via `fyne.NewNotification` on completion.
-- [ ] Show the filename in the notification body.
-- [ ] Add a setting to enable/disable notifications.
+- [X] Use OS-native notifications via `fyne.NewNotification` on completion.
+- [X] Show the filename in the notification body.
+- [X] Add a setting to enable/disable notifications.
 
 ### Clipboard Paste Button
 > Streamline the URL entry workflow.
