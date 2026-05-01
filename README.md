@@ -25,7 +25,9 @@ You can download the latest pre-compiled executables from the **[Releases Page](
 
 ### Prerequisites
 
-To use GoVid, you must have the following tools installed and available in your system's `PATH`:
+> **Using a release build?** The bundled `.zip` from the [Releases Page](https://github.com/DunderGG/govid/releases/latest) already includes `yt-dlp`, `ffmpeg`, and `ffprobe` in a `bin/` folder — no manual installation needed.
+
+If you are building from source, you must have the following tools installed and available in your system's `PATH`:
 
 1.  **[yt-dlp](https://github.com/yt-dlp/yt-dlp)**: The core engine for video downloading.
 2.  **[FFmpeg](https://ffmpeg.org/)**: Required for high-quality video/audio post-processing and conversion.
@@ -65,9 +67,10 @@ Ensure you have [Go 1.22+](https://go.dev/dl/) installed.
 1. **Launch**: Open the GoVid application.
 2. **URL**: Paste the video URL into the input field.
 3. **Configuration**: Select your desired output format (MP4, MKV, WebM, or MP3) and maximum resolution.
-4. **Trim (optional)**: Enter a start and end time (e.g. `00:01:30` and `00:05:00`) to download only a specific portion of the video. Leave both fields blank to download the full video.
+4. **Trim (optional)**: Enter a start and/or end time (e.g. `00:01:30` and `00:05:00`) to download only a specific portion of the video. Leave both fields blank to download the full video.
 5. **Save Location**: Choose the directory where you want to save the file.
-6. **Download**: Click the "Download" button to start the process. You can monitor the progress in real-time.
+6. **Download**: Click the "Download" button to start the process. You can monitor the progress in real-time, or cancel at any time.
+7. **Optional**: Allow for duplicates, save the output to a log file or enable a notification for when the download is finished.
 
 ### Command Line Options
 
