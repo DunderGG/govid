@@ -33,7 +33,7 @@ This document outlines planned features, improvements, and known limitations for
 
 - [ ] Add a "Check for GoVid updates" option in the Tools menu.
 - [ ] Query the GitHub Releases API for the latest version tag.
-- [ ] Compare against the current embedded version string and notify the user if out of date.
+- [ ] Compare against the current embedded version string and notify the user if out of date. *(Depends on: Proper Version String)*
 - [ ] Provide a direct download link or auto-replace the binary (with backup).
 
 ---
@@ -61,7 +61,7 @@ This document outlines planned features, improvements, and known limitations for
 - [x] Add "Start Time" and "End Time" inputs to the UI (e.g., `00:01:30` – `00:05:00`).
 - [x] Pass the range to yt-dlp via the `--download-sections "*HH:MM:SS-HH:MM:SS"` flag.
 - [x] Use `--force-keyframes-at-cuts` to ensure clean cuts without re-encoding where possible.
-- [x] Validate that both fields are filled or both left empty before starting.
+- [x] Either field can be used alone (start-only downloads to end; end-only downloads from the beginning).
 - [x] Leave both fields empty to download the full video (default behaviour).
 
 ### Subtitle Support
@@ -89,7 +89,7 @@ This document outlines planned features, improvements, and known limitations for
 > Prevent downloads from saturating the user's connection.
 
 - [X] Add a "Max Download Speed" input (e.g., `5M` for 5 MB/s).
-- [ ] Pass the value to yt-dlp via `--limit-rate`.
+- [X] Pass the value to yt-dlp via `--limit-rate`.
 - [X] Persist the setting alongside other preferences.
 
 ---
@@ -123,7 +123,7 @@ This document outlines planned features, improvements, and known limitations for
 > Alert the user when a download finishes, even if the window is minimized.
 
 - [X] Use OS-native notifications via `fyne.NewNotification` on completion.
-- [X] Show the filename in the notification body.
+- [X] Show download summary (duration, average speed, file size) in the notification body.
 - [X] Add a setting to enable/disable notifications.
 
 ### Clipboard Paste Button
@@ -148,8 +148,8 @@ This document outlines planned features, improvements, and known limitations for
 ### Proper Version String
 > Embed a build version for display and update-checking purposes.
 
-- [ ] Define a `version` constant or use `go build -ldflags "-X main.version=1.0.0"`.
-- [ ] Display the version in the window title bar or in a Help → About dialog.
+- [ ] Inject version at build time via `go build -ldflags "-X main.version=1.0.0 -X main.buildType=release"`.
+- [ ] Display the version in the window title bar and in the Help → About dialog.
 - [ ] Use the version string when querying the GitHub Releases API.
 
 ### Error Recovery & Retry Logic

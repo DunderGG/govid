@@ -7,19 +7,22 @@ GoVid is a high-performance, cross-platform video downloader built with Go. It p
 - **Cross-Platform GUI**: Modern interface built with the [Fyne toolkit](https://fyne.io/).
 - **Multiple Formats**: Support for MP4, MKV, WebM, MP3, and M4A (audio only).
 - **Quality Control**: Select your preferred maximum resolution for downloads.
-- **Video Trimming**: Download only a specific segment by specifying a start and end time (`HH:MM:SS`).
+- **Video Trimming**: Download only a specific segment — specify a start time, an end time, or both (`HH:MM:SS` / `MM:SS` / seconds).
 - **Real-time Progress**: Visual progress bars and a live scrollable log view.
 - **Professional Post-Processing**: Seamless integration with FFMPEG for high-quality encoding.
 - **Download Management**: Easily start, monitor, and cancel active downloads.
+- **Speed Limiting**: Cap download bandwidth to avoid saturating your connection.
 - **Log Export**: Option to save download logs to `.txt` files for troubleshooting.
+- **Completion Notifications**: Optional system notifications when a download finishes.
+- **Dark / Light Theme**: Switch between themes via Tools → Preferences.
 
 ## 📥 Download
 
 You can download the latest pre-compiled executables from the **[Releases Page](https://github.com/DunderGG/govid/releases/latest)**.
 
-1. Download the executable for your operating system.
-2. Ensure you have the [Prerequisites](#-prerequisites) installed, or download the bundled zip instead.
-3. Run the app and start downloading!
+1. Download the bundled `.zip` for your operating system.
+2. Extract the zip — `yt-dlp`, `ffmpeg`, and `ffprobe` are included in the `bin/` folder.
+3. Run `GoVid.exe` (Windows) or `GoVid` (Linux/macOS) and start downloading!
 
 ## 🚀 Getting Started
 
@@ -34,7 +37,7 @@ If you are building from source, you must have the following tools installed and
 
 ### Installation
 
-Ensure you have [Go 1.22+](https://go.dev/dl/) installed.
+Ensure you have [Go 1.26+](https://go.dev/dl/) installed.
 
 1.  **Clone the Repository**:
     ```bash
@@ -66,11 +69,11 @@ Ensure you have [Go 1.22+](https://go.dev/dl/) installed.
 
 1. **Launch**: Open the GoVid application.
 2. **URL**: Paste the video URL into the input field.
-3. **Configuration**: Select your desired output format (MP4, MKV, WebM, or MP3) and maximum resolution.
-4. **Trim (optional)**: Enter a start and/or end time (e.g. `00:01:30` and `00:05:00`) to download only a specific portion of the video. Leave both fields blank to download the full video.
+3. **Configuration**: Select your desired output format (MP4, MKV, WebM, MP3, or M4A) and maximum resolution.
+4. **Trim (optional)**: Enter a start time, end time, or both (e.g. `00:01:30` / `00:05:00`) to download only a portion of the video. Either field can be used alone — leave both blank to download the full video.
 5. **Save Location**: Choose the directory where you want to save the file.
-6. **Download**: Click the "Download" button to start the process. You can monitor the progress in real-time, or cancel at any time.
-7. **Optional**: Allow for duplicates, save the output to a log file or enable a notification for when the download is finished.
+6. **Download**: Click the **Download** button to start. Monitor progress in real-time or cancel at any time.
+7. **Options**: Check **Allow Duplicate Downloads** to prevent overwrites, **Save output to log file** to persist the session log, or **Notify on Completion** to receive a system notification when the download finishes.
 
 ### Command Line Options
 
@@ -84,7 +87,7 @@ Ensure you have [Go 1.22+](https://go.dev/dl/) installed.
 
 ## 👤 Author
 
-**David Bennehag** - [@dunder](https://github.com/dunder) - [dunder.gg](https://dunder.gg)
+**David Bennehag** - [@DunderGG](https://github.com/DunderGG) - [dunder.gg](https://dunder.gg)
 
 ## 📄 License
 
