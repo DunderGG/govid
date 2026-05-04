@@ -84,6 +84,7 @@ This document outlines planned features, improvements, and known limitations for
 - [x] Persist save destination using `fyne.CurrentApp().Preferences()`.
 - [x] Persist selected format and quality between sessions.
 - [x] Default save path to the executable's own directory for portability.
+- [ ] Make the log buffer line limit user-configurable (currently hard-coded to 200 lines).
 
 ### Speed & Concurrency Limits
 > Prevent downloads from saturating the user's connection.
@@ -104,6 +105,7 @@ This document outlines planned features, improvements, and known limitations for
 - [x] Display a download summary on completion (duration, average speed, file size).
 - [x] Add an "Open Folder" button to open the save destination in Explorer.
 - [x] Add a "Save output to log file" checkbox to persist session logs to `.txt`.
+- [ ] Hold the progress bar at ~95% during the `[Merger]` phase instead of resetting to 0%.
 
 ### Dark / Light Mode Toggle
 > Give users manual control over the application theme.
@@ -118,6 +120,7 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Ensure the log output area grows vertically as the window is enlarged.
 - [ ] Prevent the header branding from overlapping on small window sizes.
 - [ ] Test and fix layout behavior on common resolutions (1366×768, 1920×1080).
+- [ ] Add text wrapping or truncation to log label widgets to prevent horizontal overflow on very long video titles.
 
 ### Notifications on Completion
 > Alert the user when a download finishes, even if the window is minimized.
@@ -172,13 +175,13 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Add macOS `.app` bundle packaging with correct `Info.plist` metadata.
 - [ ] Verify that `openDownloadFolder` works correctly on all supported distros.
 
+### Post-Processing Quality
+> Improve output quality for remuxed and converted files.
+
+- [ ] Use `--remux-video` instead of `--recode-video` where the container already matches, to avoid unnecessary re-encoding.
+
 ---
 
 ## 🐛 Known Limitations
 
-- [ ] `--recode-video` re-encodes every video even if already in the correct container — use `--remux-video` instead where possible to save time and quality.
-- [ ] Progress bar resets to 0% between the video and audio merge phases — parse the `[Merger]` yt-dlp stage and hold the bar at 95%.
-- [ ] Very long video titles can overflow the log panel horizontally — add text wrapping or truncation to log label widgets.
-- [ ] The app has no minimum window size enforced — add `SetFixedSize` or `SetMinSize` guards on the main window.
-- [ ] Log buffer is capped at 200 lines, which may truncate long download sessions — make the buffer limit user-configurable.
-- [ ] No support for CLI flags. Not sure if there is much point, cause then you might as well use yt-dlp directly?
+> No known limitations at this time — all previously identified issues have been moved to the relevant roadmap sections above.
