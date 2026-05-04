@@ -1,3 +1,11 @@
+// theme.go — Custom Fyne theme implementations for GoVid.
+//
+// Provides two themes selectable from the Preferences window:
+//   - darkTheme:  dark background with a cyan accent and tighter padding.
+//   - lightTheme: light background with the same cyan accent.
+//
+// Both themes share the accentCyan colour constant to keep the palette
+// consistent regardless of which theme is active.
 package main
 
 import (

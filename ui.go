@@ -1,3 +1,10 @@
+// ui.go — Builds and manages every visual element of the GoVid window.
+//
+// Responsibilities:
+//   - Main window layout: URL input, format/quality selectors, trim fields,
+//     speed limit, checkboxes, progress bar, and scrollable log view.
+//   - Menu bar: File, Tools, and Help menus with all their actions.
+//   - Dialogs: Preferences window, About window, and the Config Guide.
 package main
 
 import (

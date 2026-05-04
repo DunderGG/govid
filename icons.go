@@ -1,3 +1,9 @@
+// icons.go — SVG icon resources and the themedIcon helper.
+//
+// Each icon is a 24×24 Material-style filled SVG that exists in two colour
+// variants: a soft-white fill for the dark theme and a cyan fill for the
+// light theme. The themedIcon() helper returns the correct variant based
+// on the currently active theme variant.
 package main
 
 import (
@@ -13,10 +19,6 @@ const (
 	IconFolder
 	IconCancel
 )
-// Each icon is a 24×24 Material-style filled SVG using a single solid colour for the fill.
-// Each icon exists in two colour variants stored in a lookup table:
-//   - dark variant: soft-white fill (#E6E6F0) — readable on the dark theme background.
-//   - light variant: accent-cyan fill (#1C9BBE) — matches the card border on the light theme.
 
 type iconDarkLight struct {
 	dark  *fyne.StaticResource

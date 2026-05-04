@@ -1,3 +1,12 @@
+// download.go — Drives the yt-dlp download pipeline.
+//
+// Responsibilities:
+//   - Validates user inputs (URL, timestamps, speed limit).
+//   - Builds the yt-dlp argument list from the current UI state
+//     (format, quality, trim range, speed cap, output template).
+//   - Streams yt-dlp stdout/stderr line-by-line, parses progress
+//     percentages, and updates the UI in real time.
+//   - Sends system notifications on completion or failure (when opted in).
 package main
 
 import (

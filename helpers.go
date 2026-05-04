@@ -1,3 +1,11 @@
+// helpers.go — Utility functions that support the rest of the application.
+//
+// Responsibilities:
+//   - Status bar, log output, and progress bar updates (thread-safe).
+//   - Saving and loading user preferences via the Fyne preferences API.
+//   - Opening the download folder in the OS file manager.
+//   - Checking for required external dependencies (yt-dlp, ffmpeg).
+//   - Triggering yt-dlp self-updates.
 package main
 
 import (
