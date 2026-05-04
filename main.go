@@ -32,6 +32,11 @@ const (
 	fpsInterval    = 20  // Progress smoothing interval (in milliseconds).
 )
 
+// version is injected at release build time via:
+//	-X main.version=1.0.0
+// Falls back to "dev" for local builds.
+var version = "dev"
+
 // UIWidgets holds the graphical components of the application.
 type UIWidgets struct {
 	entry      *widget.Entry       // URL input field

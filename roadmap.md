@@ -148,8 +148,8 @@ This document outlines planned features, improvements, and known limitations for
 ### Proper Version String
 > Embed a build version for display and update-checking purposes.
 
-- [ ] Inject version at build time via `go build -ldflags "-X main.version=1.0.0 -X main.buildType=release"`.
-- [ ] Display the version in the window title bar and in the Help → About dialog.
+- [x] Inject version at build time via `go build -ldflags "-X main.version=1.0.0"`.
+- [x] Display the version in the Help → About dialog.
 - [ ] Use the version string when querying the GitHub Releases API.
 
 ### Error Recovery & Retry Logic

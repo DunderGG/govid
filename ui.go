@@ -138,6 +138,8 @@ func (app *DownloaderApp) showAbout() {
 	appName.TextStyle = fyne.TextStyle{Bold: true}
 	appName.Alignment = fyne.TextAlignCenter
 
+	versionLabel := widget.NewLabelWithStyle("v"+version, fyne.TextAlignCenter, fyne.TextStyle{Monospace: true})
+
 	tagline := widget.NewLabelWithStyle("A high-performance video downloader\nbuilt with Go and Fyne.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 
 	author := widget.NewLabelWithStyle("Created by David Bennehag", fyne.TextAlignCenter, fyne.TextStyle{})
@@ -149,6 +151,7 @@ func (app *DownloaderApp) showAbout() {
 	content := container.NewVBox(
 		container.NewCenter(logo),
 		container.NewCenter(appName),
+		container.NewCenter(versionLabel),
 		container.NewCenter(tagline),
 		widget.NewSeparator(),
 		container.NewCenter(author),
