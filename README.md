@@ -21,14 +21,16 @@ GoVid is a high-performance, cross-platform video downloader built with Go. It p
 You can download the latest pre-compiled executables from the **[Releases Page](https://github.com/DunderGG/govid/releases/latest)**.
 
 1. Download the bundled `.zip` for your operating system.
-2. Extract the zip — `yt-dlp`, `ffmpeg`, and `ffprobe` are included in the `bin/` folder.
+2. Extract the zip — `yt-dlp` and `ffmpeg` are included in the `bin/` folder.
 3. Run `GoVid.exe` (Windows) or `GoVid` (Linux/macOS) and start downloading!
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
-> **Using a release build?** The bundled `.zip` from the [Releases Page](https://github.com/DunderGG/govid/releases/latest) already includes `yt-dlp`, `ffmpeg`, and `ffprobe` in a `bin/` folder — no manual installation needed.
+> **Using a release build?** The bundled `.zip` from the [Releases Page](https://github.com/DunderGG/govid/releases/latest) already includes `yt-dlp` and `ffmpeg` in a `bin/` folder — no manual installation needed.
+>
+> **Optional:** `ffprobe.exe` is not bundled due to its size (~98MB) but can be placed in the `bin/` folder alongside `ffmpeg.exe` for enhanced metadata support. Download it from [gyan.dev/ffmpeg/builds](https://www.gyan.dev/ffmpeg/builds/) (included in the `ffmpeg-release-essentials.zip`).
 
 If you are building from source, you must have the following tools installed and available in your system's `PATH`:
 
@@ -50,7 +52,7 @@ Ensure you have [Go 1.26+](https://go.dev/dl/) installed.
 
     **On Windows**:
     ```cmd
-    build.bat
+    .\build.bat
     ```
 
     **On Linux / macOS**:

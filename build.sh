@@ -1,29 +1,43 @@
 #!/bin/bash
+# build.sh — Build script for GoVid (Linux / macOS / Git Bash on Windows).
+#
+# Prerequisites:
+#   - Go 1.21+  https://go.dev/dl/
+#   - go-winres  https://github.com/tc-hib/go-winres  (Windows only)
+#
+# Usage:
+#   ./build.sh
+#
+# The output binary (GoVid or GoVid.exe) will be placed in the project root.
+# GoVid requires yt-dlp and ffmpeg to be available on your PATH at runtime.
+set -e
 
-# 1. Sync the root icon for the embed and winres tools
-if [ -f "release/winres/icon.png" ]; then
-    echo "[GoVid] Preparing icon..."
-    cp -f "release/winres/icon.png" "./appicon.png"
+# Check required tools are installed
+if ! command -v go &> /dev/null; then
+    echo "Error: Go is not installed or not in PATH. https://go.dev/dl/"
+    exit 1
+fi
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]] && ! command -v go-winres &> /dev/null; then
+    echo "Error: go-winres is not installed or not in PATH. https://github.com/tc-hib/go-winres"
+    exit 1
 fi
 
-# 2. Run Go-WinRes for resources (only relevant for Windows builds)
+# 1. Generate Windows resources
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     echo "[GoVid] Generating Windows resources..."
     go-winres make --in release/winres/winres.json --out rsrc
+    if [ $? -ne 0 ]; then
+        echo -e "\nError: go-winres failed. Check that winres.json and appicon.png are present in release/winres/."
+        exit 1
+    fi
 fi
 
-# 3. Build the application (Optimized for size)
-# -s: Omit the symbol table and debug information
-# -w: Omit DWARF symbol table
+# 2. Build the application
 echo "[GoVid] Compiling GoVid..."
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-    go build -ldflags="-s -w -H windowsgui" -o "GoVid.exe" .
+    go build -ldflags="-H windowsgui" -o "GoVid.exe" .
+    echo -e "\nBuild Successful! You can now run .\\GoVid.exe."
 else
-    go build -ldflags="-s -w" -o "GoVid" .
-fi
-
-if [ $? -eq 0 ]; then
+    go build -o "GoVid" .
     echo -e "\nBuild Successful! You can now run ./GoVid."
-else
-    echo -e "\nBuild Failed. Please check the errors above."
 fi
