@@ -279,9 +279,16 @@ func (app *DownloaderApp) createUI() {
 		}
 	}
 
-	headerText := widget.NewRichTextFromMarkdown("# Media Selection")
-	headerText.Wrapping = fyne.TextWrapOff
-	header := container.NewHBox(headerText, layout.NewSpacer(), brandLogo)
+	titleText := canvas.NewText("GoVid", accentCyan)
+	titleText.TextSize = 38
+	titleText.TextStyle = fyne.TextStyle{Bold: true}
+
+	subtitleText := canvas.NewText("Video Downloader", theme.Color(theme.ColorNameDisabled))
+	subtitleText.TextSize = 23
+	subtitleText.TextStyle = fyne.TextStyle{Italic: true}
+
+	headerLeft := container.NewVBox(titleText, subtitleText)
+	header := container.NewHBox(headerLeft, layout.NewSpacer(), brandLogo)
 
 	ui.trimStart.SetPlaceHolder("e.g. 00:01:30  (optional)")
 	ui.trimEnd.SetPlaceHolder("e.g. 00:05:00  (optional)")
