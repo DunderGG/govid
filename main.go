@@ -56,6 +56,7 @@ type UIWidgets struct {
 	trimEnd    *widget.Entry       // Optional end time for video trimming (HH:MM:SS)
 	maxSpeed   *widget.Entry       // Download speed limit (e.g. 5M)
 	themeMode  *widget.RadioGroup   // Theme mode selector (Dark / Light)
+	savePrefs  *widget.Check        // Option to persist preferences between sessions
 }
 
 // DownloadStats tracks the real-time metrics of a download session.
@@ -103,14 +104,20 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			trimEnd:    widget.NewEntry(),
 			maxSpeed:   widget.NewEntry(),
 			themeMode:  widget.NewRadioGroup([]string{"Dark", "Light"}, nil),
+			savePrefs:  widget.NewCheck("Save preferences between sessions", nil),
 		},
 		stats: &DownloadStats{},
 		log:   &LogManager{},
 	}
+
+	// Load saved preferences from the Fyne preferences system.
+	prefs := fyne.CurrentApp().Preferences()
 	// Ensure the theme selector always has a valid value so savePreferences never
 	// writes an empty string, which would suppress the "Dark" fallback on next launch.
-	savedTheme := fyne.CurrentApp().Preferences().StringWithFallback("themeMode", "Dark")
+	savedTheme := prefs.StringWithFallback("themeMode", "Dark")
 	app.ui.themeMode.SetSelected(savedTheme)
+	// Set the savePrefs toggle first since it gates whether the other preferences are loaded.
+	app.ui.savePrefs.SetChecked(prefs.BoolWithFallback("savePrefs", true))
 	return app
 }
 

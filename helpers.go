@@ -129,13 +129,34 @@ func (app *DownloaderApp) setProgressNow(pct float64) {
 
 // savePreferences persists the format, quality, and save-path selections
 // so they are restored on the next launch.
+// The savePrefs toggle itself is always written so the user's choice survives
+// a restart. All other settings are only written when the toggle is enabled.
 func (app *DownloaderApp) savePreferences(savePath string) {
 	prefs := fyne.CurrentApp().Preferences()
+	prefs.SetBool("savePrefs", app.ui.savePrefs.Checked)
+	
+	// Don't save the other preferences if the user has disabled the toggle, just return.
+	if !app.ui.savePrefs.Checked {
+		return
+	}
+
 	prefs.SetString("savedPath", savePath)
 	prefs.SetString("format", app.ui.format.Selected)
 	prefs.SetString("quality", app.ui.quality.Selected)
 	prefs.SetString("maxSpeed", strings.TrimSpace(app.ui.maxSpeed.Text))
 	prefs.SetString("themeMode", app.ui.themeMode.Selected)
+}
+
+// resetPreferences clears all stored preferences and rebuilds the UI with
+// defaults. The Preferences window is responsible for resetting its own
+// widgets to match after calling this.
+func (app *DownloaderApp) resetPreferences() {
+	prefs := fyne.CurrentApp().Preferences()
+	for _, pref := range []string{"savedPath", "format", "quality", "maxSpeed", "themeMode", "savePrefs"} {
+		prefs.RemoveValue(pref)
+	}
+	fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
+	app.createUI()
 }
 
 // openDownloadFolder launches the system file manager pointing at the current

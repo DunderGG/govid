@@ -65,8 +65,12 @@ func (app *DownloaderApp) showPreferences() {
 	ui.themeMode.Horizontal = true
 	ui.themeMode.SetSelected(prefs.StringWithFallback("themeMode", "Dark"))
 
+	// Save Preferences toggle.
+	ui.savePrefs.SetChecked(prefs.BoolWithFallback("savePrefs", true))
+
 	form := &widget.Form{
 		Items: []*widget.FormItem{
+			{Text: "Save Preferences", Widget: ui.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
 			{Text: "Max Download Speed", Widget: ui.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.themeMode, HintText: "Restart may be required for some changes"},
 		},
@@ -85,9 +89,27 @@ func (app *DownloaderApp) showPreferences() {
 		},
 	}
 
-	w := fyne.CurrentApp().NewWindow("Preferences")
-	w.SetContent(container.NewPadded(form))
-	w.Resize(fyne.NewSize(500, 250))
+	var w fyne.Window
+	resetBtn := widget.NewButton("Restore Defaults", func() {
+		dialog.ShowConfirm("Restore Defaults", "Reset all preferences to their default values?", func(ok bool) {
+			if !ok {
+				return
+			}
+			app.resetPreferences()
+			ui.savePrefs.SetChecked(true)
+			ui.maxSpeed.SetText("")
+			ui.themeMode.SetSelected("Dark")
+		}, w)
+	})
+	resetBtn.Importance = widget.DangerImportance
+
+	w = fyne.CurrentApp().NewWindow("Preferences")
+	w.SetContent(container.NewPadded(container.NewVBox(
+		form,
+		widget.NewSeparator(),
+		container.NewCenter(resetBtn),
+	)))
+	w.Resize(fyne.NewSize(500, 320))
 	w.Show()
 }
 
@@ -107,6 +129,7 @@ func (app *DownloaderApp) showConfigHelp() {
 		{"Allow Duplicate Downloads", "When checked, a timestamp is added to the filename so re-downloading the same video does not overwrite the previous file."},
 		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a GoVid_log.txt file in your save destination folder."},
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
+		{"Save Preferences", "Found in Tools → Preferences. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in Tools → Preferences. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  • 50K – Very slow (dial-up speed)\n  • 5M – Moderate (standard HD streaming speed)\n  • 10G – Virtually unlimited\nLeave blank to use full available bandwidth."},
 		{"Cancel", "Stops the active download immediately. Partially downloaded files are discarded (due to --no-part mode)."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
