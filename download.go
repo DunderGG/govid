@@ -31,15 +31,31 @@ import (
 // inputs, resets metrics/visuals, initializes log files if requested, and
 // launches the background goroutines for progress interpolation and yt-dlp execution.
 func (app *DownloaderApp) startDownload() {
-	rawURL := strings.TrimSpace(app.ui.entry.Text)
 	savePath := strings.TrimSpace(app.ui.path.Text)
 	trimStart := strings.TrimSpace(app.ui.trimStart.Text)
 	trimEnd := strings.TrimSpace(app.ui.trimEnd.Text)
 
-	if rawURL == "" {
-		dialog.ShowError(fmt.Errorf("URL cannot be empty"), app.window)
-		return
+	// Collect the URL(s) to download.
+	var urls []string
+	if app.ui.batchMode.Checked {
+		for _, line := range strings.Split(app.ui.entry.Text, "\n") {
+			if url := strings.TrimSpace(line); url != "" {
+				urls = append(urls, url)
+			}
+		}
+		if len(urls) == 0 {
+			dialog.ShowError(fmt.Errorf("no URLs entered"), app.window)
+			return
+		}
+	} else {
+		rawURL := strings.TrimSpace(app.ui.entry.Text)
+		if rawURL == "" {
+			dialog.ShowError(fmt.Errorf("URL cannot be empty"), app.window)
+			return
+		}
+		urls = []string{rawURL}
 	}
+
 	if savePath == "" {
 		dialog.ShowError(fmt.Errorf("save path cannot be empty"), app.window)
 		return
@@ -108,7 +124,33 @@ func (app *DownloaderApp) startDownload() {
 		}
 	}()
 
-	go app.runYtDlp(ctx, rawURL, savePath, trimStart, trimEnd)
+	if len(urls) > 1 {
+		app.appendOutput(fmt.Sprintf("[SYSTEM] Batch mode: %d URLs queued.", len(urls)), color.RGBA{R: 0, G: 200, B: 200, A: 255})
+	}
+
+	go func() {
+		for i, u := range urls {
+			if ctx.Err() != nil {
+				break
+			}
+			if len(urls) > 1 {
+				app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", i+1, len(urls)), color.RGBA{R: 0, G: 200, B: 200, A: 255})
+			}
+			if i > 0 {
+				// Reset state between URLs: runYtDlp closes the log file and disables the cancel button.
+				app.setProgressNow(0)
+				app.stats.targetPct = 0
+				fyne.Do(func() { app.ui.cancelBtn.Enable() })
+				if app.ui.saveLog.Checked {
+					logPath := filepath.Join(savePath, "GoVid_log.txt")
+					if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+						app.log.file = f
+					}
+				}
+			}
+			app.runYtDlp(ctx, u, savePath, trimStart, trimEnd)
+		}
+	}()
 }
 
 // runYtDlp manages the external lifecycle of the yt-dlp process. It builds
@@ -280,7 +322,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 				app.updateStatus("Status: Canceled.")
 				app.setStatusIndicator("canceled")
 			} else {
-				app.updateStatus("Status: Failed. Check logs above.")
+				app.updateStatus("Status: Failed. Check output below.")
 				app.setStatusIndicator("failed")
 				if app.ui.notify.Checked {
 					fyne.CurrentApp().SendNotification(&fyne.Notification{

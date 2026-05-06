@@ -57,6 +57,7 @@ type UIWidgets struct {
 	maxSpeed   *widget.Entry       // Download speed limit (e.g. 5M)
 	themeMode  *widget.RadioGroup   // Theme mode selector (Dark / Light)
 	savePrefs  *widget.Check        // Option to persist preferences between sessions
+	batchMode  *widget.Check        // Option to switch URL input to multi-line batch mode
 }
 
 // DownloadStats tracks the real-time metrics of a download session.
@@ -105,6 +106,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			maxSpeed:   widget.NewEntry(),
 			themeMode:  widget.NewRadioGroup([]string{"Dark", "Light"}, nil),
 			savePrefs:  widget.NewCheck("Save preferences between sessions", nil),
+			batchMode:  widget.NewCheck("Batch Mode", nil),
 		},
 		stats: &DownloadStats{},
 		log:   &LogManager{},

@@ -9,9 +9,9 @@ This document outlines planned features, improvements, and known limitations for
 ### Batch Downloading
 > Allow users to download multiple videos in a single session.
 
-- [ ] Add a multi-line URL input field (one URL per line).
+- [X] Add a multi-line URL input field (one URL per line).
 - [ ] Support loading a `.txt` file of URLs via a "Load from file" button.
-- [ ] Show per-download progress rows in the log, and an overall queue counter.
+- [X] Show per-download progress rows in the log, and an overall queue counter.
 - [ ] Ensure cancellation applies only to the active download, not the whole queue.
 
 ### Playlist Support

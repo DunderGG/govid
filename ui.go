@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -213,7 +214,30 @@ func (app *DownloaderApp) createUI() {
 	image.SetMinSize(fyne.NewSize(128, 128))
 	brandLogo := image
 
-	ui.entry.SetPlaceHolder("https://www.youtube.com/watch?v=...")
+	// Configure the URL entry for single or batch mode.
+	if ui.batchMode.Checked {
+		ui.entry.MultiLine = true
+		ui.entry.SetMinRowsVisible(4)
+		ui.entry.SetPlaceHolder("One URL per line...\nhttps://...\nhttps://...")
+	} else {
+		ui.entry.MultiLine = false
+		ui.entry.SetMinRowsVisible(1)
+		ui.entry.SetPlaceHolder("https://www.youtube.com/watch?v=...")
+	}
+	ui.batchMode.OnChanged = func(checked bool) {
+		if !checked {
+			// Switching back to single mode: keep only the first non-empty URL.
+			first := ""
+			for _, line := range strings.Split(ui.entry.Text, "\n") {
+				if t := strings.TrimSpace(line); t != "" {
+					first = t
+					break
+				}
+			}
+			ui.entry.SetText(first)
+		}
+		app.createUI()
+	}
 	ui.path.SetPlaceHolder("Download folder...")
 
 	// Load previously saved path from preferences.
@@ -305,7 +329,11 @@ func (app *DownloaderApp) createUI() {
 
 	inputCard := roundedCard("Specify the source and destination",
 		container.NewVBox(
-			widget.NewLabelWithStyle("Video URL:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			container.NewHBox(
+				widget.NewLabelWithStyle("Video URL:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+				layout.NewSpacer(),
+				ui.batchMode,
+			),
 			ui.entry,
 			widget.NewLabelWithStyle("Save Destination:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			container.NewBorder(nil, nil, nil, browseBtn, ui.path),
