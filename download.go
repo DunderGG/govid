@@ -187,6 +187,16 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		}
 		if strings.Contains(selection, "WebM") {
 			extension = "webm"
+			// Prefer VP9/AV1 + Opus — the native WebM codecs — so the streams
+			// remux losslessly without re-encoding. Fall back to any best stream.
+			if height != "" {
+				formatFlag = fmt.Sprintf(
+					"bestvideo[vcodec^=vp9][height<=%s]+bestaudio[acodec=opus]/bestvideo[vcodec^=av01][height<=%s]+bestaudio[acodec=opus]/bestvideo[height<=%s]+bestaudio/best",
+					height, height, height,
+				)
+			} else {
+				formatFlag = "bestvideo[vcodec^=vp9]+bestaudio[acodec=opus]/bestvideo[vcodec^=av01]+bestaudio[acodec=opus]/bestvideo+bestaudio/best"
+			}
 		} else if strings.Contains(selection, "MKV") {
 			extension = "mkv"
 		}
