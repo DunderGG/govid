@@ -129,26 +129,26 @@ func (app *DownloaderApp) startDownload() {
 	}
 
 	go func() {
-		for i, u := range urls {
+		for index, url := range urls {
 			if ctx.Err() != nil {
 				break
 			}
 			if len(urls) > 1 {
-				app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", i+1, len(urls)), color.RGBA{R: 0, G: 200, B: 200, A: 255})
+				app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", index+1, len(urls)), color.RGBA{R: 0, G: 200, B: 200, A: 255})
 			}
-			if i > 0 {
+			if index > 0 {
 				// Reset state between URLs: runYtDlp closes the log file and disables the cancel button.
 				app.setProgressNow(0)
 				app.stats.targetPct = 0
 				fyne.Do(func() { app.ui.cancelBtn.Enable() })
 				if app.ui.saveLog.Checked {
 					logPath := filepath.Join(savePath, "GoVid_log.txt")
-					if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-						app.log.file = f
+					if file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+						app.log.file = file
 					}
 				}
 			}
-			app.runYtDlp(ctx, u, savePath, trimStart, trimEnd)
+			app.runYtDlp(ctx, url, savePath, trimStart, trimEnd)
 		}
 	}()
 }
