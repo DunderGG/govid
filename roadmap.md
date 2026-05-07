@@ -12,7 +12,7 @@ This document outlines planned features, improvements, and known limitations for
 - [X] Add a multi-line URL input field (one URL per line).
 - [ ] Support loading a `.txt` file of URLs via a "Load from file" button.
 - [X] Show per-download progress rows in the log, and an overall queue counter.
-- [ ] Ensure cancellation applies only to the active download, not the whole queue.
+- [X] Ensure cancellation applies only to the active download, not the whole queue.
 
 ### Playlist Support
 > Handle YouTube and Vimeo playlists gracefully.

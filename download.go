@@ -91,8 +91,13 @@ func (app *DownloaderApp) startDownload() {
 		}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	app.cancelFn = cancel
+	// queueCtx is a child of context.Background(), a context that never expires on its own.
+	// GoRoutines can watch queueCtx.Done() to know when to stop.
+	// Calling stopQueue() marks queueCtx as done, which closes the queueCtx.Done() channel.
+	// In the batch case, each URL's runCtx is a child of queueCtx via a second context.WithCancel(queueCtx).
+	// Cancelling a child only affects that child
+	queueCtx, stopQueue := context.WithCancel(context.Background())
+	app.cancelFn = stopQueue
 
 	// Launch smoothing goroutine: interpolates progress bar towards the target
 	// percentage using an easing step, giving a smooth visual effect.
@@ -102,7 +107,7 @@ func (app *DownloaderApp) startDownload() {
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-queueCtx.Done():
 				return
 			case <-ticker.C:
 				current := app.ui.progress.Value
@@ -129,10 +134,24 @@ func (app *DownloaderApp) startDownload() {
 	}
 
 	go func() {
+		// Always stop the smoother when the batch finishes, regardless of how it ends.
+		defer stopQueue()
+
 		for index, url := range urls {
-			if ctx.Err() != nil {
+			if queueCtx.Err() != nil {
 				break
 			}
+
+			// In batch mode, give each URL its own child context so the Cancel
+			// button skips only the active download without killing the queue.
+			// In single-URL mode, runCtx == queueCtx and Cancel stops all.
+			runCtx := queueCtx
+			var skipItem context.CancelFunc
+			if len(urls) > 1 {
+				runCtx, skipItem = context.WithCancel(queueCtx)
+				app.cancelFn = skipItem
+			}
+
 			if len(urls) > 1 {
 				app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", index+1, len(urls)), color.RGBA{R: 0, G: 200, B: 200, A: 255})
 			}
@@ -148,7 +167,12 @@ func (app *DownloaderApp) startDownload() {
 					}
 				}
 			}
-			app.runYtDlp(ctx, url, savePath, trimStart, trimEnd)
+
+			app.runYtDlp(runCtx, url, savePath, trimStart, trimEnd)
+
+			if skipItem != nil {
+				skipItem() // release the per-item context whether it was cancelled or not
+			}
 		}
 	}()
 }
