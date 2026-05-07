@@ -178,7 +178,7 @@ This document outlines planned features, improvements, and known limitations for
 ### Post-Processing Quality
 > Improve output quality for remuxed and converted files.
 
-- [ ] Use `--remux-video` instead of `--recode-video` where the container already matches, to avoid unnecessary re-encoding.
+- [x] Use `--remux-video` instead of `--recode-video` where the container already matches, to avoid unnecessary re-encoding.
 
 ---
 

@@ -232,7 +232,9 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	if extension == "mp3" || extension == "m4a" {
 		args = append(args, "--extract-audio", "--audio-format", extension)
 	} else if extension != "" {
-		args = append(args, "--recode-video", extension)
+		// Prefer lossless container remux; fall back to re-encode only if the
+		// source codec is incompatible with the target container.
+		args = append(args, "--remux-video", extension, "--recode-video", extension)
 	}
 
 	// Trim: pass start/end to yt-dlp with keyframe-accurate cuts.
