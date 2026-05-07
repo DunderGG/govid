@@ -38,7 +38,7 @@ func (app *DownloaderApp) createMainMenu() {
 		app.showPreferences()
 	})
 
-	configHelpMenu := fyne.NewMenuItem("Configuration Guide", func() {
+	configHelpMenu := fyne.NewMenuItem("GoVid Guide", func() {
 		app.showConfigHelp()
 	})
 
@@ -132,7 +132,7 @@ func (app *DownloaderApp) showConfigHelp() {
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
 		{"Save Preferences", "Found in Tools → Preferences. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in Tools → Preferences. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  • 50K – Very slow (dial-up speed)\n  • 5M – Moderate (standard HD streaming speed)\n  • 10G – Virtually unlimited\nLeave blank to use full available bandwidth."},
-		{"Cancel", "Stops the active download immediately. Partially downloaded files are discarded (due to --no-part mode)."},
+		{"Cancel", "Stops the active download immediately. In batch mode, it skips the current URL and moves on to the next one."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
 	}
 
@@ -152,7 +152,7 @@ func (app *DownloaderApp) showConfigHelp() {
 	scroll := container.NewScroll(content)
 	scroll.SetMinSize(fyne.NewSize(520, 420))
 
-	w := fyne.CurrentApp().NewWindow("Configuration Guide")
+	w := fyne.CurrentApp().NewWindow("GoVid Guide")
 	w.SetContent(container.NewPadded(scroll))
 	w.Resize(fyne.NewSize(540, 460))
 	w.Show()
