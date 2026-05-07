@@ -243,6 +243,9 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		// Default --audio-quality is 5 (medium) for most formats, but we want 0 (best) for the audio-focused formats.
 		args = append(args, "--extract-audio", "--audio-format", extension, "--audio-quality", "0")
 	} else if extension != "" {
+		// Tell yt-dlp which container to use when merging separate video+audio
+		// streams (avoids mismatches like .webm streams merged into .mp4).
+		args = append(args, "--merge-output-format", extension)
 		// Prefer lossless container remux; fall back to re-encode only if the
 		// source codec is incompatible with the target container.
 		args = append(args, "--remux-video", extension, "--recode-video", extension)
