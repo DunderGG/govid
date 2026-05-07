@@ -240,7 +240,8 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	}
 
 	if extension == "mp3" || extension == "m4a" {
-		args = append(args, "--extract-audio", "--audio-format", extension)
+		// Default --audio-quality is 5 (medium) for most formats, but we want 0 (best) for the audio-focused formats.
+		args = append(args, "--extract-audio", "--audio-format", extension, "--audio-quality", "0")
 	} else if extension != "" {
 		// Prefer lossless container remux; fall back to re-encode only if the
 		// source codec is incompatible with the target container.
