@@ -56,6 +56,7 @@ type UIWidgets struct {
 	trimEnd    *widget.Entry       // Optional end time for video trimming (HH:MM:SS)
 	maxSpeed   *widget.Entry       // Download speed limit (e.g. 5M)
 	themeMode  *widget.RadioGroup   // Theme mode selector (Dark / Light)
+	cookies    *widget.Entry        // Path to a Mozilla/Netscape-format cookies file
 	savePrefs  *widget.Check        // Option to persist preferences between sessions
 	batchMode  *widget.Check        // Option to switch URL input to multi-line batch mode
 }
@@ -105,6 +106,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			trimEnd:    widget.NewEntry(),
 			maxSpeed:   widget.NewEntry(),
 			themeMode:  widget.NewRadioGroup([]string{"Dark", "Light"}, nil),
+			cookies:    widget.NewEntry(),
 			savePrefs:  widget.NewCheck("Save preferences between sessions", nil),
 			batchMode:  widget.NewCheck("Batch Mode", nil),
 		},

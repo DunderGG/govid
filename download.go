@@ -263,6 +263,14 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		args = append(args, "--limit-rate", limit)
 	}
 
+	// Apply cookies file if set.
+	cookiesPath := strings.TrimSpace(app.ui.cookies.Text)
+	if cookiesPath != "" {
+		if _, err := os.Stat(cookiesPath); err == nil {
+			args = append(args, "--cookies", cookiesPath)
+		}
+	}
+
 	if extension == "mp3" || extension == "m4a" {
 		// Default --audio-quality is 5 (medium) for most formats, but we want 0 (best) for the audio-focused formats.
 		args = append(args, "--extract-audio", "--audio-format", extension, "--audio-quality", "0")

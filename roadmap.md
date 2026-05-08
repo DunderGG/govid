@@ -51,7 +51,7 @@ This document outlines planned features, improvements, and known limitations for
 ### Authentication Support
 > Support age-restricted or private videos.
 
-- [ ] Add a "Cookies File" selector in Preferences to pass `--cookies` to yt-dlp.
+- [X] Add a "Cookies File" selector in Preferences to pass `--cookies` to yt-dlp.
 
 ### Video Trimming
 > Allow users to download only a specific segment of a video.
@@ -136,6 +136,10 @@ This document outlines planned features, improvements, and known limitations for
 
 - [ ] Add "Minimize to Tray" support.
 - [ ] Right-click menu for tray icon (Pause/Resume, Open Folder, Exit).
+
+### General UI improvements
+> Any general improvements we can think of
+- [ ] Make sure only one Preferences window can be opened.
 
 ---
 

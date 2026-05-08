@@ -20,6 +20,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -66,6 +67,27 @@ func (app *DownloaderApp) showPreferences() {
 	ui.themeMode.Horizontal = true
 	ui.themeMode.SetSelected(prefs.StringWithFallback("themeMode", "Dark"))
 
+	// Cookies field
+	ui.cookies.SetPlaceHolder("Path to cookies.txt (optional)")
+	ui.cookies.SetText(prefs.String("cookiesPath"))
+	var prefsWindow fyne.Window
+	cookiesBrowse := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
+		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if err != nil || reader == nil {
+				return
+			}
+			ui.cookies.SetText(reader.URI().Path())
+			reader.Close()
+		}, prefsWindow)
+		// Filter for common cookie file extensions
+		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".cookies", ".dat"}))
+		fileDialog.Show()
+	})
+	cookiesClear := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
+		ui.cookies.SetText("")
+	})
+	cookiesRow := container.NewBorder(nil, nil, nil, container.NewHBox(cookiesBrowse, cookiesClear), ui.cookies)
+
 	// Save Preferences toggle.
 	ui.savePrefs.SetChecked(prefs.BoolWithFallback("savePrefs", true))
 
@@ -74,6 +96,7 @@ func (app *DownloaderApp) showPreferences() {
 			{Text: "Save Preferences", Widget: ui.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
 			{Text: "Max Download Speed", Widget: ui.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.themeMode, HintText: "Restart may be required for some changes"},
+			{Text: "Cookies File", Widget: cookiesRow, HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
 		},
 		OnSubmit: func() {
 			app.savePreferences(ui.path.Text)
@@ -90,7 +113,6 @@ func (app *DownloaderApp) showPreferences() {
 		},
 	}
 
-	var w fyne.Window
 	resetBtn := widget.NewButton("Restore Defaults", func() {
 		dialog.ShowConfirm("Restore Defaults", "Reset all preferences to their default values?", func(ok bool) {
 			if !ok {
@@ -99,19 +121,20 @@ func (app *DownloaderApp) showPreferences() {
 			app.resetPreferences()
 			ui.savePrefs.SetChecked(true)
 			ui.maxSpeed.SetText("")
+			ui.cookies.SetText("")
 			ui.themeMode.SetSelected("Dark")
-		}, w)
+		}, prefsWindow)
 	})
 	resetBtn.Importance = widget.DangerImportance
 
-	w = fyne.CurrentApp().NewWindow("Preferences")
-	w.SetContent(container.NewPadded(container.NewVBox(
+	prefsWindow = fyne.CurrentApp().NewWindow("Preferences")
+	prefsWindow.SetContent(container.NewPadded(container.NewVBox(
 		form,
 		widget.NewSeparator(),
 		container.NewCenter(resetBtn),
 	)))
-	w.Resize(fyne.NewSize(500, 320))
-	w.Show()
+	prefsWindow.Resize(fyne.NewSize(500, 320))
+	prefsWindow.Show()
 }
 
 // showConfigHelp opens a scrollable window explaining all configuration options.
@@ -132,6 +155,7 @@ func (app *DownloaderApp) showConfigHelp() {
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
 		{"Save Preferences", "Found in Tools → Preferences. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in Tools → Preferences. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  • 50K – Very slow (dial-up speed)\n  • 5M – Moderate (standard HD streaming speed)\n  • 10G – Virtually unlimited\nLeave blank to use full available bandwidth."},
+		{"Cookies File", "Found in Tools → Preferences. Path to a cookies.txt file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file or let it fall into unauthorized hands. Use a trusted browser extension (like 'Get cookies.txt LOCALLY') to export your active session."},
 		{"Cancel", "Stops the active download immediately. In batch mode, it skips the current URL and moves on to the next one."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
 	}
@@ -141,7 +165,7 @@ func (app *DownloaderApp) showConfigHelp() {
 		title := widget.NewRichTextFromMarkdown("### " + item.label)
 		title.Wrapping = fyne.TextWrapOff
 
-		body := widget.NewLabel(item.desc)
+		body := widget.NewRichTextFromMarkdown(item.desc)
 		body.Wrapping = fyne.TextWrapWord
 
 		content.Add(title)

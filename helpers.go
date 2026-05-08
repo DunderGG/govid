@@ -145,6 +145,7 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 	prefs.SetString("quality", app.ui.quality.Selected)
 	prefs.SetString("maxSpeed", strings.TrimSpace(app.ui.maxSpeed.Text))
 	prefs.SetString("themeMode", app.ui.themeMode.Selected)
+	prefs.SetString("cookiesPath", strings.TrimSpace(app.ui.cookies.Text))
 }
 
 // resetPreferences clears all stored preferences and rebuilds the UI with
@@ -152,7 +153,7 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 // widgets to match after calling this.
 func (app *DownloaderApp) resetPreferences() {
 	prefs := fyne.CurrentApp().Preferences()
-	for _, pref := range []string{"savedPath", "format", "quality", "maxSpeed", "themeMode", "savePrefs"} {
+	for _, pref := range []string{"savedPath", "format", "quality", "maxSpeed", "themeMode", "savePrefs", "cookiesPath"} {
 		prefs.RemoveValue(pref)
 	}
 	fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
