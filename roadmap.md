@@ -48,12 +48,10 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Allow the user to toggle thumbnail embedding from the UI options.
 - [ ] Automatic thumbnail and chapter injection via FFMPEG.
 
-### Download History
-> Keep a record of previously downloaded files.
+### Authentication Support
+> Support age-restricted or private videos.
 
-- [ ] Maintain a local SQLite or JSON file storing URL, filename, date, and format.
-- [ ] Show a "History" panel or tab in the UI.
-- [ ] Warn the user when they paste a URL that has already been downloaded.
+- [ ] Add a "Cookies File" selector in Preferences to pass `--cookies` to yt-dlp.
 
 ### Video Trimming
 > Allow users to download only a specific segment of a video.
@@ -71,12 +69,11 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Allow the user to select preferred subtitle language(s).
 - [ ] Support both `.srt` sidecar files and embedded soft-subs in MKV.
 
-### Custom Output Filename Template
-> Let power users control how downloaded files are named.
+### Disk Space Pre-check
+> Prevent mid-download failures due to full drives.
 
-- [ ] Add an advanced "Filename Template" input in the options.
-- [ ] Pre-populate with the current default (`GoVid_%(title)s.%(ext)s`).
-- [ ] Show a live preview of what the filename will look like.
+- [ ] Query destination drive for available space before starting a download.
+- [ ] Notify user if estimated file size exceeds available bytes.
 
 ### User Preference Persistence
 > Remember the user's last-used settings across restarts.
@@ -114,6 +111,11 @@ This document outlines planned features, improvements, and known limitations for
 - [X] Persist the theme preference using `fyne.CurrentApp().Preferences()`.
 - [ ] Default to the OS system theme, but allow override.
 
+### Drag-and-Drop Support
+> Streamline adding URLs to the application.
+
+- [ ] Allow dragging URLs from a web browser directly into the URL input/batch area.
+
 ### Resizable & Responsive Layout
 > Improve behavior when the window is resized.
 
@@ -129,12 +131,11 @@ This document outlines planned features, improvements, and known limitations for
 - [X] Show download summary (duration, average speed, file size) in the notification body.
 - [X] Add a setting to enable/disable notifications.
 
-### Clipboard Paste Button
-> Streamline the URL entry workflow.
+### Tray Integration
+> Background the app during long batch downloads.
 
-- [ ] Add a small clipboard icon next to the URL field.
-- [ ] When clicked, paste the current clipboard text into the URL entry automatically.
-- [ ] Validate that the pasted text looks like a URL before accepting it.
+- [ ] Add "Minimize to Tray" support.
+- [ ] Right-click menu for tray icon (Pause/Resume, Open Folder, Exit).
 
 ---
 
@@ -162,11 +163,10 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Offer an automatic retry with exponential backoff (1, 5, 30 seconds).
 - [ ] Surface a "Retry" button in the UI after a failed download.
 
-### Config File Support
-> Allow users to configure defaults via a config file.
+### Automatic "Best-Fit" Quality
+> Smart handling of missing quality tiers.
 
-- [ ] Support a `govid.json` or `govid.toml` config file in the app directory.
-- [ ] Override format, quality, path, and speed limit defaults from the file.
+- [ ] Show a "Smart Downscale" notification if the requested resolution isn't available.
 
 ### macOS & Linux Polish
 > Close the gap on non-Windows platforms.
@@ -179,6 +179,63 @@ This document outlines planned features, improvements, and known limitations for
 > Improve output quality for remuxed and converted files.
 
 - [x] Use `--remux-video` instead of `--recode-video` where the container already matches, to avoid unnecessary re-encoding.
+
+### Portable Mode
+> Carry settings alongside the executable.
+
+- [ ] Add a "Portable Mode" toggle to store preferences in `settings.json` locally.
+
+---
+
+## 💤 Low Priority
+
+### Audio Controls
+> Advanced overrides for audio-focused users.
+
+- [ ] Add a selector for specific audio bitrates (128k–320k).
+- [ ] Add a "Strip Audio" toggle to extract streams without full conversion.
+
+### Post-Processing Scripts
+> Automation for completed downloads.
+
+- [ ] Allow specifying a shell command to run after completion (with file path placeholder).
+
+### Custom Output Filename Template
+> Let power users control how downloaded files are named.
+
+- [ ] Add an advanced "Filename Template" input in the options.
+- [ ] Pre-populate with the current default (`GoVid_%(title)s.%(ext)s`).
+- [ ] Show a live preview of what the filename will look like.
+
+### Config File Support
+> Allow users to configure defaults via a config file.
+
+- [ ] Support a `govid.json` or `govid.toml` config file in the app directory.
+- [ ] Override format, quality, path, and speed limit defaults from the file.
+
+### Download History
+> Keep a record of previously downloaded files.
+
+- [ ] Maintain a local SQLite or JSON file storing URL, filename, date, and format.
+- [ ] Show a "History" panel or tab in the UI.
+- [ ] Warn the user when they paste a URL that has already been downloaded.
+
+### Log Management
+> Improve technical troubleshooting.
+
+- [ ] Add a search/filter bar to the log output area.
+
+### Clipboard Paste Button
+> Streamline the URL entry workflow.
+
+- [ ] Add a small clipboard icon next to the URL field (or auto-detect URL on focus).
+- [ ] When clicked, paste the current clipboard text into the URL entry automatically.
+- [ ] Validate that the pasted text looks like a URL before accepting it.
+
+### FFmpeg On-Demand
+> Keep the initial download size small.
+
+- [ ] Offer to download/extract FFmpeg on-demand if missing instead of bundling.
 
 ---
 
