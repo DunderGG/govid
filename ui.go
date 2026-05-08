@@ -145,17 +145,17 @@ func (app *DownloaderApp) showConfigHelp() {
 	}
 
 	items := []helpItem{
-		{"Video URL", "Paste any URL supported by yt-dlp, such as a YouTube, Vimeo, or Twitter/X link."},
+		{"Video URL", "Paste any URL supported by yt-dlp, such as a **YouTube**, **Vimeo**, or **Twitter/X** link."},
 		{"Save Destination", "The folder where the downloaded file will be saved. GoVid remembers this between sessions."},
-		{"Output Format", "The container format for the downloaded file:\n  • MP4 – widely compatible, recommended for most uses\n  • MKV – flexible container, ideal for high-quality archiving\n  • WebM – open format, good for web use\n  • MP3 – audio only, compressed\n  • M4A – audio only, Apple/iTunes compatible"},
-		{"Max Quality", "Sets the maximum resolution yt-dlp will request:\n  • Best Quality – downloads the highest resolution available\n  • 1080p / 720p / 480p / 360p – caps the resolution to save space or bandwidth"},
-		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\nAccepted formats:\n  • HH:MM:SS  (e.g. 01:30:00)\n  • MM:SS      (e.g. 01:30)\n  • Seconds    (e.g. 90)\n\nEither field can be used alone:\n  • Trim Start only → downloads from that point to the end\n  • Trim End only   → downloads from the start to that point"},
+		{"Output Format", "The container format for the downloaded file:\n  * **MP4** – widely compatible, recommended for most uses\n  * **MKV** – flexible container, ideal for high-quality archiving\n  * **WebM** – open format, good for web use\n  * **MP3** – audio only, compressed\n  * **M4A** – audio only, Apple/iTunes compatible"},
+		{"Max Quality", "Sets the maximum resolution yt-dlp will request:\n  * **Best Quality** – downloads the highest resolution available\n  * **1080p** / **720p** / **480p** / **360p** – caps the resolution to save space or bandwidth"},
+		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\n\nAccepted formats:\n  * `HH:MM:SS` (e.g. 01:30:00)\n  * `MM:SS` (e.g. 01:30)\n  * `Seconds` (e.g. 90)\n\nEither field can be used alone:\n  * **Trim Start only** → downloads from that point to the end\n  * **Trim End only** → downloads from the start to that point"},
 		{"Allow Duplicate Downloads", "When checked, a timestamp is added to the filename so re-downloading the same video does not overwrite the previous file."},
-		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a GoVid_log.txt file in your save destination folder."},
+		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a **GoVid_log.txt** file in your save destination folder."},
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
-		{"Save Preferences", "Found in Tools → Preferences. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
-		{"Max Download Speed", "Found in Tools → Preferences. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  • 50K – Very slow (dial-up speed)\n  • 5M – Moderate (standard HD streaming speed)\n  • 10G – Virtually unlimited\nLeave blank to use full available bandwidth."},
-		{"Cookies File", "Found in Tools → Preferences. Path to a cookies.txt file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file or let it fall into unauthorized hands. Use a trusted browser extension (like 'Get cookies.txt LOCALLY') to export your active session."},
+		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
+		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow (dial-up speed)\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
+		{"Cookies File", "Found in **Tools → Preferences**. Path to a `cookies.txt` file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file or let it fall into unauthorized hands. Use a trusted browser extension (like 'Get cookies.txt LOCALLY') to export your active session."},
 		{"Cancel", "Stops the active download immediately. In batch mode, it skips the current URL and moves on to the next one."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
 	}
@@ -166,6 +166,18 @@ func (app *DownloaderApp) showConfigHelp() {
 		title.Wrapping = fyne.TextWrapOff
 
 		body := widget.NewRichTextFromMarkdown(item.desc)
+		for i := range body.Segments {
+			if segment, ok := body.Segments[i].(*widget.TextSegment); ok {
+				// Make bold text use the theme's primary color for better visual hierarchy
+				if segment.Style.TextStyle.Bold {
+					segment.Style.ColorName = theme.ColorNamePrimary
+				}
+				// Ensure code segments have slightly more visibility
+				if segment.Style.TextStyle.Monospace {
+					segment.Style.ColorName = theme.ColorNameWarning
+				}
+			}
+		}
 		body.Wrapping = fyne.TextWrapWord
 
 		content.Add(title)
@@ -177,7 +189,7 @@ func (app *DownloaderApp) showConfigHelp() {
 	scroll.SetMinSize(fyne.NewSize(520, 420))
 
 	w := fyne.CurrentApp().NewWindow("GoVid Guide")
-	w.SetContent(container.NewPadded(scroll))
+	w.SetContent(container.NewStack(scroll))
 	w.Resize(fyne.NewSize(540, 460))
 	w.Show()
 }
