@@ -1,4 +1,4 @@
-// download.go — Drives the yt-dlp download pipeline.
+﻿// download.go — Drives the yt-dlp download pipeline.
 //
 // Responsibilities:
 //   - Validates user inputs (URL, timestamps, speed limit).
@@ -10,7 +10,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"image/color"
@@ -24,7 +23,6 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/theme"
 )
 
 // startDownload prepares the application for a new download session. It validates
@@ -321,34 +319,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	}
 	app.updateStatus("Status: Downloading...")
 
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			app.parseProgress(line)
-			app.appendOutput(line, theme.ForegroundColor())
-		}
-	}()
-
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			line := scanner.Text()
-			var logColor color.Color
-			switch {
-			case strings.Contains(line, "ERROR:"):
-				logColor = color.RGBA{R: 255, G: 0, B: 0, A: 255}
-			case strings.Contains(line, "WARNING:"):
-				logColor = color.RGBA{R: 255, G: 165, B: 0, A: 255}
-			case strings.Contains(line, "[debug]"):
-				logColor = color.RGBA{R: 180, G: 180, B: 180, A: 255}
-			default:
-				logColor = theme.ForegroundColor()
-			}
-			app.appendOutput(line, logColor)
-		}
-	}()
-
+	result := app.watchOutput(stdout, stderr)
 	err := cmd.Wait()
 	durationTotal := time.Since(startTime).Seconds()
 	durationFormatted := fmt.Sprintf("%.2fs", durationTotal)
@@ -365,8 +336,12 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		app.ui.cancelBtn.Disable()
 		if err != nil {
 			if ctx.Err() == context.Canceled {
-				summary := fmt.Sprintf("────────────────────────────────────────\nDOWNLOAD ABORTED\n   ├─ Runtime:    %s\n   ├─ Avg Speed:  %s\n   ├─ Downloaded: %s\n────────────────────────────────────────", durationFormatted, avgSpeed, app.stats.lastSize)
-				app.appendOutput(summary, color.RGBA{R: 255, G: 165, B: 0, A: 255})
+				app.appendOutput("────────────────────────────────────────", color.RGBA{R: 255, G: 165, B: 255, A: 255})
+				app.appendOutput("DOWNLOAD ABORTED", color.RGBA{R: 255, G: 165, B: 0, A: 255})
+				app.appendOutput(fmt.Sprintf("   ├─ Runtime:    %s", durationFormatted), color.RGBA{R: 255, G: 165, B: 0, A: 255})
+				app.appendOutput(fmt.Sprintf("   ├─ Avg Speed:  %s", avgSpeed), color.RGBA{R: 255, G: 165, B: 0, A: 255})
+				app.appendOutput(fmt.Sprintf("   └─ Downloaded: %s", app.stats.lastSize), color.RGBA{R: 255, G: 165, B: 0, A: 255})
+				app.appendOutput("────────────────────────────────────────", color.RGBA{R: 255, G: 165, B: 255, A: 255})
 				app.updateStatus("Status: Canceled.")
 				app.setStatusIndicator("canceled")
 			} else {
@@ -380,8 +355,37 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 				}
 			}
 		} else {
-			summary := fmt.Sprintf("────────────────────────────────────────\nDOWNLOAD COMPLETE\n   ├─ Duration:   %s\n   ├─ Avg Speed:  %s\n   ├─ Downloaded: %s\n────────────────────────────────────────", durationFormatted, avgSpeed, app.stats.lastSize)
-			app.appendOutput(summary, color.RGBA{R: 0, G: 200, B: 0, A: 255})
+		// Build a human-readable format line, e.g. "WEBM+M4A → MP4 (remuxed)".
+		outExt := strings.ToUpper(extension)
+		formatLine := outExt
+		if len(result.sourceExts) > 0 {
+			seen := map[string]bool{}
+			var unique []string
+			for _, e := range result.sourceExts {
+				exts := strings.ToUpper(e)
+				if !seen[exts] {
+					seen[exts] = true
+					unique = append(unique, exts)
+				}
+			}
+			srcStr := strings.Join(unique, "+")
+			switch {
+			case result.wasConverted:
+				formatLine = fmt.Sprintf("%s → %s (converted)", srcStr, outExt)
+			case srcStr != outExt:
+				formatLine = fmt.Sprintf("%s → %s (remuxed)", srcStr, outExt)
+			default:
+				formatLine = fmt.Sprintf("%s (original)", outExt)
+			}
+		}
+
+		app.appendOutput("────────────────────────────────────────", color.RGBA{R: 0, G: 255, B: 0, A: 255})
+		app.appendOutput("DOWNLOAD COMPLETE", color.RGBA{R: 0, G: 200, B: 0, A: 255})
+		app.appendOutput(fmt.Sprintf("   ├─ Duration:   %s", durationFormatted), color.RGBA{R: 0, G: 200, B: 0, A: 255})
+		app.appendOutput(fmt.Sprintf("   ├─ Avg Speed:  %s", avgSpeed), color.RGBA{R: 0, G: 200, B: 0, A: 255})
+		app.appendOutput(fmt.Sprintf("   ├─ Downloaded: %s", app.stats.lastSize), color.RGBA{R: 0, G: 200, B: 0, A: 255})
+		app.appendOutput(fmt.Sprintf("   └─ Format:     %s", formatLine), color.RGBA{R: 0, G: 200, B: 0, A: 255})
+			app.appendOutput("────────────────────────────────────────", color.RGBA{R: 0, G: 255, B: 0, A: 255})
 			app.updateStatus("Status: Success!")
 			app.setProgressNow(1)
 			app.setStatusIndicator("success")
@@ -401,26 +405,6 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		}
 		app.log.mutex.Unlock()
 	})
-}
-
-// parseProgress scans a line of yt-dlp output for percentage markers and size
-// information, updating the progress bar target and session statistics.
-func (app *DownloaderApp) parseProgress(line string) {
-	if strings.Contains(line, "%") {
-		fields := strings.Fields(line)
-		for _, field := range fields {
-			if strings.HasSuffix(field, "%") {
-				var val float64
-				fmt.Sscanf(field, "%f%%", &val)
-				app.setProgress(val / 100.0)
-				if len(fields) >= 4 {
-					app.stats.lastSize = fields[3]
-					fmt.Sscanf(app.stats.lastSize, "%f%s", &app.stats.downloadedRaw, &app.stats.unit)
-				}
-				break
-			}
-		}
-	}
 }
 
 // validateTimestamp checks that a trim time entry is either empty (meaning no trim)
