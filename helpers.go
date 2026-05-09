@@ -146,6 +146,9 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 	prefs.SetString("maxSpeed", strings.TrimSpace(app.ui.maxSpeed.Text))
 	prefs.SetString("themeMode", app.ui.themeMode.Selected)
 	prefs.SetString("cookiesPath", strings.TrimSpace(app.ui.cookies.Text))
+	prefs.SetBool("upscale", app.ui.smoothMotion.Checked)
+	prefs.SetBool("sharpen", app.ui.sharpen.Checked)
+	prefs.SetBool("normalize", app.ui.normalizeAudio.Checked)
 }
 
 // resetPreferences clears all stored preferences and rebuilds the UI with

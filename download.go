@@ -269,6 +269,27 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		}
 	}
 
+	// Apply post-processing filters via FFmpeg.
+	var vfFilters []string
+	// minterpolate for smooth motion (frame interpolation to 60fps)
+	if app.ui.smoothMotion.Checked {
+		vfFilters = append(vfFilters, "minterpolate=fps=60:mi_mode=mci")
+	}
+	// unsharp for video sharpening
+	if app.ui.sharpen.Checked {
+		vfFilters = append(vfFilters, "unsharp=3:3:1.5:3:3:0.5")
+	}
+
+	// Combine all enabled filters into a single -vf argument passed to FFmpeg via yt-dlp's --postprocessor-args.
+	if len(vfFilters) > 0 {
+		args = append(args, "--postprocessor-args", fmt.Sprintf("ffmpeg:-vf %s", strings.Join(vfFilters, ",")))
+	}
+
+	// loudnorm for audio normalization (applies EBU R128 loudness normalization)
+	if app.ui.normalizeAudio.Checked {
+		args = append(args, "--postprocessor-args", "ffmpeg:-af loudnorm")
+	}
+
 	if extension == "mp3" || extension == "m4a" {
 		// Default --audio-quality is 5 (medium) for most formats, but we want 0 (best) for the audio-focused formats.
 		args = append(args, "--extract-audio", "--audio-format", extension, "--audio-quality", "0")

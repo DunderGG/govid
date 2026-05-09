@@ -70,6 +70,12 @@ func (app *DownloaderApp) showPreferences() {
 	// Cookies field
 	ui.cookies.SetPlaceHolder("Path to cookies.txt (optional)")
 	ui.cookies.SetText(prefs.String("cookiesPath"))
+
+	// Load post-processing toggles
+	ui.smoothMotion.SetChecked(prefs.Bool("upscale"))
+	ui.sharpen.SetChecked(prefs.Bool("sharpen"))
+	ui.normalizeAudio.SetChecked(prefs.Bool("normalize"))
+
 	var prefsWindow fyne.Window
 	cookiesBrowse := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
 		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
@@ -97,6 +103,7 @@ func (app *DownloaderApp) showPreferences() {
 			{Text: "Max Download Speed", Widget: ui.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.themeMode, HintText: "Restart may be required for some changes"},
 			{Text: "Cookies File", Widget: cookiesRow, HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
+			{Text: "Post-Processing", Widget: container.NewHBox(ui.smoothMotion, ui.sharpen, ui.normalizeAudio), HintText: "Enhance video/audio after download (requires FFmpeg)"},
 		},
 		OnSubmit: func() {
 			app.savePreferences(ui.path.Text)
@@ -122,6 +129,9 @@ func (app *DownloaderApp) showPreferences() {
 			ui.savePrefs.SetChecked(true)
 			ui.maxSpeed.SetText("")
 			ui.cookies.SetText("")
+			ui.smoothMotion.SetChecked(false)
+			ui.sharpen.SetChecked(false)
+			ui.normalizeAudio.SetChecked(false)
 			ui.themeMode.SetSelected("Dark")
 		}, prefsWindow)
 	})
@@ -156,6 +166,7 @@ func (app *DownloaderApp) showConfigHelp() {
 		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow (dial-up speed)\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
 		{"Cookies File", "Found in **Tools → Preferences**. Path to a `cookies.txt` file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file or let it fall into unauthorized hands. Use a trusted browser extension (like 'Get cookies.txt LOCALLY') to export your active session."},
+		{"Post-Processing", "Found in **Tools → Preferences**. Enhance your downloads using FFmpeg:\n  * **Smooth Motion** – interpolates frames to 60fps for smoother playback\n  * **Sharpen Video** – applies an unsharp mask to restore edge detail in compressed videos\n  * **Normalize Audio** – balances volume levels using the `loudnorm` filter"},
 		{"Cancel", "Stops the active download immediately. In batch mode, it skips the current URL and moves on to the next one."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
 	}
