@@ -76,6 +76,21 @@ func (app *DownloaderApp) showPreferences() {
 	ui.sharpen.SetChecked(prefs.Bool("sharpen"))
 	ui.normalizeAudio.SetChecked(prefs.Bool("normalize"))
 
+	// Smooth Motion quality mode — horizontal radio group.
+	ui.smoothMotionMode.Horizontal = true
+	savedMode := prefs.StringWithFallback("smoothMotionMode", "Precise (slow)")
+	ui.smoothMotionMode.SetSelected(savedMode)
+	if !ui.smoothMotion.Checked {
+		ui.smoothMotionMode.Disable()
+	}
+	ui.smoothMotion.OnChanged = func(checked bool) {
+		if checked {
+			ui.smoothMotionMode.Enable()
+		} else {
+			ui.smoothMotionMode.Disable()
+		}
+	}
+
 	var prefsWindow fyne.Window
 	cookiesBrowse := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
 		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
@@ -104,6 +119,8 @@ func (app *DownloaderApp) showPreferences() {
 			{Text: "Application Theme", Widget: ui.themeMode, HintText: "Restart may be required for some changes"},
 			{Text: "Cookies File", Widget: cookiesRow, HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
 			{Text: "Post-Processing", Widget: container.NewHBox(ui.smoothMotion, ui.sharpen, ui.normalizeAudio), HintText: "Enhance video/audio after download (requires FFmpeg)"},
+			{Text: "Smooth Motion Mode", Widget: ui.smoothMotionMode, HintText: "Interpolation method for motion smoothing (see GoVid Guide for details)"},
+			{Text: "", Widget: widget.NewLabelWithStyle("⚠️ Smooth Motion forces a full re-encode and may be very slow on long videos.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true})},
 		},
 		OnSubmit: func() {
 			app.savePreferences(ui.path.Text)
@@ -130,6 +147,8 @@ func (app *DownloaderApp) showPreferences() {
 			ui.maxSpeed.SetText("")
 			ui.cookies.SetText("")
 			ui.smoothMotion.SetChecked(false)
+			ui.smoothMotionMode.SetSelected("Precise (slow)")
+			ui.smoothMotionMode.Disable()
 			ui.sharpen.SetChecked(false)
 			ui.normalizeAudio.SetChecked(false)
 			ui.themeMode.SetSelected("Dark")
@@ -166,7 +185,7 @@ func (app *DownloaderApp) showConfigHelp() {
 		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow (dial-up speed)\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
 		{"Cookies File", "Found in **Tools → Preferences**. Path to a `cookies.txt` file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file or let it fall into unauthorized hands. Use a trusted browser extension (like 'Get cookies.txt LOCALLY') to export your active session."},
-		{"Post-Processing", "Found in **Tools → Preferences**. Enhance your downloads using FFmpeg:\n  * **Smooth Motion** – interpolates frames to 60fps for smoother playback\n  * **Sharpen Video** – applies an unsharp mask to restore edge detail in compressed videos\n  * **Normalize Audio** – balances volume levels using the `loudnorm` filter"},
+		{"Post-Processing", "Found in **Tools → Preferences**. Enhance your downloads using FFmpeg:\n  * **Smooth Motion** – interpolates frames to 60fps for smoother playback\n  * **Sharpen Video** – applies an unsharp mask to restore edge detail in compressed videos\n  * **Normalize Audio** – balances volume levels using the `loudnorm` filter\n\n---\n\nThe **Smooth Motion Mode** controls which interpolation method is used:\n\n  * **Precise (slow)** – Full motion-compensated interpolation (`mi_mode=mci`). Analyses motion vectors between every pair of frames to synthesize new ones. Produces the smoothest and most accurate result, but is almost entirely single-threaded — expect one CPU core pegged at 100% for the full duration. Best for short clips or when quality is the priority.\n\n  * **Balanced** – A faster variant of MCI that disables variant-size block motion compensation (`vsbmc=0`) and uses overlapped block motion compensation (`mc_mode=obmc`). Roughly 40% faster than Precise with very similar visual quality. A good default choice for most videos.\n\n  * **Fast** – Frame blending (`mi_mode=blend`). Instead of computing motion vectors, it cross-fades adjacent frames to generate the in-between frame. Much faster and fully multi-threaded, so it will use all available CPU cores. The result is slightly softer on fast-motion content, but imperceptible on most videos."},
 		{"Cancel", "Stops the active download immediately. In batch mode, it skips the current URL and moves on to the next one."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
 	}

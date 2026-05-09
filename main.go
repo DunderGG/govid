@@ -59,9 +59,10 @@ type UIWidgets struct {
 	cookies    *widget.Entry        // Path to a Mozilla/Netscape-format cookies file
 	savePrefs  *widget.Check        // Option to persist preferences between sessions
 	batchMode  *widget.Check        // Option to switch URL input to multi-line batch mode
-	smoothMotion    *widget.Check        // Post-processing: Smooth to 60fps
-	sharpen    *widget.Check        // Post-processing: Apply unsharp mask
-	normalizeAudio  *widget.Check        // Post-processing: Normalize audio loudness
+	smoothMotion     *widget.Check      // Post-processing: Smooth to 60fps
+	smoothMotionMode *widget.RadioGroup // Quality mode for Smooth Motion
+	sharpen          *widget.Check      // Post-processing: Apply unsharp mask
+	normalizeAudio   *widget.Check      // Post-processing: Normalize audio loudness
 }
 
 // DownloadStats tracks the real-time metrics of a download session.
@@ -112,9 +113,10 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			cookies:    widget.NewEntry(),
 			savePrefs:  widget.NewCheck("Save preferences between sessions", nil),
 			batchMode:  widget.NewCheck("Batch Mode", nil),
-			smoothMotion:    widget.NewCheck("Smooth Motion (60fps)", nil),
-			sharpen:    widget.NewCheck("Sharpen Video", nil),
-			normalizeAudio:  widget.NewCheck("Normalize Audio", nil),
+			smoothMotion:     widget.NewCheck("Smooth Motion (60fps)", nil),
+			smoothMotionMode: widget.NewRadioGroup([]string{"Precise (slow)", "Balanced", "Fast"}, nil),
+			sharpen:          widget.NewCheck("Sharpen Video", nil),
+			normalizeAudio:   widget.NewCheck("Normalize Audio", nil),
 		},
 		stats: &DownloadStats{},
 		log:   &LogManager{},

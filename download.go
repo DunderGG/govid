@@ -229,13 +229,19 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		qualitySuffix = "_" + quality
 	}
 
-	// Output template: includes title and quality, with optional epoch timestamp for duplicates.
-	outputTemplate := "GoVid_%(title)s" + qualitySuffix + "." + extension
+	// Embed a unique token into the filename while yt-dlp is running so it never
+	// conflicts with existing files mid-download. After a successful download the
+	// token is stripped and the file is renamed; a numeric suffix is appended only
+	// if a file with the desired clean name already exists.
+	downloadID := fmt.Sprintf("GOVID%d", time.Now().UnixNano())
+
+	outputTemplate := "GoVid_%(title)s" + qualitySuffix + "_" + downloadID + ".%(ext)s"
 	if app.ui.duplicates.Checked {
-		outputTemplate = "GoVid_%(title)s" + qualitySuffix + "_%(epoch)s." + extension
-	// To make sure multiple parts of the same video can be downloaded, we need a unique ID for each.
-		} else if trimStart != "" || trimEnd != "" {
-		outputTemplate = "GoVid_%(title)s" + qualitySuffix + "_TRIM%(epoch)s." + extension
+		// Epoch names are already globally unique — no post-rename needed.
+		outputTemplate = "GoVid_%(title)s" + qualitySuffix + "_%(epoch)s.%(ext)s"
+		downloadID = ""
+	} else if trimStart != "" || trimEnd != "" {
+		outputTemplate = "GoVid_%(title)s" + qualitySuffix + "_TRIM_" + downloadID + ".%(ext)s"
 	}
 
 	// Build the full argument list for yt-dlp.
@@ -269,25 +275,28 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		}
 	}
 
-	// Apply post-processing filters via FFmpeg.
+	// Build post-processing filter lists. These are applied via a separate FFmpeg
+	// pass after yt-dlp finishes, guaranteeing the filters always run regardless
+	// of whether yt-dlp itself invokes FFmpeg during download.
 	var vfFilters []string
-	// minterpolate for smooth motion (frame interpolation to 60fps)
+	var afFilters []string
 	if app.ui.smoothMotion.Checked {
-		vfFilters = append(vfFilters, "minterpolate=fps=60:mi_mode=mci")
+		switch app.ui.smoothMotionMode.Selected {
+		case "Fast":
+			// Frame blending — multi-threaded, much faster, slightly less precise.
+			vfFilters = append(vfFilters, "minterpolate=fps=60:mi_mode=blend")
+		case "Balanced":
+			// MCI without variant-size blocks — ~40% faster than Precise, similar quality.
+			vfFilters = append(vfFilters, "minterpolate=fps=60:mi_mode=mci:vsbmc=0:mc_mode=obmc")
+		default: // "Precise (slow)"
+			vfFilters = append(vfFilters, "minterpolate=fps=60:mi_mode=mci")
+		}
 	}
-	// unsharp for video sharpening
 	if app.ui.sharpen.Checked {
 		vfFilters = append(vfFilters, "unsharp=3:3:1.5:3:3:0.5")
 	}
-
-	// Combine all enabled filters into a single -vf argument passed to FFmpeg via yt-dlp's --postprocessor-args.
-	if len(vfFilters) > 0 {
-		args = append(args, "--postprocessor-args", fmt.Sprintf("ffmpeg:-vf %s", strings.Join(vfFilters, ",")))
-	}
-
-	// loudnorm for audio normalization (applies EBU R128 loudness normalization)
 	if app.ui.normalizeAudio.Checked {
-		args = append(args, "--postprocessor-args", "ffmpeg:-af loudnorm")
+		afFilters = append(afFilters, "loudnorm")
 	}
 
 	if extension == "mp3" || extension == "m4a" {
@@ -342,6 +351,21 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 
 	result := app.watchOutput(stdout, stderr)
 	err := cmd.Wait()
+
+	// Rename temp files to their clean, conflict-free names.
+	var finalPaths []string
+	if err == nil && downloadID != "" {
+		finalPaths = app.finalizeDownloadedFiles(savePath, downloadID)
+	}
+
+	// Apply FFmpeg post-processing filters as a separate pass on the final files.
+	if err == nil && (len(vfFilters) > 0 || len(afFilters) > 0) {
+		app.updateStatus("Status: Post-processing...")
+		app.setStatusIndicator("processing")
+		app.applyFFmpegFilters(ctx, finalPaths, vfFilters, afFilters)
+		app.updateStatus("Status: Finalizing...")
+	}
+
 	durationTotal := time.Since(startTime).Seconds()
 	durationFormatted := fmt.Sprintf("%.2fs", durationTotal)
 

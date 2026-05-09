@@ -9,11 +9,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"image/color"
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -93,6 +95,28 @@ func (app *DownloaderApp) setStatusIndicator(state string) {
 					}
 				}
 			}()
+		case "processing":
+			// Pulsing purple to distinguish post-processing from active download.
+			app.stopPulse = make(chan struct{})
+			stopCh := app.stopPulse
+			go func() {
+				ticker := time.NewTicker(50 * time.Millisecond)
+				defer ticker.Stop()
+				t := 0.0
+				for {
+					select {
+					case <-stopCh:
+						return
+					case <-ticker.C:
+						t += 0.1
+						alpha := uint8(128 + 127*math.Sin(t))
+						fyne.Do(func() {
+							app.ui.statusDot.FillColor = color.RGBA{R: 180, G: 80, B: 255, A: alpha}
+							app.ui.statusDot.Refresh()
+						})
+					}
+				}
+			}()
 		case "success":
 			app.ui.statusDot.FillColor = color.RGBA{R: 0, G: 200, B: 80, A: 255}
 		case "failed":
@@ -147,6 +171,7 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 	prefs.SetString("themeMode", app.ui.themeMode.Selected)
 	prefs.SetString("cookiesPath", strings.TrimSpace(app.ui.cookies.Text))
 	prefs.SetBool("upscale", app.ui.smoothMotion.Checked)
+	prefs.SetString("smoothMotionMode", app.ui.smoothMotionMode.Selected)
 	prefs.SetBool("sharpen", app.ui.sharpen.Checked)
 	prefs.SetBool("normalize", app.ui.normalizeAudio.Checked)
 }
@@ -184,6 +209,123 @@ func (app *DownloaderApp) openDownloadFolder() {
 
 	if err := cmd.Start(); err != nil {
 		dialog.ShowError(fmt.Errorf("could not open folder: %v", err), app.window)
+	}
+}
+
+// finalizeDownloadedFiles finds all files written by yt-dlp under the given
+// downloadID token, strips the token from their names, and renames them to
+// their final conflict-free paths using uniquePath. It returns the list of
+// final paths so callers can apply further post-processing.
+func (app *DownloaderApp) finalizeDownloadedFiles(savePath, downloadID string) []string {
+	pattern := filepath.Join(savePath, "*"+downloadID+"*")
+	matches, _ := filepath.Glob(pattern)
+	var finalPaths []string
+	for _, tmpPath := range matches {
+		cleanBase := strings.Replace(filepath.Base(tmpPath), "_"+downloadID, "", 1)
+		cleanPath := filepath.Join(savePath, cleanBase)
+		finalPath := uniquePath(cleanPath)
+		if finalPath != cleanPath {
+			app.appendOutput(
+				fmt.Sprintf("[SYSTEM] File already exists — saving as: %s", filepath.Base(finalPath)),
+				color.RGBA{R: 0, G: 255, B: 255, A: 255},
+			)
+		}
+		os.Rename(tmpPath, finalPath)
+		finalPaths = append(finalPaths, finalPath)
+	}
+	return finalPaths
+}
+
+// uniquePath returns path unchanged when no file exists at that location.
+// If the path is already taken, it appends an incrementing numeric suffix
+// to the stem (e.g. "Video.mp4" → "Video 1.mp4" → "Video 2.mp4") until it
+// finds a name that does not conflict with an existing file.
+func uniquePath(path string) string {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return path
+	}
+	ext := filepath.Ext(path)
+	stem := strings.TrimSuffix(path, ext)
+	for i := 1; ; i++ {
+		candidate := fmt.Sprintf("%s %d%s", stem, i, ext)
+		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			return candidate
+		}
+	}
+}
+
+// applyFFmpegFilters runs a dedicated FFmpeg pass on each of the given files,
+// applying the video filters (vfFilters) and audio filters (afFilters).
+// Video filters are skipped for audio-only files. The original file is replaced
+// with the filtered output only if FFmpeg succeeds.
+func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfFilters, afFilters []string) {
+	if len(filePaths) == 0 || (len(vfFilters) == 0 && len(afFilters) == 0) {
+		return
+	}
+
+	ffmpegPath := app.getLocalBinPath("ffmpeg")
+	if _, err := os.Stat(ffmpegPath); err != nil {
+		ffmpegPath = "ffmpeg"
+	}
+
+	for _, inputPath := range filePaths {
+		ext := strings.ToLower(filepath.Ext(inputPath))
+		isAudioOnly := ext == ".mp3" || ext == ".m4a"
+
+		activeVF := vfFilters
+		if isAudioOnly {
+			activeVF = nil // video filters don't apply to audio files
+		}
+		if len(activeVF) == 0 && len(afFilters) == 0 {
+			continue
+		}
+
+		tmpOutput := strings.TrimSuffix(inputPath, ext) + "_pp" + ext
+		args := []string{"-y", "-threads", "0", "-i", inputPath}
+
+		if len(activeVF) > 0 {
+			// Re-encode with high quality settings to prevent the output from being
+			// smaller/worse than the original. CRF 18 is visually near-lossless for
+			// H.264. The slower preset squeezes more quality out at the same CRF and
+			// keeps all threads saturated for the full encode.
+			args = append(args, "-vf", strings.Join(activeVF, ","))
+			args = append(args, "-c:v", "libx264", "-crf", "18", "-preset", "slower")
+		} else {
+			args = append(args, "-c:v", "copy")
+		}
+		if len(afFilters) > 0 {
+			args = append(args, "-af", strings.Join(afFilters, ","))
+		} else {
+			args = append(args, "-c:a", "copy")
+		}
+		args = append(args, tmpOutput)
+
+		app.appendOutput(
+			fmt.Sprintf("[SYSTEM] Applying post-processing to: %s", filepath.Base(inputPath)),
+			color.RGBA{R: 0, G: 255, B: 255, A: 255},
+		)
+
+		cmd := exec.CommandContext(ctx, ffmpegPath, args...)
+		hideWindow(cmd)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			app.appendOutput(
+				fmt.Sprintf("[ERROR] Post-processing failed: %v", err),
+				color.RGBA{R: 255, G: 0, B: 0, A: 255},
+			)
+			// Log FFmpeg's output to help with diagnosis.
+			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				if line != "" {
+					app.appendOutput(line, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+				}
+			}
+			os.Remove(tmpOutput)
+			continue
+		}
+
+		os.Remove(inputPath)
+		os.Rename(tmpOutput, inputPath)
+		app.appendOutput("[SYSTEM] Post-processing complete.", color.RGBA{R: 0, G: 200, B: 0, A: 255})
 	}
 }
 
