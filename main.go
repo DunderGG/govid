@@ -99,7 +99,6 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			path:       widget.NewEntry(),
 			format:     widget.NewSelect(nil, nil),
 			quality:    widget.NewSelect(nil, nil),
-			duplicates: widget.NewCheck("Allow Duplicate Downloads", nil),
 			saveLog:    widget.NewCheck("Save output to log file", nil),
 			notify:     widget.NewCheck("Notify on Completion", nil),
 			cancelBtn:  widget.NewButton("", nil),

@@ -425,7 +425,7 @@ func (app *DownloaderApp) createUI() {
 					ui.trimEnd,
 				),
 			),
-			container.NewHBox(ui.duplicates, ui.saveLog, ui.notify),
+			container.NewHBox(ui.saveLog, ui.notify),
 			container.NewGridWithColumns(3, downloadBtn, openFolderBtn, ui.cancelBtn),
 		),
 	)

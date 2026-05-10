@@ -257,11 +257,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	downloadID := fmt.Sprintf("GOVID%d", time.Now().UnixNano())
 
 	outputTemplate := "GoVid_%(title)s" + qualitySuffix + "_" + downloadID + ".%(ext)s"
-	if app.ui.duplicates.Checked {
-		// Epoch names are already globally unique — no post-rename needed.
-		outputTemplate = "GoVid_%(title)s" + qualitySuffix + "_%(epoch)s.%(ext)s"
-		downloadID = ""
-	} else if trimStart != "" || trimEnd != "" {
+	if trimStart != "" || trimEnd != "" {
 		outputTemplate = "GoVid_%(title)s" + qualitySuffix + "_TRIM_" + downloadID + ".%(ext)s"
 	}
 
