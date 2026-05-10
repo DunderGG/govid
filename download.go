@@ -135,6 +135,14 @@ func (app *DownloaderApp) startDownload() {
 		// Always stop the smoother when the batch finishes, regardless of how it ends.
 		defer stopQueue()
 
+		// Build filters once — they come from UI state and are the same for every URL.
+		vfFilters, afFilters := app.buildPostProcessFilters()
+		hasPostProcess := len(vfFilters) > 0 || len(afFilters) > 0
+
+		// Collect finalized paths from every successful download so post-processing
+		// can run over all of them concurrently at the end of the batch.
+		var allFinalPaths []string
+
 		for index, url := range urls {
 			if queueCtx.Err() != nil {
 				break
@@ -166,11 +174,22 @@ func (app *DownloaderApp) startDownload() {
 				}
 			}
 
-			app.runYtDlp(runCtx, url, savePath, trimStart, trimEnd)
+			paths := app.runYtDlp(runCtx, url, savePath, trimStart, trimEnd)
+			allFinalPaths = append(allFinalPaths, paths...)
 
 			if skipItem != nil {
 				skipItem() // release the per-item context whether it was cancelled or not
 			}
+		}
+
+		// Run post-processing over all collected files in one pass so the worker
+		// pool can saturate available CPU cores across multiple concurrent jobs.
+		if hasPostProcess && len(allFinalPaths) > 0 && queueCtx.Err() == nil {
+			app.updateStatus("Status: Post-processing...")
+			app.setStatusIndicator("processing")
+			app.applyFFmpegFilters(queueCtx, allFinalPaths, vfFilters, afFilters)
+			app.updateStatus("Status: Done.")
+			app.setStatusIndicator("success")
 		}
 	}()
 }
@@ -178,7 +197,9 @@ func (app *DownloaderApp) startDownload() {
 // runYtDlp manages the external lifecycle of the yt-dlp process. It builds
 // the command arguments based on UI selections (quality, format), executes
 // the tool, and pipes its output/errors back to the UI in real-time.
-func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath string, trimStart string, trimEnd string) {
+// It returns the list of finalized output file paths on success, or nil on
+// failure or cancellation. Post-processing is the caller's responsibility.
+func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath string, trimStart string, trimEnd string) []string {
 	startTime := time.Now()
 	formatFlag := "bestvideo+bestaudio/best"
 	extension := "mp4"
@@ -275,10 +296,6 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		}
 	}
 
-	// Build post-processing filter lists via the dedicated pipeline.
-	// These are applied as a separate FFmpeg pass after yt-dlp finishes.
-	vfFilters, afFilters := app.buildPostProcessFilters()
-
 	if extension == "mp3" || extension == "m4a" {
 		// Default --audio-quality is 5 (medium) for most formats, but we want 0 (best) for the audio-focused formats.
 		args = append(args, "--extract-audio", "--audio-format", extension, "--audio-quality", "0")
@@ -323,9 +340,11 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
 
+	// If there is an error starting the process, report it and 
+	// return nil so the caller knows not to proceed with post-processing.
 	if err := cmd.Start(); err != nil {
 		app.updateStatus(fmt.Sprintf("Failed to launch yt-dlp: %v", err))
-		return
+		return nil
 	}
 	app.updateStatus("Status: Downloading...")
 
@@ -336,14 +355,6 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	var finalPaths []string
 	if err == nil && downloadID != "" {
 		finalPaths = app.finalizeDownloadedFiles(savePath, downloadID)
-	}
-
-	// Apply FFmpeg post-processing filters as a separate pass on the final files.
-	if err == nil && (len(vfFilters) > 0 || len(afFilters) > 0) {
-		app.updateStatus("Status: Post-processing...")
-		app.setStatusIndicator("processing")
-		app.applyFFmpegFilters(ctx, finalPaths, vfFilters, afFilters)
-		app.updateStatus("Status: Finalizing...")
 	}
 
 	durationTotal := time.Since(startTime).Seconds()
@@ -357,6 +368,10 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		avgSpeed = "N/A"
 	}
 
+	// uiDone is closed inside fyne.Do once all UI updates for this download are
+	// committed. Waiting on it ensures the "DOWNLOAD COMPLETE" block is fully
+	// rendered before the caller starts post-processing and overwrites the status.
+	uiDone := make(chan struct{})
 	fyne.Do(func() {
 		app.ui.cancelBtn.Disable()
 		if err != nil {
@@ -429,7 +444,12 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 			app.log.file = nil
 		}
 		app.log.mutex.Unlock()
+		close(uiDone)
 	})
+	// Wait for the UI updates to commit before returning, 
+	// ensuring the final status is visible before any post-processing starts.
+	<-uiDone
+	return finalPaths
 }
 
 // validateTimestamp checks that a trim time entry is either empty (meaning no trim)

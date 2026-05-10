@@ -13,7 +13,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 )
 
 // buildPostProcessFilters reads the post-processing checkbox state from the UI
@@ -87,8 +89,18 @@ func uniquePath(path string) string {
 	}
 }
 
-// applyFFmpegFilters runs a dedicated FFmpeg pass on each of the given files,
-// applying the video filters (vfFilters) and audio filters (afFilters).
+// ppJob holds the inputs for a single file's FFmpeg post-processing pass.
+type ppJob struct {
+	inputPath  string
+	tmpOutput  string
+	ffmpegArgs []string
+}
+
+// applyFFmpegFilters runs a concurrent worker pool to post-process each of
+// the given files with the provided video/audio filters. Workers are bounded
+// to runtime.NumCPU() so that the total thread load across all FFmpeg processes
+// never exceeds the available core count. Each worker receives an evenly
+// divided thread budget so concurrent jobs don't compete for CPU.
 // Video filters are skipped for audio-only files. The original file is replaced
 // with the filtered output only if FFmpeg succeeds.
 func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfFilters, afFilters []string) {
@@ -101,68 +113,129 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 		ffmpegPath = "ffmpeg"
 	}
 
+	// Build one job per file, skipping files that need no processing.
+	var jobs []ppJob
 	for _, inputPath := range filePaths {
 		ext := strings.ToLower(filepath.Ext(inputPath))
 		isAudioOnly := ext == ".mp3" || ext == ".m4a"
 
 		activeVF := vfFilters
 		if isAudioOnly {
-			activeVF = nil // video filters don't apply to audio files
+			activeVF = nil // video filters don't apply to audio-only files
 		}
 		if len(activeVF) == 0 && len(afFilters) == 0 {
 			continue
 		}
 
 		tmpOutput := strings.TrimSuffix(inputPath, ext) + "_pp" + ext
-		args := []string{"-y", "-threads", "0", "-i", inputPath}
-
-		if len(activeVF) > 0 {
-			// Re-encode with high quality settings to prevent the output from being
-			// smaller/worse than the original. CRF 18 is visually near-lossless for
-			// H.264. The slower preset squeezes more quality out at the same CRF and
-			// keeps all threads saturated for the full encode.
-			args = append(args, "-vf", strings.Join(activeVF, ","))
-			args = append(args, "-c:v", "libx264", "-crf", "18", "-preset", "slower")
-		} else {
-			args = append(args, "-c:v", "copy")
-		}
-		if len(afFilters) > 0 {
-			args = append(args, "-af", strings.Join(afFilters, ","))
-		} else {
-			args = append(args, "-c:a", "copy")
-		}
-		args = append(args, tmpOutput)
-
-		app.appendOutput(
-			fmt.Sprintf("[SYSTEM] Applying post-processing to: %s", filepath.Base(inputPath)),
-			color.RGBA{R: 0, G: 255, B: 255, A: 255},
-		)
-
-		// Run FFmpeg with the constructed arguments. 
-		// The context allows this process to be killed if the user cancels the download while post-processing is underway.
-		cmd := exec.CommandContext(ctx, ffmpegPath, args...)
-		// Hide the FFmpeg window on Windows to prevent it from popping up.
-		hideWindow(cmd)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			app.appendOutput(
-				fmt.Sprintf("[ERROR] Post-processing failed: %v", err),
-				color.RGBA{R: 255, G: 0, B: 0, A: 255},
-			)
-			// Log FFmpeg's output to help with diagnosis.
-			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-				if line != "" {
-					app.appendOutput(line, color.RGBA{R: 180, G: 180, B: 180, A: 255})
-				}
-			}
-			os.Remove(tmpOutput)
-			continue
-		}
-
-		os.Remove(inputPath)
-		os.Rename(tmpOutput, inputPath)
-		app.appendOutput("[SYSTEM] Post-processing complete.", color.RGBA{R: 0, G: 200, B: 0, A: 255})
+		jobs = append(jobs, ppJob{inputPath: inputPath, tmpOutput: tmpOutput, ffmpegArgs: buildFFmpegArgs(inputPath, tmpOutput, activeVF, afFilters)})
 	}
+
+	if len(jobs) == 0 {
+		return
+	}
+
+	// Cap workers at the number of logical CPU cores and at the number of jobs.
+	numWorkers := runtime.NumCPU()
+	if numWorkers > len(jobs) {
+		numWorkers = len(jobs)
+	}
+
+	// Divide available cores evenly so concurrent FFmpeg processes don't
+	// fight each other for threads. Minimum 1 thread per process.
+	threadsPerJob := runtime.NumCPU() / numWorkers
+	if threadsPerJob < 1 {
+		threadsPerJob = 1
+	}
+
+	// Patch the -threads value in each job's arg list now that we know the count.
+	for i := range jobs {
+		jobs[i].ffmpegArgs = patchThreadCount(jobs[i].ffmpegArgs, fmt.Sprintf("%d", threadsPerJob))
+	}
+
+	// Push all jobs into a buffered channel and close it so workers stop when empty.
+	jobCh := make(chan ppJob, len(jobs))
+	for _, job := range jobs {
+		jobCh <- job
+	}
+	close(jobCh)
+
+	var wg sync.WaitGroup
+	for range numWorkers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobCh {
+				app.runFFmpegJob(ctx, ffmpegPath, job)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+// buildFFmpegArgs constructs the FFmpeg argument list for a single post-processing
+// job. The -threads placeholder is set to "0" and patched to the real count later.
+func buildFFmpegArgs(inputPath, tmpOutput string, vfFilters, afFilters []string) []string {
+	args := []string{"-y", "-threads", "0", "-i", inputPath}
+	if len(vfFilters) > 0 {
+		// Re-encode with high quality settings to prevent the output from being
+		// smaller/worse than the original. CRF 18 is visually near-lossless for
+		// H.264. The slower preset squeezes more quality out at the same CRF.
+		args = append(args, "-vf", strings.Join(vfFilters, ","))
+		args = append(args, "-c:v", "libx264", "-crf", "18", "-preset", "slower")
+	} else {
+		args = append(args, "-c:v", "copy")
+	}
+	if len(afFilters) > 0 {
+		args = append(args, "-af", strings.Join(afFilters, ","))
+	} else {
+		args = append(args, "-c:a", "copy")
+	}
+	return append(args, tmpOutput)
+}
+
+// patchThreadCount replaces the value immediately after the "-threads" flag in
+// an FFmpeg argument slice with the given count string.
+func patchThreadCount(args []string, count string) []string {
+	for i, arg := range args {
+		if arg == "-threads" && i+1 < len(args) {
+			args[i+1] = count
+			return args
+		}
+	}
+	return args
+}
+
+// runFFmpegJob executes a single ppJob and logs the outcome to the UI.
+func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, job ppJob) {
+	app.appendOutput(
+		fmt.Sprintf("[SYSTEM] Post-processing: %s", filepath.Base(job.inputPath)),
+		color.RGBA{R: 0, G: 255, B: 255, A: 255},
+	)
+
+	cmd := exec.CommandContext(ctx, ffmpegPath, job.ffmpegArgs...)
+	hideWindow(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		app.appendOutput(
+			fmt.Sprintf("[ERROR] Post-processing failed: %v", err),
+			color.RGBA{R: 255, G: 0, B: 0, A: 255},
+		)
+		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+			if line != "" {
+				app.appendOutput(line, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+			}
+		}
+		os.Remove(job.tmpOutput)
+		return
+	}
+
+	os.Remove(job.inputPath)
+	os.Rename(job.tmpOutput, job.inputPath)
+	app.appendOutput(
+		fmt.Sprintf("[SYSTEM] Post-processing complete: %s", filepath.Base(job.inputPath)),
+		color.RGBA{R: 0, G: 200, B: 0, A: 255},
+	)
 }
 
 // checkPostProcessingEnabled reports whether any post-processing filter is
