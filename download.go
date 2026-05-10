@@ -174,7 +174,7 @@ func (app *DownloaderApp) startDownload() {
 				}
 			}
 
-			paths := app.runYtDlp(runCtx, url, savePath, trimStart, trimEnd)
+			paths := app.runYtDlp(runCtx, url, savePath, trimStart, trimEnd, index+1, len(urls))
 			allFinalPaths = append(allFinalPaths, paths...)
 
 			if skipItem != nil {
@@ -199,7 +199,8 @@ func (app *DownloaderApp) startDownload() {
 // the tool, and pipes its output/errors back to the UI in real-time.
 // It returns the list of finalized output file paths on success, or nil on
 // failure or cancellation. Post-processing is the caller's responsibility.
-func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath string, trimStart string, trimEnd string) []string {
+// index and total indicate the position within a batch (both 1 for single downloads).
+func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath string, trimStart string, trimEnd string, index, total int) []string {
 	startTime := time.Now()
 	formatFlag := "bestvideo+bestaudio/best"
 	extension := "mp4"
@@ -342,7 +343,11 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		app.updateStatus(fmt.Sprintf("Failed to launch yt-dlp: %v", err))
 		return nil
 	}
-	app.updateStatus("Status: Downloading...")
+	if total > 1 {
+		app.updateStatus(fmt.Sprintf("Status: Downloading (%d of %d)...", index, total))
+	} else {
+		app.updateStatus("Status: Downloading...")
+	}
 
 	result := app.watchOutput(stdout, stderr)
 	err := cmd.Wait()

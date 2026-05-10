@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 // buildPostProcessFilters reads the post-processing checkbox state from the UI
@@ -91,9 +92,13 @@ func uniquePath(path string) string {
 
 // ppJob holds the inputs for a single file's FFmpeg post-processing pass.
 type ppJob struct {
-	inputPath  string
-	tmpOutput  string
-	ffmpegArgs []string
+	inputPath   string
+	tmpOutput   string
+	ffmpegArgs  []string
+	vfFilters   []string // active video filters, for summary logging
+	afFilters   []string // active audio filters, for summary logging
+	threads     int      // thread count assigned to this job
+	encodeMode  string   // human-readable encode strategy, for summary logging
 }
 
 // applyFFmpegFilters runs a concurrent worker pool to post-process each of
@@ -128,7 +133,18 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 		}
 
 		tmpOutput := strings.TrimSuffix(inputPath, ext) + "_pp" + ext
-		jobs = append(jobs, ppJob{inputPath: inputPath, tmpOutput: tmpOutput, ffmpegArgs: buildFFmpegArgs(inputPath, tmpOutput, activeVF, afFilters)})
+		encodeMode := "Stream copy"
+		if len(activeVF) > 0 {
+			encodeMode = "Re-encode (libx264, CRF 18, slower)"
+		}
+		jobs = append(jobs, ppJob{
+			inputPath:  inputPath,
+			tmpOutput:  tmpOutput,
+			ffmpegArgs: buildFFmpegArgs(inputPath, tmpOutput, activeVF, afFilters),
+			vfFilters:  activeVF,
+			afFilters:  afFilters,
+			encodeMode: encodeMode,
+		})
 	}
 
 	if len(jobs) == 0 {
@@ -164,6 +180,7 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 
 	// Patch the -threads value in each job's arg list now that we know the count.
 	for i := range jobs {
+		jobs[i].threads = threadsPerJob
 		jobs[i].ffmpegArgs = patchThreadCount(jobs[i].ffmpegArgs, fmt.Sprintf("%d", threadsPerJob))
 	}
 
@@ -227,9 +244,17 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 		color.RGBA{R: 0, G: 255, B: 255, A: 255},
 	)
 
+	// Capture input file size before processing.
+	var sizeBefore int64
+	if info, err := os.Stat(job.inputPath); err == nil {
+		sizeBefore = info.Size()
+	}
+
+	start := time.Now()
 	cmd := exec.CommandContext(ctx, ffmpegPath, job.ffmpegArgs...)
 	hideWindow(cmd)
 	out, err := cmd.CombinedOutput()
+	duration := time.Since(start)
 	if err != nil {
 		app.appendOutput(
 			fmt.Sprintf("[ERROR] Post-processing failed: %v", err),
@@ -244,12 +269,88 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 		return
 	}
 
+	// Capture output size before the rename so we can compute the delta.
+	var sizeAfter int64
+	if info, err := os.Stat(job.tmpOutput); err == nil {
+		sizeAfter = info.Size()
+	}
+
 	os.Remove(job.inputPath)
 	os.Rename(job.tmpOutput, job.inputPath)
-	app.appendOutput(
-		fmt.Sprintf("[SYSTEM] Post-processing complete: %s", filepath.Base(job.inputPath)),
-		color.RGBA{R: 0, G: 200, B: 0, A: 255},
-	)
+
+	// Build a human-readable size change string.
+	sizeDelta := ""
+	if sizeBefore > 0 && sizeAfter > 0 {
+		deltaPct := (float64(sizeAfter)-float64(sizeBefore))/float64(sizeBefore)*100
+		sign := "+"
+		if deltaPct < 0 {
+			sign = ""
+		}
+		sizeDelta = fmt.Sprintf("%s → %s (%s%.1f%%)",
+			formatBytes(sizeBefore), formatBytes(sizeAfter), sign, deltaPct)
+	}
+
+	// Collect active filter names for the summary.
+	var filterNames []string
+	for _, f := range job.vfFilters {
+		filterNames = append(filterNames, filterShortName(f))
+	}
+	for _, f := range job.afFilters {
+		filterNames = append(filterNames, filterShortName(f))
+	}
+
+	c := color.RGBA{R: 0, G: 200, B: 0, A: 255}
+	app.appendOutput("────────────────────────────────────────", color.RGBA{R: 0, G: 160, B: 0, A: 255})
+	app.appendOutput(fmt.Sprintf("POST-PROCESSING COMPLETE: %s", filepath.Base(job.inputPath)), c)
+	app.appendOutput(fmt.Sprintf("   ├─ Duration:  %s", formatDuration(duration)), c)
+	app.appendOutput(fmt.Sprintf("   ├─ File size: %s", sizeDelta), c)
+	app.appendOutput(fmt.Sprintf("   ├─ Encoder:   %s", job.encodeMode), c)
+	app.appendOutput(fmt.Sprintf("   ├─ Threads:   %d", job.threads), c)
+	app.appendOutput(fmt.Sprintf("   └─ Filters:   %s", strings.Join(filterNames, ", ")), c)
+	app.appendOutput("────────────────────────────────────────", color.RGBA{R: 0, G: 160, B: 0, A: 255})
+}
+
+// formatBytes formats a byte count as a human-readable string (e.g. "45.2 MiB").
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+// formatDuration formats a duration as a compact human-readable string,
+// always showing three decimal places on the seconds component for precision.
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%.3f seconds", d.Seconds())
+	}
+	m := int(d.Minutes())
+	s := d.Seconds() - float64(m)*60
+	return fmt.Sprintf("%d minutes and %.3f seconds", m, s)
+}
+
+// filterShortName returns a short, readable label for a known FFmpeg filter string.
+func filterShortName(f string) string {
+	switch {
+	case strings.HasPrefix(f, "minterpolate") && strings.Contains(f, "blend"):
+		return "Smooth Motion (Fast)"
+	case strings.HasPrefix(f, "minterpolate") && strings.Contains(f, "vsbmc"):
+		return "Smooth Motion (Balanced)"
+	case strings.HasPrefix(f, "minterpolate"):
+		return "Smooth Motion (Precise)"
+	case strings.HasPrefix(f, "unsharp"):
+		return "Sharpen"
+	case f == "loudnorm":
+		return "Normalize Audio"
+	default:
+		return f
+	}
 }
 
 // checkPostProcessingEnabled reports whether any post-processing filter is
