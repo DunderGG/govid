@@ -400,7 +400,9 @@ func (app *DownloaderApp) createUI() {
 				layout.NewSpacer(),
 				ui.batchMode,
 			),
-			ui.entry,
+			container.NewBorder(nil, nil, nil, widget.NewButtonWithIcon("", theme.ContentClearIcon(), func() {
+				ui.entry.SetText("")
+			}), ui.entry),
 			widget.NewLabelWithStyle("Save Destination:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			container.NewBorder(nil, nil, nil, browseBtn, ui.path),
 			container.NewGridWithColumns(2,
