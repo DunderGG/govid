@@ -275,29 +275,9 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		}
 	}
 
-	// Build post-processing filter lists. These are applied via a separate FFmpeg
-	// pass after yt-dlp finishes, guaranteeing the filters always run regardless
-	// of whether yt-dlp itself invokes FFmpeg during download.
-	var vfFilters []string
-	var afFilters []string
-	if app.ui.smoothMotion.Checked {
-		switch app.ui.smoothMotionMode.Selected {
-		case "Fast":
-			// Frame blending — multi-threaded, much faster, slightly less precise.
-			vfFilters = append(vfFilters, "minterpolate=fps=60:mi_mode=blend")
-		case "Balanced":
-			// MCI without variant-size blocks — ~40% faster than Precise, similar quality.
-			vfFilters = append(vfFilters, "minterpolate=fps=60:mi_mode=mci:vsbmc=0:mc_mode=obmc")
-		default: // "Precise (slow)"
-			vfFilters = append(vfFilters, "minterpolate=fps=60:mi_mode=mci")
-		}
-	}
-	if app.ui.sharpen.Checked {
-		vfFilters = append(vfFilters, "unsharp=3:3:1.5:3:3:0.5")
-	}
-	if app.ui.normalizeAudio.Checked {
-		afFilters = append(afFilters, "loudnorm")
-	}
+	// Build post-processing filter lists via the dedicated pipeline.
+	// These are applied as a separate FFmpeg pass after yt-dlp finishes.
+	vfFilters, afFilters := app.buildPostProcessFilters()
 
 	if extension == "mp3" || extension == "m4a" {
 		// Default --audio-quality is 5 (medium) for most formats, but we want 0 (best) for the audio-focused formats.
