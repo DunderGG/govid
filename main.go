@@ -129,6 +129,12 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	app.ui.themeMode.SetSelected(savedTheme)
 	// Set the savePrefs toggle first since it gates whether the other preferences are loaded.
 	app.ui.savePrefs.SetChecked(prefs.BoolWithFallback("savePrefs", true))
+	// Load post-processing state so buildPostProcessFilters reads correct values
+	// even if the Preferences window has never been opened this session.
+	app.ui.smoothMotion.SetChecked(prefs.Bool("upscale"))
+	app.ui.smoothMotionMode.SetSelected(prefs.StringWithFallback("smoothMotionMode", "Balanced"))
+	app.ui.sharpen.SetChecked(prefs.Bool("sharpen"))
+	app.ui.normalizeAudio.SetChecked(prefs.Bool("normalize"))
 	return app
 }
 

@@ -135,6 +135,20 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 		return
 	}
 
+	// Log a summary of the active filters before starting any workers.
+	var filterSummary []string
+	filterSummary = append(filterSummary, fmt.Sprintf("files: %d", len(jobs)))
+	if len(vfFilters) > 0 {
+		filterSummary = append(filterSummary, "vf: "+strings.Join(vfFilters, ", "))
+	}
+	if len(afFilters) > 0 {
+		filterSummary = append(filterSummary, "af: "+strings.Join(afFilters, ", "))
+	}
+	app.appendOutput(
+		fmt.Sprintf("[SYSTEM] Starting post-processing (%s)", strings.Join(filterSummary, " | ")),
+		color.RGBA{R: 0, G: 255, B: 255, A: 255},
+	)
+
 	// Cap workers at the number of logical CPU cores and at the number of jobs.
 	numWorkers := runtime.NumCPU()
 	if numWorkers > len(jobs) {

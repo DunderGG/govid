@@ -78,7 +78,7 @@ func (app *DownloaderApp) showPreferences() {
 
 	// Smooth Motion quality mode — horizontal radio group.
 	ui.smoothMotionMode.Horizontal = true
-	savedMode := prefs.StringWithFallback("smoothMotionMode", "Precise (slow)")
+	savedMode := prefs.StringWithFallback("smoothMotionMode", "Balanced")
 	ui.smoothMotionMode.SetSelected(savedMode)
 	if !ui.smoothMotion.Checked {
 		ui.smoothMotionMode.Disable()
