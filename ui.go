@@ -291,6 +291,7 @@ func (app *DownloaderApp) createUI() {
 		ui.entry.SetPlaceHolder("https://www.youtube.com/watch?v=...")
 	}
 	ui.batchMode.OnChanged = func(checked bool) {
+		fyne.CurrentApp().Preferences().SetBool("batchMode", checked)
 		if !checked {
 			// Switching back to single mode: keep only the first non-empty URL.
 			first := ""
@@ -303,6 +304,12 @@ func (app *DownloaderApp) createUI() {
 			ui.entry.SetText(first)
 		}
 		app.createUI()
+	}
+	ui.saveLog.OnChanged = func(checked bool) {
+		fyne.CurrentApp().Preferences().SetBool("saveLog", checked)
+	}
+	ui.notify.OnChanged = func(checked bool) {
+		fyne.CurrentApp().Preferences().SetBool("notify", checked)
 	}
 	ui.path.SetPlaceHolder("Download folder...")
 
@@ -330,10 +337,13 @@ func (app *DownloaderApp) createUI() {
 		}, app.window)
 	})
 
-	downloadBtn := widget.NewButtonWithIcon("Download Now!", themedIcon(IconDownload), func() {
+	ui.downloadBtn.Icon = themedIcon(IconDownload)
+	ui.downloadBtn.Text = "Download Now!"
+	ui.downloadBtn.OnTapped = func() {
 		app.startDownload()
-	})
-	downloadBtn.Importance = widget.HighImportance
+	}
+	ui.downloadBtn.Importance = widget.HighImportance
+	ui.downloadBtn.Refresh()
 
 	ui.format.Options = []string{"MP4", "MKV", "WebM", "MP3 (Audio Only)", "M4A (Apple Audio)"}
 
@@ -426,7 +436,7 @@ func (app *DownloaderApp) createUI() {
 				),
 			),
 			container.NewHBox(ui.saveLog, ui.notify),
-			container.NewGridWithColumns(3, downloadBtn, openFolderBtn, ui.cancelBtn),
+			container.NewGridWithColumns(3, ui.downloadBtn, openFolderBtn, ui.cancelBtn),
 		),
 	)
 	inputCardAccented := container.NewBorder(nil, nil, accentBar(), nil, inputCard)

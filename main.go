@@ -47,9 +47,9 @@ type UIWidgets struct {
 	status     *widget.Label       // Short status message (e.g. "Downloading...")
 	format     *widget.Select      // File format selector (MP4, MP3, etc.)
 	quality    *widget.Select      // Maximum resolution selector
-	duplicates *widget.Check       // Option to force unique filenames
 	saveLog    *widget.Check       // Option to persist output to a .txt file
 	notify     *widget.Check       // Option to send a system notification on completion
+	downloadBtn *widget.Button     // Start button for downloads
 	cancelBtn  *widget.Button      // Stop button for active downloads
 	statusDot  *canvas.Circle      // Animated state indicator dot next to the status label
 	trimStart  *widget.Entry       // Optional start time for video trimming (HH:MM:SS)
@@ -101,6 +101,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			quality:    widget.NewSelect(nil, nil),
 			saveLog:    widget.NewCheck("Save output to log file", nil),
 			notify:     widget.NewCheck("Notify on Completion", nil),
+			downloadBtn: widget.NewButtonWithIcon("Download Now!", nil, nil),
 			cancelBtn:  widget.NewButton("", nil),
 			statusDot:  canvas.NewCircle(color.RGBA{R: 100, G: 100, B: 115, A: 255}),
 			progress:   widget.NewProgressBar(),
@@ -135,6 +136,9 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	app.ui.smoothMotionMode.SetSelected(prefs.StringWithFallback("smoothMotionMode", "Balanced"))
 	app.ui.sharpen.SetChecked(prefs.Bool("sharpen"))
 	app.ui.normalizeAudio.SetChecked(prefs.Bool("normalize"))
+	app.ui.batchMode.SetChecked(prefs.Bool("batchMode"))
+	app.ui.saveLog.SetChecked(prefs.Bool("saveLog"))
+	app.ui.notify.SetChecked(prefs.Bool("notify"))
 	return app
 }
 

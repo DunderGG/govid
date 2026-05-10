@@ -172,6 +172,9 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 	prefs.SetString("smoothMotionMode", app.ui.smoothMotionMode.Selected)
 	prefs.SetBool("sharpen", app.ui.sharpen.Checked)
 	prefs.SetBool("normalize", app.ui.normalizeAudio.Checked)
+	prefs.SetBool("batchMode", app.ui.batchMode.Checked)
+	prefs.SetBool("saveLog", app.ui.saveLog.Checked)
+	prefs.SetBool("notify", app.ui.notify.Checked)
 }
 
 // resetPreferences clears all stored preferences and rebuilds the UI with

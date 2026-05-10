@@ -75,6 +75,7 @@ func (app *DownloaderApp) startDownload() {
 	app.ui.logList.Objects = nil
 	app.ui.logList.Refresh()
 	app.ui.cancelBtn.Enable()
+	app.ui.downloadBtn.Disable()
 	app.setStatusIndicator("active")
 
 	// Initialize logging to file if the option is checked.
@@ -132,8 +133,10 @@ func (app *DownloaderApp) startDownload() {
 	}
 
 	go func() {
-		// Always stop the smoother when the batch finishes, regardless of how it ends.
+		// Always stop the smoother and re-enable the download button when the
+		// batch finishes, regardless of how it ends.
 		defer stopQueue()
+		defer fyne.Do(func() { app.ui.downloadBtn.Enable() })
 
 		// Build filters once — they come from UI state and are the same for every URL.
 		vfFilters, afFilters := app.buildPostProcessFilters()
@@ -185,11 +188,39 @@ func (app *DownloaderApp) startDownload() {
 		// Run post-processing over all collected files in one pass so the worker
 		// pool can saturate available CPU cores across multiple concurrent jobs.
 		if hasPostProcess && len(allFinalPaths) > 0 && queueCtx.Err() == nil {
+			// Re-enable cancel and point it at the queue context so the user can
+			// abort all running FFmpeg jobs at once.
+			app.cancelFn = stopQueue
+			fyne.Do(func() { app.ui.cancelBtn.Enable() })
 			app.updateStatus("Status: Post-processing...")
 			app.setStatusIndicator("processing")
 			app.applyFFmpegFilters(queueCtx, allFinalPaths, vfFilters, afFilters)
-			app.updateStatus("Status: Done.")
-			app.setStatusIndicator("success")
+			fyne.Do(func() { app.ui.cancelBtn.Disable() })
+			if queueCtx.Err() == context.Canceled {
+				app.updateStatus("Status: Canceled.")
+				app.setStatusIndicator("canceled")
+				app.appendOutput("Post-processing canceled by user.", color.RGBA{R: 255, G: 165, B: 0, A: 255})
+			} else {
+				app.updateStatus("Status: Done.")
+				app.setStatusIndicator("success")
+				if app.ui.notify.Checked {
+					fyne.CurrentApp().SendNotification(&fyne.Notification{
+						Title:   "GoVid — All Done",
+						Content: fmt.Sprintf("%d file(s) downloaded and processed.", len(allFinalPaths)),
+					})
+				}
+			}
+		} else if queueCtx.Err() == nil && len(allFinalPaths) > 0 && app.ui.notify.Checked {
+			// No post-processing — notify now that all downloads are finished.
+			count := len(urls)
+			msg := "Your download is ready."
+			if count > 1 {
+				msg = fmt.Sprintf("%d downloads complete.", count)
+			}
+			fyne.CurrentApp().SendNotification(&fyne.Notification{
+				Title:   "GoVid — Download Complete",
+				Content: msg,
+			})
 		}
 	}()
 }
@@ -430,12 +461,6 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 			app.updateStatus("Status: Success!")
 			app.setProgressNow(1)
 			app.setStatusIndicator("success")
-			if app.ui.notify.Checked {
-				fyne.CurrentApp().SendNotification(&fyne.Notification{
-					Title:   "GoVid — Download Complete",
-					Content: fmt.Sprintf("Duration: %s  •  Downloaded: %s", durationFormatted, app.stats.lastSize),
-				})
-			}
 		}
 
 		app.log.mutex.Lock()
