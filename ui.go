@@ -8,6 +8,7 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"net/url"
 	"os"
@@ -156,13 +157,27 @@ func (app *DownloaderApp) showPreferences() {
 	})
 	resetBtn.Importance = widget.DangerImportance
 
+	loadConfigBtn := widget.NewButtonWithIcon("Load from Config (govid.json)", theme.SettingsIcon(), func() {
+		config, err := app.loadConfigFromFile()
+		if err != nil {
+			dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), prefsWindow)
+			return
+		}
+		err = app.applyConfig(config)
+		if err != nil {
+			dialog.ShowCustom("Config Loaded with Warnings", "OK", widget.NewLabel(err.Error()), prefsWindow)
+		} else {
+			dialog.ShowInformation("Config Loaded", "Preferences updated from govid.json", prefsWindow)
+		}
+	})
+
 	prefsWindow = fyne.CurrentApp().NewWindow("Preferences")
 	prefsWindow.SetContent(container.NewPadded(container.NewVBox(
 		form,
 		widget.NewSeparator(),
-		container.NewCenter(resetBtn),
+		container.NewGridWithColumns(2, loadConfigBtn, resetBtn),
 	)))
-	prefsWindow.Resize(fyne.NewSize(500, 320))
+	prefsWindow.Resize(fyne.NewSize(500, 360))
 	prefsWindow.Show()
 }
 
@@ -188,6 +203,7 @@ func (app *DownloaderApp) showConfigHelp() {
 		{"Post-Processing", "Found in **Tools → Preferences**. Enhance your downloads using FFmpeg:\n  * **Smooth Motion** – interpolates frames to 60fps for smoother playback\n  * **Sharpen Video** – applies an unsharp mask to restore edge detail in compressed videos\n  * **Normalize Audio** – balances volume levels using the `loudnorm` filter\n\n---\n\nThe **Smooth Motion Mode** controls which interpolation method is used:\n\n  * **Precise (slow)** – Full motion-compensated interpolation (`mi_mode=mci`). Analyses motion vectors between every pair of frames to synthesize new ones. Produces the smoothest and most accurate result, but is almost entirely single-threaded — expect one CPU core pegged at 100% for the full duration. Best for short clips or when quality is the priority.\n\n  * **Balanced** – A faster variant of MCI that disables variant-size block motion compensation (`vsbmc=0`) and uses overlapped block motion compensation (`mc_mode=obmc`). Roughly 40% faster than Precise with very similar visual quality. A good default choice for most videos.\n\n  * **Fast** – Frame blending (`mi_mode=blend`). Instead of computing motion vectors, it cross-fades adjacent frames to generate the in-between frame. Much faster and fully multi-threaded, so it will use all available CPU cores. The result is slightly softer on fast-motion content, but imperceptible on most videos."},
 		{"Cancel", "Stops the active download immediately. In batch mode, it skips the current URL and moves on to the next one."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
+		{"JSON Configuration", "For advanced users, GoVid supports loading settings from a `govid.json` file located in the application folder.\n\n**Format Example:**\n```json\n{\n  \"path\": \"C:\\\\Downloads\",\n  \"format\": \"MP4\",\n  \"quality\": \"1080p\",\n  \"maxSpeed\": \"5M\"\n}\n```\nTo apply changes made to this file, go to **Tools → Preferences** and click **Load from Config (govid.json)**. Note that standard JSON does not support comments; adding them will cause a loading error.\n\n**Supported Values:**\n* **format**: `MP4`, `MKV`, `WebM`, `MP3`, `M4A`\n* **quality**: `Best Quality`, `1080p`, `720p`, `480p`, `360p`\n* **path**: Any valid absolute folder path\n* **maxSpeed**: Numeric value with unit, e.g., `50K`, `5M`, `1G` (or blank for unlimited)"},
 	}
 
 	content := container.NewVBox()
@@ -345,7 +361,7 @@ func (app *DownloaderApp) createUI() {
 	ui.downloadBtn.Importance = widget.HighImportance
 	ui.downloadBtn.Refresh()
 
-	ui.format.Options = []string{"MP4", "MKV", "WebM", "MP3 (Audio Only)", "M4A (Apple Audio)"}
+	ui.format.Options = []string{"MP4", "MKV", "WebM", "MP3", "M4A"}
 
 	savedFormat := prefs.String("format")
 	savedQuality := prefs.String("quality")

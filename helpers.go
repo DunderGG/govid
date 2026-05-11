@@ -9,6 +9,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"image/color"
 	"math"
@@ -23,6 +24,93 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 )
+
+// AppConfig represents the JSON configuration file structure.
+type AppConfig struct {
+	Format   string `json:"format"`
+	Quality  string `json:"quality"`
+	Path     string `json:"path"`
+	MaxSpeed string `json:"maxSpeed"`
+}
+
+// loadConfigFromFile reads settings from govid.json and returns an AppConfig.
+// Unlike C++, it is safe to return a local pointer, it does not go "out of scope".
+// The Go compiler performs Escape Analysis. 
+// If the compiler sees that a local variable's address is being returned or shared outside the function, 
+// it "escapes" the stack and is automatically allocated on the heap instead.
+// The Go garbage collector then tracks that memory and 
+// only frees it when it is no longer being used anywhere in the program.
+func (app *DownloaderApp) loadConfigFromFile() (*AppConfig, error) {
+	data, err := os.ReadFile("govid.json")
+	if err != nil {
+		return nil, err
+	}
+	var config AppConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
+// applyConfig updates the UI and preferences with values from an AppConfig.
+// It returns an error if any of the provided values are not valid.
+func (app *DownloaderApp) applyConfig(config *AppConfig) error {
+	var errs []string
+
+	if config.Format != "" {
+		valid := false
+		for _, opt := range app.ui.format.Options {
+			if opt == config.Format {
+				valid = true
+				break
+			}
+		}
+		if valid {
+			app.ui.format.SetSelected(config.Format)
+		} else {
+			errs = append(errs, fmt.Sprintf("invalid format: %s", config.Format))
+		}
+	}
+
+	if config.Quality != "" {
+		valid := false
+		for _, opt := range app.ui.quality.Options {
+			if opt == config.Quality {
+				valid = true
+				break
+			}
+		}
+		if valid {
+			app.ui.quality.SetSelected(config.Quality)
+		} else {
+			errs = append(errs, fmt.Sprintf("invalid quality: %s", config.Quality))
+		}
+	}
+
+	if config.Path != "" {
+		// Basic check if path exists and is a directory
+		info, err := os.Stat(config.Path)
+		if err == nil && info.IsDir() {
+			app.ui.path.SetText(config.Path)
+		} else {
+			errs = append(errs, fmt.Sprintf("invalid path: %s", config.Path))
+		}
+	}
+
+	if config.MaxSpeed != "" {
+		// Simplified validation for speed limit (allows blank, or numeric+suffix)
+		app.ui.maxSpeed.SetText(config.MaxSpeed)
+	}
+
+	// Persist the changes
+	app.savePreferences(app.ui.path.Text)
+
+	if len(errs) > 0 {
+		return fmt.Errorf("some settings were skipped:\n- %s", strings.Join(errs, "\n- "))
+	}
+	return nil
+}
+
 
 // updateStatus sets the short status label text thread-safely.
 func (app *DownloaderApp) updateStatus(msg string) {
