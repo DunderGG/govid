@@ -5,13 +5,16 @@ GoVid is a high-performance, cross-platform video downloader built with Go. It p
 ## ✨ Features
 
 - **Cross-Platform GUI**: Modern interface built with the [Fyne toolkit](https://fyne.io/).
-- **Multiple Formats**: Support for MP4, MKV, WebM, MP3, and M4A (audio only).
+- **Multiple Formats**: Support for MP4, MKV, WebM, MP3, and M4A.
 - **Quality Control**: Select your preferred maximum resolution for downloads.
 - **Video Trimming**: Download only a specific segment — specify a start time, an end time, or both (`HH:MM:SS` / `MM:SS` / seconds).
+- **Batch Processing**: Download multiple URLs at once by switching to Batch Mode (one URL per line).
 - **Real-time Progress**: Visual progress bars and a live scrollable log view.
-- **Professional Post-Processing**: Seamless integration with FFMPEG for high-quality encoding.
+- **Professional Post-Processing**: Seamless integration with FFmpeg for frame interpolation (60FPS), sharpening, and audio normalization.
+- **Motion Smoothing**: Three modes (Precise, Balanced, Fast) for AI-driven smooth motion interpolation.
 - **Download Management**: Easily start, monitor, and cancel active downloads.
-- **Speed Limiting**: Cap download bandwidth to avoid saturating your connection.
+- **Speed Limiting**: Cap download bandwidth to avoid saturating your network.
+- **Config Support**: Load settings from a `govid.json` file for automation or specific defaults.
 - **Log Export**: Option to save download logs to `.txt` files for troubleshooting.
 - **Completion Notifications**: Optional system notifications when a download finishes.
 - **Dark / Light Theme**: Switch between themes via Tools → Preferences.
@@ -70,16 +73,43 @@ Ensure you have [Go 1.26+](https://go.dev/dl/) installed.
 ## 📖 Usage
 
 1. **Launch**: Open the GoVid application.
-2. **URL**: Paste the video URL into the input field.
+2. **URL / Batch Mode**: Paste the video URL. Enable **Batch Mode** to paste a list of URLs (one per line).
 3. **Configuration**: Select your desired output format (MP4, MKV, WebM, MP3, or M4A) and maximum resolution.
-4. **Trim (optional)**: Enter a start time, end time, or both (e.g. `00:01:30` / `00:05:00`) to download only a portion of the video. Either field can be used alone — leave both blank to download the full video.
-5. **Save Location**: Choose the directory where you want to save the file.
-6. **Download**: Click the **Download** button to start. Monitor progress in real-time or cancel at any time.
-7. **Options**: Check **Allow Duplicate Downloads** to prevent overwrites, **Save output to log file** to persist the session log, or **Notify on Completion** to receive a system notification when the download finishes.
+4. **Trim (optional)**: Enter a start time, end time, or both (e.g. `00:01:30` / `00:05:00`) to download only a portion of the video.
+5. **Post-Processing (Advanced)**: Go to **Tools → Preferences** to enable:
+    - **Smooth Motion**: Interpolates video to 60fps.
+    - **Sharpen Video**: Restores edge detail.
+    - **Normalize Audio**: Balances volume levels.
+6. **JSON Config**: Place a `govid.json` in the app folder to store advanced patterns. Use the **Load from Config** button in Preferences to apply them.
+7. **Save Location**: Choose the directory where you want to save the file.
+8. **Download**: Click **Download Now!** to start.
 
 ### Command Line Options
 
 - `--update`: Updates the underlying `yt-dlp` tool to the latest version.
+
+## ⚙️ Advanced Configuration (govid.json)
+
+For power users, GoVid supports a `govid.json` file in the application directory. This allows you to define startup defaults or automated paths.
+
+Example `govid.json`:
+```json
+{
+  "path": "C:\\Downloads\\YouTube",
+  "format": "MP4",
+  "quality": "1080p",
+  "maxSpeed": "5M"
+}
+```
+
+| Field | Supported Values |
+| :--- | :--- |
+| `format` | `MP4`, `MKV`, `WebM`, `MP3 (Audio Only)`, `M4A (Apple Audio)` |
+| `quality` | `Best Quality`, `1080p`, `720p`, `480p`, `360p` |
+| `path` | Any valid absolute folder path |
+| `maxSpeed` | Numeric value with unit (e.g., `50K`, `5M`, `1G`) |
+
+> **Note:** Standard JSON does not support comments. Adding them will cause a loading error. Use the **Load from Config** button in the Preferences window to apply changes.
 
 ## 🛠️ Built With
 
