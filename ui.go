@@ -49,28 +49,18 @@ func (app *DownloaderApp) createMainMenu() {
 	})
 
 	mainMenu := fyne.NewMainMenu(
-		fyne.NewMenu("Tools", updateMenu, prefsMenu),
+		fyne.NewMenu("Tools", updateMenu, prefsMenu, fyne.NewMenuItem("Post-Processing", func() {
+			app.showPostProcessing()
+		})),
 		fyne.NewMenu("Help", configHelpMenu, fyne.NewMenuItemSeparator(), aboutMenu),
 	)
 	app.window.SetMainMenu(mainMenu)
 }
 
-// showPreferences opens a window for general application settings.
-func (app *DownloaderApp) showPreferences() {
+// showPostProcessing opens a window for specialized hardware/software filters.
+func (app *DownloaderApp) showPostProcessing() {
 	ui := app.ui
 	prefs := fyne.CurrentApp().Preferences()
-
-	// Speed Limit field
-	ui.maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
-	ui.maxSpeed.SetText(prefs.String("maxSpeed"))
-
-	// Theme Mode field — horizontal radio group for a simple two-option toggle.
-	ui.themeMode.Horizontal = true
-	ui.themeMode.SetSelected(prefs.StringWithFallback("themeMode", "Dark"))
-
-	// Cookies field
-	ui.cookies.SetPlaceHolder("Path to cookies.txt (optional)")
-	ui.cookies.SetText(prefs.String("cookiesPath"))
 
 	// Load post-processing toggles
 	ui.smoothMotion.SetChecked(prefs.Bool("upscale"))
@@ -102,6 +92,61 @@ func (app *DownloaderApp) showPreferences() {
 		}
 	}
 
+	// sectionDivider creates a very thin, subtle line with extra vertical padding.
+	sectionDivider := func() fyne.CanvasObject {
+		line := canvas.NewRectangle(accentCyan)
+		line.SetMinSize(fyne.NewSize(300, 1))
+		// Use a Center layout to ensure the rectangle is not stretched vertically or horizontally
+		// by the container it is placed in.
+		return container.NewPadded(container.NewCenter(line))
+	}
+
+	form := &widget.Form{
+		Items: []*widget.FormItem{
+			{Text: "Smooth Motion", Widget: ui.smoothMotion, HintText: "Interpolate frames for fluid playback (slow)"},
+			{Text: "Smoothing Mode", Widget: ui.smoothMotionMode, HintText: "Precise/Balanced use motion vectors, Fast uses blending"},
+			{Text: "Target FPS", Widget: container.NewBorder(nil, nil, nil, fpsLabel, ui.smoothMotionFPS), HintText: "Standard is 60, cinematic is 24, high-refresh is 120"},
+			{Text: "", Widget: sectionDivider()},
+			{Text: "Video Quality", Widget: ui.sharpen, HintText: "Apply unsharp mask to restore edge detail"},
+			{Text: "", Widget: sectionDivider()},
+			{Text: "Audio Quality", Widget: ui.normalizeAudio, HintText: "Loudness normalization via the loudnorm filter"},
+		},
+		OnSubmit: func() {
+			app.savePreferences(ui.path.Text)
+		},
+		SubmitText: "Apply Changes",
+	}
+
+	notice := widget.NewLabelWithStyle("⚠️ Most post-processing requires a full re-encode and FFmpeg installed.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
+
+	w := fyne.CurrentApp().NewWindow("Post-Processing Settings")
+	w.SetContent(container.NewPadded(container.NewVBox(
+		widget.NewLabelWithStyle("Post-Processing Filters", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+		form,
+		widget.NewSeparator(),
+		notice,
+	)))
+	w.Resize(fyne.NewSize(450, 380))
+	w.Show()
+}
+
+// showPreferences opens a window for general application settings.
+func (app *DownloaderApp) showPreferences() {
+	ui := app.ui
+	prefs := fyne.CurrentApp().Preferences()
+
+	// Speed Limit field
+	ui.maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
+	ui.maxSpeed.SetText(prefs.String("maxSpeed"))
+
+	// Theme Mode field — horizontal radio group for a simple two-option toggle.
+	ui.themeMode.Horizontal = true
+	ui.themeMode.SetSelected(prefs.StringWithFallback("themeMode", "Dark"))
+
+	// Cookies field
+	ui.cookies.SetPlaceHolder("Path to cookies.txt (optional)")
+	ui.cookies.SetText(prefs.String("cookiesPath"))
+
 	var prefsWindow fyne.Window
 	cookiesBrowse := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
 		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
@@ -129,10 +174,6 @@ func (app *DownloaderApp) showPreferences() {
 			{Text: "Max Download Speed", Widget: ui.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.themeMode, HintText: "Restart may be required for some changes"},
 			{Text: "Cookies File", Widget: cookiesRow, HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
-			{Text: "Post-Processing", Widget: container.NewHBox(ui.smoothMotion, ui.sharpen, ui.normalizeAudio), HintText: "Enhance video/audio after download (requires FFmpeg)"},
-			{Text: "Smooth Motion Mode", Widget: ui.smoothMotionMode, HintText: "Interpolation method for motion smoothing (see GoVid Guide for details)"},
-			{Text: "Smooth Motion FPS", Widget: container.NewBorder(nil, nil, nil, fpsLabel, ui.smoothMotionFPS), HintText: "Target framerate (24 to 120 FPS)"},
-			{Text: "", Widget: widget.NewLabelWithStyle("⚠️ Smooth Motion forces a full re-encode and may be very slow on long videos.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true})},
 		},
 		OnSubmit: func() {
 			app.savePreferences(ui.path.Text)
@@ -158,13 +199,6 @@ func (app *DownloaderApp) showPreferences() {
 			ui.savePrefs.SetChecked(true)
 			ui.maxSpeed.SetText("")
 			ui.cookies.SetText("")
-			ui.smoothMotion.SetChecked(false)
-			ui.smoothMotionMode.SetSelected("Precise (slow)")
-			ui.smoothMotionMode.Disable()
-			ui.smoothMotionFPS.SetValue(60)
-			ui.smoothMotionFPS.Disable()
-			ui.sharpen.SetChecked(false)
-			ui.normalizeAudio.SetChecked(false)
 			ui.themeMode.SetSelected("Dark")
 		}, prefsWindow)
 	})
@@ -251,6 +285,13 @@ func (app *DownloaderApp) showConfigHelp() {
 	w.SetContent(container.NewStack(scroll))
 	w.Resize(fyne.NewSize(540, 460))
 	w.Show()
+}
+
+// showPostProcessingButton adds a button to the main UI to open the PP window.
+func (app *DownloaderApp) getPostProcessingButton() *widget.Button {
+	return widget.NewButtonWithIcon("Post-Processing", theme.SettingsIcon(), func() {
+		app.showPostProcessing()
+	})
 }
 
 // showAbout opens a small window with information about the creator and the app.

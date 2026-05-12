@@ -114,7 +114,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			cookies:    widget.NewEntry(),
 			savePrefs:  widget.NewCheck("Save preferences between sessions", nil),
 			batchMode:  widget.NewCheck("Batch Mode", nil),
-			smoothMotion:     widget.NewCheck("Smooth Motion", nil),
+			smoothMotion:     widget.NewCheck("Enabled", nil),
 			smoothMotionMode: widget.NewRadioGroup([]string{"Precise (slow)", "Balanced", "Fast"}, nil),
 			smoothMotionFPS:  widget.NewSlider(24, 120),
 			sharpen:          widget.NewCheck("Sharpen Video", nil),
