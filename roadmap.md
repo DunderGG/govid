@@ -216,6 +216,7 @@ This document outlines planned features, improvements, and known limitations for
 
 - [X] Support a `govid.json` or `govid.toml` config file in the app directory.
 - [X] Override format, quality, path, and speed limit defaults from the file.
+- [ ] Override all the other preferences as well from the file.
 
 ### Download History
 > Keep a record of previously downloaded files.

@@ -24,15 +24,16 @@ import (
 // to be passed to applyFFmpegFilters.
 func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []string) {
 	if app.ui.smoothMotion.Checked {
+		fps := int(app.ui.smoothMotionFPS.Value)
 		switch app.ui.smoothMotionMode.Selected {
 		case "Fast":
 			// Frame blending — multi-threaded, much faster, slightly less precise.
-			vfFilters = append(vfFilters, "minterpolate=fps=60:mi_mode=blend")
+			vfFilters = append(vfFilters, fmt.Sprintf("minterpolate=fps=%d:mi_mode=blend", fps))
 		case "Balanced":
 			// MCI without variant-size blocks — ~40% faster than Precise, similar quality.
-			vfFilters = append(vfFilters, "minterpolate=fps=60:mi_mode=mci:vsbmc=0:mc_mode=obmc")
+			vfFilters = append(vfFilters, fmt.Sprintf("minterpolate=fps=%d:mi_mode=mci:vsbmc=0:mc_mode=obmc", fps))
 		default: // "Precise (slow)"
-			vfFilters = append(vfFilters, "minterpolate=fps=60:mi_mode=mci")
+			vfFilters = append(vfFilters, fmt.Sprintf("minterpolate=fps=%d:mi_mode=mci", fps))
 		}
 	}
 	if app.ui.sharpen.Checked {

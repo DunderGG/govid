@@ -59,8 +59,9 @@ type UIWidgets struct {
 	cookies    *widget.Entry        // Path to a Mozilla/Netscape-format cookies file
 	savePrefs  *widget.Check        // Option to persist preferences between sessions
 	batchMode  *widget.Check        // Option to switch URL input to multi-line batch mode
-	smoothMotion     *widget.Check      // Post-processing: Smooth to 60fps
+	smoothMotion     *widget.Check      // Post-processing: Smooth to custom fps
 	smoothMotionMode *widget.RadioGroup // Quality mode for Smooth Motion
+	smoothMotionFPS  *widget.Slider     // Target framerate for motion smoothing
 	sharpen          *widget.Check      // Post-processing: Apply unsharp mask
 	normalizeAudio   *widget.Check      // Post-processing: Normalize audio loudness
 }
@@ -113,8 +114,9 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			cookies:    widget.NewEntry(),
 			savePrefs:  widget.NewCheck("Save preferences between sessions", nil),
 			batchMode:  widget.NewCheck("Batch Mode", nil),
-			smoothMotion:     widget.NewCheck("Smooth Motion (60fps)", nil),
+			smoothMotion:     widget.NewCheck("Smooth Motion", nil),
 			smoothMotionMode: widget.NewRadioGroup([]string{"Precise (slow)", "Balanced", "Fast"}, nil),
+			smoothMotionFPS:  widget.NewSlider(24, 120),
 			sharpen:          widget.NewCheck("Sharpen Video", nil),
 			normalizeAudio:   widget.NewCheck("Normalize Audio", nil),
 		},
@@ -134,6 +136,10 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	// even if the Preferences window has never been opened this session.
 	app.ui.smoothMotion.SetChecked(prefs.Bool("upscale"))
 	app.ui.smoothMotionMode.SetSelected(prefs.StringWithFallback("smoothMotionMode", "Balanced"))
+	
+	fps := prefs.FloatWithFallback("smoothFPS", 60)
+	app.ui.smoothMotionFPS.SetValue(fps)
+	
 	app.ui.sharpen.SetChecked(prefs.Bool("sharpen"))
 	app.ui.normalizeAudio.SetChecked(prefs.Bool("normalize"))
 	app.ui.batchMode.SetChecked(prefs.Bool("batchMode"))

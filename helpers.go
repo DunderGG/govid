@@ -258,6 +258,7 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 	prefs.SetString("cookiesPath", strings.TrimSpace(app.ui.cookies.Text))
 	prefs.SetBool("upscale", app.ui.smoothMotion.Checked)
 	prefs.SetString("smoothMotionMode", app.ui.smoothMotionMode.Selected)
+	prefs.SetFloat("smoothFPS", app.ui.smoothMotionFPS.Value)
 	prefs.SetBool("sharpen", app.ui.sharpen.Checked)
 	prefs.SetBool("normalize", app.ui.normalizeAudio.Checked)
 	prefs.SetBool("batchMode", app.ui.batchMode.Checked)

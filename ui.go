@@ -81,14 +81,24 @@ func (app *DownloaderApp) showPreferences() {
 	ui.smoothMotionMode.Horizontal = true
 	savedMode := prefs.StringWithFallback("smoothMotionMode", "Balanced")
 	ui.smoothMotionMode.SetSelected(savedMode)
+
+	fpsLabel := widget.NewLabel(fmt.Sprintf("%d FPS", int(ui.smoothMotionFPS.Value)))
+	ui.smoothMotionFPS.Step = 1
+	ui.smoothMotionFPS.OnChanged = func(v float64) {
+		fpsLabel.SetText(fmt.Sprintf("%d FPS", int(v)))
+	}
+
 	if !ui.smoothMotion.Checked {
 		ui.smoothMotionMode.Disable()
+		ui.smoothMotionFPS.Disable()
 	}
 	ui.smoothMotion.OnChanged = func(checked bool) {
 		if checked {
 			ui.smoothMotionMode.Enable()
+			ui.smoothMotionFPS.Enable()
 		} else {
 			ui.smoothMotionMode.Disable()
+			ui.smoothMotionFPS.Disable()
 		}
 	}
 
@@ -121,6 +131,7 @@ func (app *DownloaderApp) showPreferences() {
 			{Text: "Cookies File", Widget: cookiesRow, HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
 			{Text: "Post-Processing", Widget: container.NewHBox(ui.smoothMotion, ui.sharpen, ui.normalizeAudio), HintText: "Enhance video/audio after download (requires FFmpeg)"},
 			{Text: "Smooth Motion Mode", Widget: ui.smoothMotionMode, HintText: "Interpolation method for motion smoothing (see GoVid Guide for details)"},
+			{Text: "Smooth Motion FPS", Widget: container.NewBorder(nil, nil, nil, fpsLabel, ui.smoothMotionFPS), HintText: "Target framerate (24 to 120 FPS)"},
 			{Text: "", Widget: widget.NewLabelWithStyle("⚠️ Smooth Motion forces a full re-encode and may be very slow on long videos.", fyne.TextAlignLeading, fyne.TextStyle{Italic: true})},
 		},
 		OnSubmit: func() {
@@ -150,6 +161,8 @@ func (app *DownloaderApp) showPreferences() {
 			ui.smoothMotion.SetChecked(false)
 			ui.smoothMotionMode.SetSelected("Precise (slow)")
 			ui.smoothMotionMode.Disable()
+			ui.smoothMotionFPS.SetValue(60)
+			ui.smoothMotionFPS.Disable()
 			ui.sharpen.SetChecked(false)
 			ui.normalizeAudio.SetChecked(false)
 			ui.themeMode.SetSelected("Dark")
