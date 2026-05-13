@@ -237,6 +237,15 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Show a "History" panel or tab in the UI.
 - [ ] Warn the user when they paste a URL that has already been downloaded.
 
+### Structural Refactoring
+> Decouple core logic from the main UI controller.
+
+- [ ] Break down the "God Object" `DownloaderApp` into specialized components.
+- [ ] **DownloadEngine**: Extract yt-dlp execution and state management (cancellation/progress).
+- [ ] **FilterPipeline**: Extract FFmpeg filter building, detection, and concurrent job logic.
+- [ ] **UIManager**: Separate widget lifecycle and layout from business logic.
+- [ ] **PreferenceService**: Centralize preference loading/saving away from the app struct.
+
 ### Log Management
 > Improve technical troubleshooting.
 
