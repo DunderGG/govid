@@ -19,6 +19,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/storage"
@@ -62,26 +63,97 @@ func (app *DownloaderApp) showPostProcessing() {
 	ui := app.ui
 	prefs := fyne.CurrentApp().Preferences()
 
-	// Load post-processing toggles
+	// Reload all post-processing prefs so the window always shows persisted state.
 	ui.smoothMotion.SetChecked(prefs.Bool("upscale"))
-	ui.sharpen.SetChecked(prefs.Bool("sharpen"))
-	ui.normalizeAudio.SetChecked(prefs.Bool("normalize"))
-
-	// Smooth Motion quality mode — horizontal radio group.
 	ui.smoothMotionMode.Horizontal = true
-	savedMode := prefs.StringWithFallback("smoothMotionMode", "Balanced")
-	ui.smoothMotionMode.SetSelected(savedMode)
+	ui.smoothMotionMode.SetSelected(prefs.StringWithFallback("smoothMotionMode", "Balanced"))
+	ui.sharpen.SetChecked(prefs.Bool("sharpen"))
+	ui.vividMode.SetChecked(prefs.Bool("vividMode"))
+	ui.deband.SetChecked(prefs.Bool("deband"))
+	ui.hdrToSdr.SetChecked(prefs.Bool("hdrToSdr"))
+	ui.denoise.SetChecked(prefs.Bool("denoise"))
+	ui.denoiseMode.Horizontal = true
+	ui.denoiseMode.SetSelected(prefs.StringWithFallback("denoiseMode", "ATADenoise (Fast)"))
+	ui.deinterlace.SetChecked(prefs.Bool("deinterlace"))
+	ui.stabilize.SetChecked(prefs.Bool("stabilize"))
+	ui.autoCrop.SetChecked(prefs.Bool("autoCrop"))
+	ui.upscaleVideo.SetChecked(prefs.Bool("upscaleVideo"))
+	ui.upscaleTarget.SetSelected(prefs.StringWithFallback("upscaleTarget", "2× (Double)"))
+	ui.normalizeAudio.SetChecked(prefs.Bool("normalize"))
+	ui.nightMode.SetChecked(prefs.Bool("nightMode"))
 
-	fpsLabel := widget.NewLabel(fmt.Sprintf("%d FPS", int(ui.smoothMotionFPS.Value)))
+	// FPS slider for smooth motion — use a bound float so the label updates live.
+	fpsBinding := binding.NewFloat()
+	fpsBinding.Set(ui.smoothMotionFPS.Value)
+	fpsLabel := widget.NewLabelWithData(binding.FloatToStringWithFormat(fpsBinding, "%.0f FPS"))
 	ui.smoothMotionFPS.Step = 1
 	ui.smoothMotionFPS.OnChanged = func(v float64) {
-		fpsLabel.SetText(fmt.Sprintf("%d FPS", int(v)))
+		fpsBinding.Set(v)
 	}
-
 	if !ui.smoothMotion.Checked {
 		ui.smoothMotionMode.Disable()
 		ui.smoothMotionFPS.Disable()
 	}
+	// Live processing-load indicator — 5 colored blocks, each lighting up at a
+	// cost threshold. The thresholds are arbitrary and based on testing with a variety of videos and filter combinations, 
+	// but they should give a rough relative indication of how intensive the current settings are.
+	blockEmpty := color.RGBA{R: 55, G: 55, B: 65, A: 255}
+	blockColors := []color.RGBA{
+		{R: 0, G: 210, B: 90, A: 255},  // green
+		{R: 140, G: 210, B: 0, A: 255}, // yellow-green
+		{R: 230, G: 185, B: 0, A: 255}, // yellow
+		{R: 230, G: 100, B: 0, A: 255}, // orange
+		{R: 220, G: 45, B: 45, A: 255}, // red
+	}
+	blockThresholds := []int{15, 35, 65, 100, 130}
+
+	blocks := make([]*canvas.Rectangle, 5)
+	for i := range blocks {
+		block := canvas.NewRectangle(blockEmpty)
+		block.SetMinSize(fyne.NewSize(0, 14))
+		block.CornerRadius = 3
+		blocks[i] = block
+	}
+
+	loadDesc := binding.NewString()
+	loadLabel := widget.NewLabelWithData(loadDesc)
+	loadLabel.Alignment = fyne.TextAlignCenter
+
+	sizeWarn := binding.NewString()
+	sizeWarnLabel := widget.NewLabelWithData(sizeWarn)
+	sizeWarnLabel.Alignment = fyne.TextAlignCenter
+	sizeWarnLabel.TextStyle = fyne.TextStyle{Italic: true}
+	sizeWarnLabel.Wrapping = fyne.TextWrapWord
+
+	refreshLoad := func() {
+		cost, desc := app.computeProcessingLoad()
+		loadDesc.Set(desc)
+		for idx, block := range blocks {
+			if cost > blockThresholds[idx] {
+				block.FillColor = blockColors[idx]
+			} else {
+				block.FillColor = blockEmpty
+			}
+			block.Refresh()
+		}
+		upscale := ui.upscaleVideo.Checked
+		smooth := ui.smoothMotion.Checked
+		switch {
+		case upscale && smooth:
+			sizeWarn.Set("⚠ Upscaling + Smooth Motion will greatly increase file size")
+		case upscale:
+			sizeWarn.Set("⚠ Upscaling significantly increases file size (bigger frames)")
+		case smooth:
+			sizeWarn.Set("⚠ Smooth Motion increases file size (more frames)")
+		default:
+			sizeWarn.Set("")
+		}
+	}
+
+	blockBar := container.NewGridWithColumns(5,
+		blocks[0], blocks[1], blocks[2], blocks[3], blocks[4],
+	)
+
 	ui.smoothMotion.OnChanged = func(checked bool) {
 		if checked {
 			ui.smoothMotionMode.Enable()
@@ -90,26 +162,98 @@ func (app *DownloaderApp) showPostProcessing() {
 			ui.smoothMotionMode.Disable()
 			ui.smoothMotionFPS.Disable()
 		}
+		refreshLoad()
 	}
+	ui.smoothMotionMode.OnChanged = func(_ string) { refreshLoad() }
+
+	// Denoise mode is only relevant when denoise is enabled.
+	if !ui.denoise.Checked {
+		ui.denoiseMode.Disable()
+	}
+	ui.denoise.OnChanged = func(checked bool) {
+		if checked {
+			ui.denoiseMode.Enable()
+		} else {
+			ui.denoiseMode.Disable()
+		}
+		refreshLoad()
+	}
+	ui.denoiseMode.OnChanged = func(_ string) { refreshLoad() }
+
+	// Upscale target is only relevant when upscale is enabled.
+	if !ui.upscaleVideo.Checked {
+		ui.upscaleTarget.Disable()
+	}
+	ui.upscaleVideo.OnChanged = func(checked bool) {
+		if checked {
+			ui.upscaleTarget.Enable()
+		} else {
+			ui.upscaleTarget.Disable()
+		}
+		refreshLoad()
+	}
+	ui.upscaleTarget.OnChanged = func(_ string) { refreshLoad() }
+
+	// Simple toggles — just refresh the load indicator.
+	ui.sharpen.OnChanged      = func(_ bool) { refreshLoad() }
+	ui.vividMode.OnChanged    = func(_ bool) { refreshLoad() }
+	ui.deband.OnChanged       = func(_ bool) { refreshLoad() }
+	ui.hdrToSdr.OnChanged     = func(_ bool) { refreshLoad() }
+	ui.deinterlace.OnChanged  = func(_ bool) { refreshLoad() }
+	ui.stabilize.OnChanged    = func(_ bool) { refreshLoad() }
+	ui.autoCrop.OnChanged     = func(_ bool) { refreshLoad() }
+	ui.normalizeAudio.OnChanged = func(_ bool) { refreshLoad() }
+	ui.nightMode.OnChanged    = func(_ bool) { refreshLoad() }
+
+	refreshLoad() // seed with the current state
 
 	// sectionDivider creates a very thin, subtle line with extra vertical padding.
 	sectionDivider := func() fyne.CanvasObject {
 		line := canvas.NewRectangle(accentCyan)
-		line.SetMinSize(fyne.NewSize(300, 1))
-		// Use a Center layout to ensure the rectangle is not stretched vertically or horizontally
-		// by the container it is placed in.
+		line.SetMinSize(fyne.NewSize(100, 1))
 		return container.NewPadded(container.NewCenter(line))
+	}
+
+	// sectionHeader creates a small bold label used as an inline section title.
+	sectionHeader := func(text string) fyne.CanvasObject {
+		label := canvas.NewText(text, accentCyan)
+		label.TextStyle = fyne.TextStyle{Bold: true}
+		label.TextSize = 12
+		return label
 	}
 
 	form := &widget.Form{
 		Items: []*widget.FormItem{
+			// ── MOTION ────────────────────────────────────────────────────────
+			{Text: "", Widget: sectionHeader("MOTION ENHANCEMENT")},
 			{Text: "Smooth Motion", Widget: ui.smoothMotion, HintText: "Interpolate frames for fluid playback (slow)"},
 			{Text: "Smoothing Mode", Widget: ui.smoothMotionMode, HintText: "Precise/Balanced use motion vectors, Fast uses blending"},
 			{Text: "Target FPS", Widget: container.NewBorder(nil, nil, nil, fpsLabel, ui.smoothMotionFPS), HintText: "Standard is 60, cinematic is 24, high-refresh is 120"},
 			{Text: "", Widget: sectionDivider()},
-			{Text: "Video Quality", Widget: ui.sharpen, HintText: "Apply unsharp mask to restore edge detail"},
+			// ── VIDEO ─────────────────────────────────────────────────────────
+			{Text: "", Widget: sectionHeader("VIDEO ENHANCEMENT")},
+			{Text: "Vivid Mode", Widget: ui.vividMode, HintText: "Boost brightness, contrast, and saturation"},
+			{Text: "Sharpen Video", Widget: ui.sharpen, HintText: "Apply unsharp mask to restore edge detail"},
+			{Text: "Fix Banding", Widget: ui.deband, HintText: "Remove gradient banding steps in skies and dark scenes (deband)"},
+			{Text: "HDR to SDR", Widget: ui.hdrToSdr, HintText: "Tone-map 4K HDR content for standard monitors (zscale + Hable tonemap)"},
 			{Text: "", Widget: sectionDivider()},
-			{Text: "Audio Quality", Widget: ui.normalizeAudio, HintText: "Loudness normalization via the loudnorm filter"},
+			// ── NOISE & ARTIFACTS ─────────────────────────────────────────────
+			{Text: "", Widget: sectionHeader("NOISE & ARTIFACTS")},
+			{Text: "Denoise", Widget: ui.denoise, HintText: "HQ noise reduction for low-quality or grainy footage"},
+			{Text: "Denoise Mode", Widget: ui.denoiseMode, HintText: "NLMeans: highest quality, single-threaded | ATADenoise: fast, multi-threaded"},
+			{Text: "Deinterlace", Widget: ui.deinterlace, HintText: "Remove combing artifacts from archival or TV-rip content (bwdif)"},
+			{Text: "Stabilize", Widget: ui.stabilize, HintText: "Smooth out shaky handheld footage (deshake)"},
+			{Text: "Auto-Crop", Widget: ui.autoCrop, HintText: "Detect and remove black letterbox/pillarbox bars automatically"},
+			{Text: "", Widget: sectionDivider()},
+			// ── UPSCALING ─────────────────────────────────────────────────────
+			{Text: "", Widget: sectionHeader("UPSCALING")},
+			{Text: "Upscale Video", Widget: ui.upscaleVideo, HintText: "Enlarge the video using a high-quality Lanczos resampler"},
+			{Text: "Target Resolution", Widget: ui.upscaleTarget, HintText: "2× doubles both dimensions; fixed targets set a specific height"},
+			{Text: "", Widget: sectionDivider()},
+			// ── AUDIO ─────────────────────────────────────────────────────────
+			{Text: "", Widget: sectionHeader("AUDIO ENHANCEMENT")},
+			{Text: "Normalize Audio", Widget: ui.normalizeAudio, HintText: "Loudness normalization via the loudnorm filter"},
+			{Text: "Night Mode", Widget: ui.nightMode, HintText: "Dynamic compression to balance quiet dialogue and loud effects (dynaudnorm)"},
 		},
 		OnSubmit: func() {
 			app.savePreferences(ui.path.Text)
@@ -117,17 +261,30 @@ func (app *DownloaderApp) showPostProcessing() {
 		SubmitText: "Apply Changes",
 	}
 
-	notice := widget.NewLabelWithStyle("⚠️ Most post-processing requires a full re-encode and FFmpeg installed.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
+	notice := widget.NewLabelWithStyle("⚠️ Most filters require FFmpeg and trigger a full re-encode.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 
-	w := fyne.CurrentApp().NewWindow("Post-Processing Settings")
-	w.SetContent(container.NewPadded(container.NewVBox(
-		widget.NewLabelWithStyle("Post-Processing Filters", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
-		form,
+	// Live processing-load indicator.
+	loadSection := container.NewVBox(
 		widget.NewSeparator(),
-		notice,
-	)))
-	w.Resize(fyne.NewSize(450, 380))
-	w.Show()
+		widget.NewLabelWithStyle("Estimated Processing Load", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+		blockBar,
+		loadLabel,
+		sizeWarnLabel,
+	)
+
+	title := widget.NewLabelWithStyle("Post-Processing Filters", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	footer := container.NewVBox(loadSection, widget.NewSeparator(), notice)
+
+	scroll := container.NewScroll(form)
+	// Border layout: title pinned top, footer pinned bottom, scroll fills the rest.
+	content := container.NewBorder(title, footer, nil, nil, scroll)
+
+	ppWin := fyne.CurrentApp().NewWindow("Post-Processing Settings")
+	ppWin.SetContent(container.NewPadded(content))
+	ppWin.Resize(fyne.NewSize(600, 580))
+	ppWin.SetFixedSize(false)
+	ppWin.Canvas().SetOnTypedKey(nil) // ensure focus is set
+	ppWin.Show()
 }
 
 // showPreferences opens a window for general application settings.
@@ -259,8 +416,8 @@ func (app *DownloaderApp) showConfigHelp() {
 		title.Wrapping = fyne.TextWrapOff
 
 		body := widget.NewRichTextFromMarkdown(item.desc)
-		for i := range body.Segments {
-			if segment, ok := body.Segments[i].(*widget.TextSegment); ok {
+		for segIdx := range body.Segments {
+			if segment, ok := body.Segments[segIdx].(*widget.TextSegment); ok {
 				// Make bold text use the theme's primary color for better visual hierarchy
 				if segment.Style.TextStyle.Bold {
 					segment.Style.ColorName = theme.ColorNamePrimary
@@ -281,10 +438,10 @@ func (app *DownloaderApp) showConfigHelp() {
 	scroll := container.NewScroll(content)
 	scroll.SetMinSize(fyne.NewSize(520, 420))
 
-	w := fyne.CurrentApp().NewWindow("GoVid Guide")
-	w.SetContent(container.NewStack(scroll))
-	w.Resize(fyne.NewSize(540, 460))
-	w.Show()
+	guideWin := fyne.CurrentApp().NewWindow("GoVid Guide")
+	guideWin.SetContent(container.NewStack(scroll))
+	guideWin.Resize(fyne.NewSize(540, 460))
+	guideWin.Show()
 }
 
 // showPostProcessingButton adds a button to the main UI to open the PP window.
@@ -325,17 +482,17 @@ func (app *DownloaderApp) showAbout() {
 		links,
 	)
 
-	w := fyne.CurrentApp().NewWindow("About GoVid")
-	w.SetContent(container.NewPadded(content))
-	w.Resize(fyne.NewSize(360, 280))
-	w.SetFixedSize(true)
-	w.Show()
+	aboutWin := fyne.CurrentApp().NewWindow("About GoVid")
+	aboutWin.SetContent(container.NewPadded(content))
+	aboutWin.Resize(fyne.NewSize(360, 280))
+	aboutWin.SetFixedSize(true)
+	aboutWin.Show()
 }
 
 // parseURL is a small helper to safely parse a URL string for use in hyperlinks.
 func parseURL(rawURL string) *url.URL {
-	u, _ := url.Parse(rawURL)
-	return u
+	parsed, _ := url.Parse(rawURL)
+	return parsed
 }
 
 // createUI constructs the graphical user interface by organizing widgets into
@@ -366,8 +523,8 @@ func (app *DownloaderApp) createUI() {
 			// Switching back to single mode: keep only the first non-empty URL.
 			first := ""
 			for _, line := range strings.Split(ui.entry.Text, "\n") {
-				if t := strings.TrimSpace(line); t != "" {
-					first = t
+				if trimmed := strings.TrimSpace(line); trimmed != "" {
+					first = trimmed
 					break
 				}
 			}

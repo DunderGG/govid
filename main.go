@@ -64,6 +64,17 @@ type UIWidgets struct {
 	smoothMotionFPS  *widget.Slider     // Target framerate for motion smoothing
 	sharpen          *widget.Check      // Post-processing: Apply unsharp mask
 	normalizeAudio   *widget.Check      // Post-processing: Normalize audio loudness
+	vividMode        *widget.Check      // Post-processing: Color/saturation enhancement
+	denoise          *widget.Check      // Post-processing: Noise reduction
+	denoiseMode      *widget.RadioGroup // Denoise method (NLMeans = HQ, ATADenoise = Fast)
+	hdrToSdr         *widget.Check      // Post-processing: HDR to SDR tone mapping
+	deband           *widget.Check      // Post-processing: Fix gradient banding
+	autoCrop         *widget.Check      // Post-processing: Auto-crop black bars
+	stabilize        *widget.Check      // Post-processing: Video stabilization (deshake)
+	deinterlace      *widget.Check      // Post-processing: Deinterlace (bwdif)
+	nightMode        *widget.Check      // Post-processing: Dynamic audio compression
+	upscaleVideo     *widget.Check      // Post-processing: Resolution upscaling
+	upscaleTarget    *widget.Select     // Target resolution for upscaling
 }
 
 // DownloadStats tracks the real-time metrics of a download session.
@@ -119,6 +130,17 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			smoothMotionFPS:  widget.NewSlider(24, 120),
 			sharpen:          widget.NewCheck("Sharpen Video", nil),
 			normalizeAudio:   widget.NewCheck("Normalize Audio", nil),
+			vividMode:        widget.NewCheck("Vivid Mode", nil),
+			denoise:          widget.NewCheck("Denoise", nil),
+			denoiseMode:      widget.NewRadioGroup([]string{"NLMeans (HQ, slow)", "ATADenoise (Fast)"}, nil),
+			hdrToSdr:         widget.NewCheck("HDR to SDR", nil),
+			deband:           widget.NewCheck("Fix Banding", nil),
+			autoCrop:         widget.NewCheck("Auto-Crop", nil),
+			stabilize:        widget.NewCheck("Stabilize", nil),
+			deinterlace:      widget.NewCheck("Deinterlace", nil),
+			nightMode:        widget.NewCheck("Night Mode", nil),
+			upscaleVideo:     widget.NewCheck("Upscale Video", nil),
+			upscaleTarget:    widget.NewSelect([]string{"2× (Double)", "1080p", "1440p", "4K (2160p)"}, nil),
 		},
 		stats: &DownloadStats{},
 		log:   &LogManager{},
@@ -142,6 +164,17 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	
 	app.ui.sharpen.SetChecked(prefs.Bool("sharpen"))
 	app.ui.normalizeAudio.SetChecked(prefs.Bool("normalize"))
+	app.ui.vividMode.SetChecked(prefs.Bool("vividMode"))
+	app.ui.denoise.SetChecked(prefs.Bool("denoise"))
+	app.ui.denoiseMode.SetSelected(prefs.StringWithFallback("denoiseMode", "ATADenoise (Fast)"))
+	app.ui.hdrToSdr.SetChecked(prefs.Bool("hdrToSdr"))
+	app.ui.deband.SetChecked(prefs.Bool("deband"))
+	app.ui.autoCrop.SetChecked(prefs.Bool("autoCrop"))
+	app.ui.stabilize.SetChecked(prefs.Bool("stabilize"))
+	app.ui.deinterlace.SetChecked(prefs.Bool("deinterlace"))
+	app.ui.nightMode.SetChecked(prefs.Bool("nightMode"))
+	app.ui.upscaleVideo.SetChecked(prefs.Bool("upscaleVideo"))
+	app.ui.upscaleTarget.SetSelected(prefs.StringWithFallback("upscaleTarget", "2× (Double)"))
 	app.ui.batchMode.SetChecked(prefs.Bool("batchMode"))
 	app.ui.saveLog.SetChecked(prefs.Bool("saveLog"))
 	app.ui.notify.SetChecked(prefs.Bool("notify"))

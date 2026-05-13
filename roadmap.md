@@ -186,15 +186,15 @@ This document outlines planned features, improvements, and known limitations for
 - [x] **Smooth Motion**: Interpolate frames up to 120 FPS for fluid playback.
 - [x] **Sharpen Video**: Apply an unsharp mask to restore edge detail.
 - [x] **Normalize Audio**: Loudness normalization via the `loudnorm` filter.
-- [ ] **Vivid Mode**: Automated color correction (brightness, contrast, saturation).
-- [ ] **Denoise (Advanced)**: HQ noise reduction via `nlmeans` or `atadenoise` to clean up low-quality web videos.
-- [ ] **HDR to SDR Tone Mapping**: Convert 4K HDR downloads for standard monitors via `zscale` to prevent "washed out" colors.
-- [ ] **Fix Gradient Banding**: Use the `deband` filter to remove "steps" in skies or dark scenes caused by web compression.
-- [ ] **Auto-Crop Black Bars**: Detect and remove letterboxing/pillarboxing automatically.
-- [ ] **Video Stabilization**: Use `deshake` to smooth out handheld footage or shaky web uploads.
-- [ ] **Deinterlace**: Remove combing artifacts from older archival or TV-rip content via `bwdif`.
-- [ ] **Dynamic Compression**: "Night Mode" for audio to balance dialogue and loud action.
-- [ ] **Resolution Upscaling**: Professional upscaling (e.g., 720p to 1080p) via advanced FFmpeg scalars.
+- [x] **Vivid Mode**: Automated color correction (brightness, contrast, saturation).
+- [x] **Denoise (Advanced)**: HQ noise reduction via `nlmeans` or `atadenoise` to clean up low-quality web videos.
+- [x] **HDR to SDR Tone Mapping**: Convert 4K HDR downloads for standard monitors via `zscale` to prevent "washed out" colors.
+- [x] **Fix Gradient Banding**: Use the `deband` filter to remove "steps" in skies or dark scenes caused by web compression.
+- [x] **Auto-Crop Black Bars**: Detect and remove letterboxing/pillarboxing automatically.
+- [x] **Video Stabilization**: Use `deshake` to smooth out handheld footage or shaky web uploads.
+- [x] **Deinterlace**: Remove combing artifacts from older archival or TV-rip content via `bwdif`.
+- [x] **Dynamic Compression**: "Night Mode" for audio to balance dialogue and loud action.
+- [x] **Resolution Upscaling**: Professional upscaling (e.g., 720p to 1080p) via advanced FFmpeg scalars.
 
 ### Portable Mode
 > Carry settings alongside the executable.

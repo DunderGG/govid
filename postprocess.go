@@ -7,6 +7,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"image/color"
@@ -39,10 +40,110 @@ func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []stri
 	if app.ui.sharpen.Checked {
 		vfFilters = append(vfFilters, "unsharp=3:3:1.5:3:3:0.5")
 	}
+	if app.ui.vividMode.Checked {
+		vfFilters = append(vfFilters, "eq=brightness=0.05:contrast=1.1:saturation=1.4")
+	}
+	if app.ui.deband.Checked {
+		vfFilters = append(vfFilters, "deband")
+	}
+	if app.ui.hdrToSdr.Checked {
+		// Multi-step HDR-to-SDR pipeline: linearise → tonemap (Hable) → convert to BT.709.
+		vfFilters = append(vfFilters, "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=s=709:m=bt709:r=tv,format=yuv420p")
+	}
+	if app.ui.denoise.Checked {
+		switch app.ui.denoiseMode.Selected {
+		case "NLMeans (HQ, slow)":
+			vfFilters = append(vfFilters, "nlmeans=10:7:5:3:3")
+		default: // ATADenoise (Fast)
+			vfFilters = append(vfFilters, "atadenoise=0a=0.02:0b=0.04:1a=0.02:1b=0.04:2a=0.02:2b=0.04")
+		}
+	}
+	if app.ui.deinterlace.Checked {
+		vfFilters = append(vfFilters, "bwdif")
+	}
+	if app.ui.stabilize.Checked {
+		vfFilters = append(vfFilters, "deshake")
+	}
+	if app.ui.autoCrop.Checked {
+		// The actual crop parameters are determined per-file in applyFFmpegFilters.
+		vfFilters = append(vfFilters, "__autocrop__")
+	}
+	if app.ui.upscaleVideo.Checked {
+		switch app.ui.upscaleTarget.Selected {
+		case "1080p":
+			vfFilters = append(vfFilters, "scale=-2:1080:flags=lanczos")
+		case "1440p":
+			vfFilters = append(vfFilters, "scale=-2:1440:flags=lanczos")
+		case "4K (2160p)":
+			vfFilters = append(vfFilters, "scale=-2:2160:flags=lanczos")
+		default: // "2× (Double)"
+			vfFilters = append(vfFilters, "scale=iw*2:ih*2:flags=lanczos")
+		}
+	}
 	if app.ui.normalizeAudio.Checked {
 		afFilters = append(afFilters, "loudnorm")
 	}
+	if app.ui.nightMode.Checked {
+		afFilters = append(afFilters, "dynaudnorm=f=300:g=5:p=0.95")
+	}
 	return
+}
+
+// detectCropFilter runs a quick FFmpeg cropdetect pass on the first 60 seconds of
+// the file and returns a "crop=W:H:X:Y" filter string, or "" if no bars were found.
+func (app *DownloaderApp) detectCropFilter(ctx context.Context, ffmpegPath, inputPath string) string {
+	cmd := exec.CommandContext(ctx, ffmpegPath,
+		"-t", "60", "-i", inputPath,
+		"-vf", "cropdetect=limit=24:round=16:reset=0",
+		"-f", "null", "-",
+	)
+	hideWindow(cmd)
+	out, _ := cmd.CombinedOutput()
+
+	// The last "crop=" line contains the tightest detected crop.
+	lastCrop := ""
+	for _, line := range strings.Split(string(out), "\n") {
+		if idx := strings.Index(line, "crop="); idx != -1 {
+			fields := strings.Fields(line[idx:])
+			if len(fields) > 0 {
+				lastCrop = fields[0]
+			}
+		}
+	}
+	if lastCrop == "" {
+		app.appendOutput("[SYSTEM] Auto-Crop: no black bars detected, skipping.", color.RGBA{R: 0, G: 255, B: 255, A: 255})
+	} else {
+		app.appendOutput(fmt.Sprintf("[SYSTEM] Auto-Crop: detected %s", lastCrop), color.RGBA{R: 0, G: 255, B: 255, A: 255})
+	}
+	return lastCrop
+}
+
+// resolveAutoCrop replaces the "__autocrop__" sentinel in a vfFilters slice with
+// the actual crop filter detected from the specific file. If detection fails the
+// sentinel is silently dropped so the rest of the filter chain still runs.
+func (app *DownloaderApp) resolveAutoCrop(ctx context.Context, ffmpegPath, inputPath string, filters []string) []string {
+	hasSentinel := false
+	for _, filter := range filters {
+		if filter == "__autocrop__" {
+			hasSentinel = true
+			break
+		}
+	}
+	if !hasSentinel {
+		return filters
+	}
+	cropFilter := app.detectCropFilter(ctx, ffmpegPath, inputPath)
+	var resolved []string
+	for _, filter := range filters {
+		if filter == "__autocrop__" {
+			if cropFilter != "" {
+				resolved = append(resolved, cropFilter)
+			}
+		} else {
+			resolved = append(resolved, filter)
+		}
+	}
+	return resolved
 }
 
 // finalizeDownloadedFiles finds all files written by yt-dlp under the given
@@ -128,6 +229,9 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 		activeVF := vfFilters
 		if isAudioOnly {
 			activeVF = nil // video filters don't apply to audio-only files
+		} else {
+			// Resolve the __autocrop__ sentinel to an actual crop filter for this specific file.
+			activeVF = app.resolveAutoCrop(ctx, ffmpegPath, inputPath, activeVF)
 		}
 		if len(activeVF) == 0 && len(afFilters) == 0 {
 			continue
@@ -208,7 +312,7 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 // buildFFmpegArgs constructs the FFmpeg argument list for a single post-processing
 // job. The -threads placeholder is set to "0" and patched to the real count later.
 func buildFFmpegArgs(inputPath, tmpOutput string, vfFilters, afFilters []string) []string {
-	args := []string{"-y", "-threads", "0", "-i", inputPath}
+	args := []string{"-y", "-threads", "0", "-stats_period", "2", "-i", inputPath}
 	if len(vfFilters) > 0 {
 		// Re-encode with high quality settings to prevent the output from being
 		// smaller/worse than the original. CRF 18 is visually near-lossless for
@@ -229,16 +333,18 @@ func buildFFmpegArgs(inputPath, tmpOutput string, vfFilters, afFilters []string)
 // patchThreadCount replaces the value immediately after the "-threads" flag in
 // an FFmpeg argument slice with the given count string.
 func patchThreadCount(args []string, count string) []string {
-	for i, arg := range args {
-		if arg == "-threads" && i+1 < len(args) {
-			args[i+1] = count
+	for argIdx, arg := range args {
+		if arg == "-threads" && argIdx+1 < len(args) {
+			args[argIdx+1] = count
 			return args
 		}
 	}
 	return args
 }
 
-// runFFmpegJob executes a single ppJob and logs the outcome to the UI.
+// runFFmpegJob executes a single ppJob and streams FFmpeg's stderr to the UI
+// in real-time. Progress stats (frame, fps, speed) update the status bar;
+// all other lines are collected for error reporting if the job fails.
 func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, job ppJob) {
 	app.appendOutput(
 		fmt.Sprintf("[SYSTEM] Post-processing: %s", filepath.Base(job.inputPath)),
@@ -254,17 +360,57 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, ffmpegPath, job.ffmpegArgs...)
 	hideWindow(cmd)
-	out, err := cmd.CombinedOutput()
+
+	stderrPipe, pipeErr := cmd.StderrPipe()
+	if pipeErr != nil {
+		// Fallback: run without streaming.
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			app.appendOutput(fmt.Sprintf("[ERROR] Post-processing failed: %v", err), color.RGBA{R: 255, A: 255})
+			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+				if line != "" {
+					app.appendOutput(line, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+				}
+			}
+			os.Remove(job.tmpOutput)
+		}
+		return
+	}
+
+	if err := cmd.Start(); err != nil {
+		app.appendOutput(fmt.Sprintf("[ERROR] Could not start FFmpeg: %v", err), color.RGBA{R: 255, A: 255})
+		return
+	}
+
+	// Stream stderr: progress lines go to the status bar; all lines are kept
+	// in errLines in case the job fails and we need to show the full output.
+	var errLines []string
+	scanner := bufio.NewScanner(stderrPipe)
+	scanner.Split(scanCRLF)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		errLines = append(errLines, line)
+		if strings.HasPrefix(line, "frame=") {
+			app.ui.status.SetText("Post-Processing: " + formatFFmpegProgress(line))
+		}
+	}
+
+	err := cmd.Wait()
 	duration := time.Since(start)
+
+	// Restore status bar regardless of outcome.
+	app.ui.status.SetText("Status: Idle")
+
 	if err != nil {
 		app.appendOutput(
 			fmt.Sprintf("[ERROR] Post-processing failed: %v", err),
 			color.RGBA{R: 255, G: 0, B: 0, A: 255},
 		)
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			if line != "" {
-				app.appendOutput(line, color.RGBA{R: 180, G: 180, B: 180, A: 255})
-			}
+		for _, line := range errLines {
+			app.appendOutput(line, color.RGBA{R: 180, G: 180, B: 180, A: 255})
 		}
 		os.Remove(job.tmpOutput)
 		return
@@ -293,36 +439,76 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 
 	// Collect active filter names for the summary.
 	var filterNames []string
-	for _, f := range job.vfFilters {
-		filterNames = append(filterNames, filterShortName(f))
+	for _, vfFilter := range job.vfFilters {
+		filterNames = append(filterNames, filterShortName(vfFilter))
 	}
-	for _, f := range job.afFilters {
-		filterNames = append(filterNames, filterShortName(f))
+	for _, afFilter := range job.afFilters {
+		filterNames = append(filterNames, filterShortName(afFilter))
 	}
 
-	c := color.RGBA{R: 0, G: 200, B: 0, A: 255}
+	successColor := color.RGBA{R: 0, G: 200, B: 0, A: 255}
 	app.appendOutput("────────────────────────────────────────", color.RGBA{R: 0, G: 160, B: 0, A: 255})
-	app.appendOutput(fmt.Sprintf("POST-PROCESSING COMPLETE: %s", filepath.Base(job.inputPath)), c)
-	app.appendOutput(fmt.Sprintf("   ├─ Duration:  %s", formatDuration(duration)), c)
-	app.appendOutput(fmt.Sprintf("   ├─ File size: %s", sizeDelta), c)
-	app.appendOutput(fmt.Sprintf("   ├─ Encoder:   %s", job.encodeMode), c)
-	app.appendOutput(fmt.Sprintf("   ├─ Threads:   %d", job.threads), c)
-	app.appendOutput(fmt.Sprintf("   └─ Filters:   %s", strings.Join(filterNames, ", ")), c)
+	app.appendOutput(fmt.Sprintf("POST-PROCESSING COMPLETE: %s", filepath.Base(job.inputPath)), successColor)
+	app.appendOutput(fmt.Sprintf("   ├─ Duration:  %s", formatDuration(duration)), successColor)
+	app.appendOutput(fmt.Sprintf("   ├─ File size: %s", sizeDelta), successColor)
+	app.appendOutput(fmt.Sprintf("   ├─ Encoder:   %s", job.encodeMode), successColor)
+	app.appendOutput(fmt.Sprintf("   ├─ Threads:   %d", job.threads), successColor)
+	app.appendOutput(fmt.Sprintf("   └─ Filters:   %s", strings.Join(filterNames, ", ")), successColor)
 	app.appendOutput("────────────────────────────────────────", color.RGBA{R: 0, G: 160, B: 0, A: 255})
 }
 
+// formatFFmpegProgress parses a FFmpeg stats line ("frame=X fps=X ... time=HH:MM:SS speed=Xx")
+// and returns a compact human-readable string for the status bar.
+func formatFFmpegProgress(line string) string {
+	get := func(key string) string {
+		idx := strings.Index(line, key+"=")
+		if idx == -1 {
+			return ""
+		}
+		rest := strings.TrimSpace(line[idx+len(key)+1:])
+		fields := strings.Fields(rest)
+		if len(fields) == 0 {
+			return ""
+		}
+		return fields[0]
+	}
+	parts := []string{}
+	if val := get("frame"); val != "" { parts = append(parts, "frame "+val) }
+	if val := get("fps"); val != "" && val != "0" { parts = append(parts, val+" fps") }
+	if val := get("time"); val != "" { parts = append(parts, "time "+val) }
+	if val := get("speed"); val != "" { parts = append(parts, "speed "+val) }
+	if len(parts) == 0 {
+		return line
+	}
+	return strings.Join(parts, " | ")
+}
+
+// scanCRLF is a bufio.SplitFunc that splits on either \r or \n, handling the
+// carriage-return-only line endings FFmpeg uses for its progress output.
+func scanCRLF(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	for pos, byteVal := range data {
+		if byteVal == '\r' || byteVal == '\n' {
+			return pos + 1, data[:pos], nil
+		}
+	}
+	if atEOF && len(data) > 0 {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}
+
 // formatBytes formats a byte count as a human-readable string (e.g. "45.2 MiB").
-func formatBytes(b int64) string {
+func formatBytes(byteCount int64) string {
 	const unit = 1024
-	if b < unit {
-		return fmt.Sprintf("%d B", b)
+	if byteCount < unit {
+		return fmt.Sprintf("%d B", byteCount)
 	}
 	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
+	for remaining := byteCount / unit; remaining >= unit; remaining /= unit {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
+	return fmt.Sprintf("%.1f %ciB", float64(byteCount)/float64(div), "KMGTPE"[exp])
 }
 
 // formatDuration formats a duration as a compact human-readable string,
@@ -331,26 +517,46 @@ func formatDuration(d time.Duration) string {
 	if d < time.Minute {
 		return fmt.Sprintf("%.3f seconds", d.Seconds())
 	}
-	m := int(d.Minutes())
-	s := d.Seconds() - float64(m)*60
-	return fmt.Sprintf("%d minutes and %.3f seconds", m, s)
+	minutes := int(d.Minutes())
+	seconds := d.Seconds() - float64(minutes)*60
+	return fmt.Sprintf("%d minutes and %.3f seconds", minutes, seconds)
 }
 
 // filterShortName returns a short, readable label for a known FFmpeg filter string.
-func filterShortName(f string) string {
+func filterShortName(filterStr string) string {
 	switch {
-	case strings.HasPrefix(f, "minterpolate") && strings.Contains(f, "blend"):
+	case strings.HasPrefix(filterStr, "minterpolate") && strings.Contains(filterStr, "blend"):
 		return "Smooth Motion (Fast)"
-	case strings.HasPrefix(f, "minterpolate") && strings.Contains(f, "vsbmc"):
+	case strings.HasPrefix(filterStr, "minterpolate") && strings.Contains(filterStr, "vsbmc"):
 		return "Smooth Motion (Balanced)"
-	case strings.HasPrefix(f, "minterpolate"):
+	case strings.HasPrefix(filterStr, "minterpolate"):
 		return "Smooth Motion (Precise)"
-	case strings.HasPrefix(f, "unsharp"):
+	case strings.HasPrefix(filterStr, "unsharp"):
 		return "Sharpen"
-	case f == "loudnorm":
+	case filterStr == "loudnorm":
 		return "Normalize Audio"
+	case strings.HasPrefix(filterStr, "eq="):
+		return "Vivid Mode"
+	case strings.HasPrefix(filterStr, "nlmeans"):
+		return "Denoise (NLMeans)"
+	case strings.HasPrefix(filterStr, "atadenoise"):
+		return "Denoise (ATADenoise)"
+	case strings.HasPrefix(filterStr, "zscale=t=linear"):
+		return "HDR to SDR"
+	case filterStr == "deband":
+		return "Deband"
+	case strings.HasPrefix(filterStr, "crop="):
+		return "Auto-Crop"
+	case filterStr == "deshake":
+		return "Stabilize"
+	case filterStr == "bwdif":
+		return "Deinterlace"
+	case strings.HasPrefix(filterStr, "dynaudnorm"):
+		return "Night Mode"
+	case strings.HasPrefix(filterStr, "scale="):
+		return "Upscale"
 	default:
-		return f
+		return filterStr
 	}
 }
 
@@ -358,5 +564,68 @@ func filterShortName(f string) string {
 // currently selected. Used by callers to skip the FFmpeg pass entirely when
 // no filters are active.
 func (app *DownloaderApp) checkPostProcessingEnabled() bool {
-	return app.ui.smoothMotion.Checked || app.ui.sharpen.Checked || app.ui.normalizeAudio.Checked
+	ui := app.ui
+	return ui.smoothMotion.Checked || ui.sharpen.Checked || ui.normalizeAudio.Checked ||
+		ui.vividMode.Checked || ui.denoise.Checked || ui.hdrToSdr.Checked ||
+		ui.deband.Checked || ui.autoCrop.Checked || ui.stabilize.Checked ||
+		ui.deinterlace.Checked || ui.nightMode.Checked || ui.upscaleVideo.Checked
+}
+
+// computeProcessingLoad returns a raw cost score and a human-readable
+// description based on the currently selected filters. The score is unbounded
+// so callers can show it as-is rather than normalising to 0–1.
+func (app *DownloaderApp) computeProcessingLoad() (int, string) {
+	ui := app.ui
+	cost := 0
+
+	if ui.smoothMotion.Checked {
+		switch ui.smoothMotionMode.Selected {
+		case "Fast":
+			cost += 30
+		case "Balanced":
+			cost += 55
+		default: // "Precise (slow)"
+			cost += 70
+		}
+	}
+	if ui.denoise.Checked {
+		switch ui.denoiseMode.Selected {
+		case "NLMeans (HQ, slow)":
+			cost += 40
+		default: // ATADenoise (Fast)
+			cost += 20
+		}
+	}
+	if ui.hdrToSdr.Checked     { cost += 25 }
+	if ui.upscaleVideo.Checked {
+		switch ui.upscaleTarget.Selected {
+		case "4K (2160p)":
+			cost += 35
+		default:
+			cost += 20
+		}
+	}
+	if ui.stabilize.Checked    { cost += 20 }
+	if ui.autoCrop.Checked     { cost += 15 }
+	if ui.deinterlace.Checked  { cost += 12 }
+	if ui.sharpen.Checked      { cost += 10 }
+	if ui.deband.Checked       { cost += 8  }
+	if ui.vividMode.Checked    { cost += 5  }
+	if ui.normalizeAudio.Checked { cost += 5 }
+	if ui.nightMode.Checked      { cost += 5 }
+
+	switch {
+	case cost == 0:
+		return 0, "No post-processing active"
+	case cost < 20:
+		return cost, "Light — minimal overhead"
+	case cost < 50:
+		return cost, "Moderate — noticeable extra time"
+	case cost < 80:
+		return cost, "Heavy — significant re-encode time"
+	case cost < 120:
+		return cost, "Very Heavy — expect long processing"
+	default:
+		return cost, "Intensive — expect very long processing"
+	}
 }
