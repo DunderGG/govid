@@ -101,6 +101,12 @@ type DownloaderApp struct {
 	cancelFn  context.CancelFunc // Function used to signal yt-dlp to stop
 	stopPulse chan struct{}       // Closed to stop the status dot pulse goroutine
 
+	// Active non-modal windows to prevent duplicates.
+	aboutWindow  fyne.Window
+	helpWindow   fyne.Window
+	prefsWindow  fyne.Window
+	ppWindow     fyne.Window
+
 	// Track processing failures across concurrent workers so we can adjust the
 	// Retry button text at the end of the batch.
 	ppFailed int32

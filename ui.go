@@ -60,6 +60,11 @@ func (app *DownloaderApp) createMainMenu() {
 
 // showPostProcessing opens a window for specialized hardware/software filters.
 func (app *DownloaderApp) showPostProcessing() {
+	if app.ppWindow != nil {
+		app.ppWindow.RequestFocus()
+		return
+	}
+
 	ui := app.ui
 	prefs := fyne.CurrentApp().Preferences()
 
@@ -279,16 +284,23 @@ func (app *DownloaderApp) showPostProcessing() {
 	// Border layout: title pinned top, footer pinned bottom, scroll fills the rest.
 	content := container.NewBorder(title, footer, nil, nil, scroll)
 
-	ppWin := fyne.CurrentApp().NewWindow("Post-Processing Settings")
-	ppWin.SetContent(container.NewPadded(content))
-	ppWin.Resize(fyne.NewSize(600, 580))
-	ppWin.SetFixedSize(false)
-	ppWin.Canvas().SetOnTypedKey(nil) // ensure focus is set
-	ppWin.Show()
+	app.ppWindow = fyne.CurrentApp().NewWindow("Post-Processing Settings")
+	app.ppWindow.SetContent(container.NewPadded(content))
+	app.ppWindow.Resize(fyne.NewSize(600, 580))
+	app.ppWindow.SetFixedSize(false)
+	app.ppWindow.SetOnClosed(func() {
+		app.ppWindow = nil
+	})
+	app.ppWindow.Show()
 }
 
 // showPreferences opens a window for general application settings.
 func (app *DownloaderApp) showPreferences() {
+	if app.prefsWindow != nil {
+		app.prefsWindow.RequestFocus()
+		return
+	}
+
 	ui := app.ui
 	prefs := fyne.CurrentApp().Preferences()
 
@@ -304,7 +316,6 @@ func (app *DownloaderApp) showPreferences() {
 	ui.cookies.SetPlaceHolder("Path to cookies.txt (optional)")
 	ui.cookies.SetText(prefs.String("cookiesPath"))
 
-	var prefsWindow fyne.Window
 	cookiesBrowse := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
 		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if err != nil || reader == nil {
@@ -312,7 +323,7 @@ func (app *DownloaderApp) showPreferences() {
 			}
 			ui.cookies.SetText(reader.URI().Path())
 			reader.Close()
-		}, prefsWindow)
+		}, app.prefsWindow)
 		// Filter for common cookie file extensions
 		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".cookies", ".dat"}))
 		fileDialog.Show()
@@ -357,36 +368,44 @@ func (app *DownloaderApp) showPreferences() {
 			ui.maxSpeed.SetText("")
 			ui.cookies.SetText("")
 			ui.themeMode.SetSelected("Dark")
-		}, prefsWindow)
+		}, app.prefsWindow)
 	})
 	resetBtn.Importance = widget.DangerImportance
 
 	loadConfigBtn := widget.NewButtonWithIcon("Load from Config (govid.json)", theme.SettingsIcon(), func() {
 		config, err := app.loadConfigFromFile()
 		if err != nil {
-			dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), prefsWindow)
+			dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), app.prefsWindow)
 			return
 		}
 		err = app.applyConfig(config)
 		if err != nil {
-			dialog.ShowCustom("Config Loaded with Warnings", "OK", widget.NewLabel(err.Error()), prefsWindow)
+			dialog.ShowCustom("Config Loaded with Warnings", "OK", widget.NewLabel(err.Error()), app.prefsWindow)
 		} else {
-			dialog.ShowInformation("Config Loaded", "Preferences updated from govid.json", prefsWindow)
+			dialog.ShowInformation("Config Loaded", "Preferences updated from govid.json", app.prefsWindow)
 		}
 	})
 
-	prefsWindow = fyne.CurrentApp().NewWindow("Preferences")
-	prefsWindow.SetContent(container.NewPadded(container.NewVBox(
+	app.prefsWindow = fyne.CurrentApp().NewWindow("Preferences")
+	app.prefsWindow.SetContent(container.NewPadded(container.NewVBox(
 		form,
 		widget.NewSeparator(),
 		container.NewGridWithColumns(2, loadConfigBtn, resetBtn),
 	)))
-	prefsWindow.Resize(fyne.NewSize(500, 360))
-	prefsWindow.Show()
+	app.prefsWindow.Resize(fyne.NewSize(500, 360))
+	app.prefsWindow.SetOnClosed(func() {
+		app.prefsWindow = nil
+	})
+	app.prefsWindow.Show()
 }
 
 // showConfigHelp opens a scrollable window explaining all configuration options.
 func (app *DownloaderApp) showConfigHelp() {
+	if app.helpWindow != nil {
+		app.helpWindow.RequestFocus()
+		return
+	}
+
 	type helpItem struct {
 		label string
 		desc  string
@@ -438,10 +457,13 @@ func (app *DownloaderApp) showConfigHelp() {
 	scroll := container.NewScroll(content)
 	scroll.SetMinSize(fyne.NewSize(520, 420))
 
-	guideWin := fyne.CurrentApp().NewWindow("GoVid Guide")
-	guideWin.SetContent(container.NewStack(scroll))
-	guideWin.Resize(fyne.NewSize(540, 460))
-	guideWin.Show()
+	app.helpWindow = fyne.CurrentApp().NewWindow("GoVid Guide")
+	app.helpWindow.SetContent(container.NewPadded(scroll))
+	app.helpWindow.Resize(fyne.NewSize(550, 500))
+	app.helpWindow.SetOnClosed(func() {
+		app.helpWindow = nil
+	})
+	app.helpWindow.Show()
 }
 
 // showPostProcessingButton adds a button to the main UI to open the PP window.
@@ -453,6 +475,11 @@ func (app *DownloaderApp) getPostProcessingButton() *widget.Button {
 
 // showAbout opens a small window with information about the creator and the app.
 func (app *DownloaderApp) showAbout() {
+	if app.aboutWindow != nil {
+		app.aboutWindow.RequestFocus()
+		return
+	}
+
 	logo := canvas.NewImageFromResource(resourceAppiconPng)
 	logo.FillMode = canvas.ImageFillContain
 	logo.SetMinSize(fyne.NewSize(80, 80))
@@ -482,11 +509,14 @@ func (app *DownloaderApp) showAbout() {
 		links,
 	)
 
-	aboutWin := fyne.CurrentApp().NewWindow("About GoVid")
-	aboutWin.SetContent(container.NewPadded(content))
-	aboutWin.Resize(fyne.NewSize(360, 280))
-	aboutWin.SetFixedSize(true)
-	aboutWin.Show()
+	app.aboutWindow = fyne.CurrentApp().NewWindow("About GoVid")
+	app.aboutWindow.SetContent(container.NewPadded(content))
+	app.aboutWindow.Resize(fyne.NewSize(360, 280))
+	app.aboutWindow.SetFixedSize(true)
+	app.aboutWindow.SetOnClosed(func() {
+		app.aboutWindow = nil
+	})
+	app.aboutWindow.Show()
 }
 
 // parseURL is a small helper to safely parse a URL string for use in hyperlinks.

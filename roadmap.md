@@ -167,6 +167,9 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Offer an automatic retry with exponential backoff (1, 5, 30 seconds).
 - [x] Surface a "Retry" button in the UI after a failed download.
 
+### UX Improvements
+- [x] Prevent duplicate application windows (Preferences, About, Help, Post-Processing).
+
 ### Automatic "Best-Fit" Quality
 > Smart handling of missing quality tiers.
 
