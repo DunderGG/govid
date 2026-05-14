@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -76,7 +77,9 @@ func (app *DownloaderApp) startDownload() {
 	app.ui.logList.Refresh()
 	app.ui.cancelBtn.Enable()
 	app.ui.downloadBtn.Disable()
+	app.ui.downloadBtn.SetText("Download Now!")
 	app.setStatusIndicator("active")
+	atomic.StoreInt32(&app.ppFailed, 0)
 
 	// Initialize logging to file if the option is checked.
 	if app.ui.saveLog.Checked {
@@ -136,7 +139,12 @@ func (app *DownloaderApp) startDownload() {
 		// Always stop the smoother and re-enable the download button when the
 		// batch finishes, regardless of how it ends.
 		defer stopQueue()
-		defer fyne.Do(func() { app.ui.downloadBtn.Enable() })
+		defer fyne.Do(func() {
+			if atomic.LoadInt32(&app.ppFailed) > 0 {
+				app.ui.downloadBtn.SetText("Retry")
+			}
+			app.ui.downloadBtn.Enable()
+		})
 
 		// Build filters once — they come from UI state and are the same for every URL.
 		vfFilters, afFilters := app.buildPostProcessFilters()
@@ -419,6 +427,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 			} else {
 				app.updateStatus("Status: Failed. Check output below.")
 				app.setStatusIndicator("failed")
+				atomic.StoreInt32(&app.ppFailed, 1)
 				if app.ui.notify.Checked {
 					fyne.CurrentApp().SendNotification(&fyne.Notification{
 						Title:   "GoVid — Download Failed",

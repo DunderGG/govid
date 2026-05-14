@@ -165,7 +165,7 @@ This document outlines planned features, improvements, and known limitations for
 
 - [ ] Detect common transient errors (timeout, rate limit) in yt-dlp stderr output.
 - [ ] Offer an automatic retry with exponential backoff (1, 5, 30 seconds).
-- [ ] Surface a "Retry" button in the UI after a failed download.
+- [x] Surface a "Retry" button in the UI after a failed download.
 
 ### Automatic "Best-Fit" Quality
 > Smart handling of missing quality tiers.

@@ -100,6 +100,10 @@ type DownloaderApp struct {
 	log       *LogManager        // Logging and persistence manager
 	cancelFn  context.CancelFunc // Function used to signal yt-dlp to stop
 	stopPulse chan struct{}       // Closed to stop the status dot pulse goroutine
+
+	// Track processing failures across concurrent workers so we can adjust the
+	// Retry button text at the end of the batch.
+	ppFailed int32
 }
 
 // newDownloaderApp constructs and fully initialises a DownloaderApp.

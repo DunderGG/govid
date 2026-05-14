@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -405,6 +406,7 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 	app.ui.status.SetText("Status: Idle")
 
 	if err != nil {
+		atomic.StoreInt32(&app.ppFailed, 1)
 		app.appendOutput(
 			fmt.Sprintf("[ERROR] Post-processing failed: %v", err),
 			color.RGBA{R: 255, G: 0, B: 0, A: 255},
