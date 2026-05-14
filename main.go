@@ -63,6 +63,7 @@ type UIWidgets struct {
 	smoothMotionMode *widget.RadioGroup // Quality mode for Smooth Motion
 	smoothMotionFPS  *widget.Slider     // Target framerate for motion smoothing
 	sharpen          *widget.Check      // Post-processing: Apply unsharp mask
+	sharpenAmount    *widget.Slider     // Post-processing: Sharpening intensity
 	normalizeAudio   *widget.Check      // Post-processing: Normalize audio loudness
 	vividMode        *widget.Check      // Post-processing: Color/saturation enhancement
 	denoise          *widget.Check      // Post-processing: Noise reduction
@@ -139,6 +140,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			smoothMotionMode: widget.NewRadioGroup([]string{"Precise (slow)", "Balanced", "Fast"}, nil),
 			smoothMotionFPS:  widget.NewSlider(24, 120),
 			sharpen:          widget.NewCheck("Sharpen Video", nil),
+			sharpenAmount:    widget.NewSlider(0, 2),
 			normalizeAudio:   widget.NewCheck("Normalize Audio", nil),
 			vividMode:        widget.NewCheck("Vivid Mode", nil),
 			denoise:          widget.NewCheck("Denoise", nil),

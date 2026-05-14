@@ -73,6 +73,7 @@ func (app *DownloaderApp) showPostProcessing() {
 	ui.smoothMotionMode.Horizontal = true
 	ui.smoothMotionMode.SetSelected(prefs.StringWithFallback("smoothMotionMode", "Balanced"))
 	ui.sharpen.SetChecked(prefs.Bool("sharpen"))
+	ui.sharpenAmount.SetValue(prefs.FloatWithFallback("sharpenAmount", 1.0))
 	ui.vividMode.SetChecked(prefs.Bool("vividMode"))
 	ui.deband.SetChecked(prefs.Bool("deband"))
 	ui.hdrToSdr.SetChecked(prefs.Bool("hdrToSdr"))
@@ -99,6 +100,19 @@ func (app *DownloaderApp) showPostProcessing() {
 		ui.smoothMotionMode.Disable()
 		ui.smoothMotionFPS.Disable()
 	}
+
+	// Sharpening slider — bind to float for live label updates.
+	sharpenBinding := binding.NewFloat()
+	sharpenBinding.Set(ui.sharpenAmount.Value)
+	sharpenLabel := widget.NewLabelWithData(binding.FloatToStringWithFormat(sharpenBinding, "%.1fx"))
+	ui.sharpenAmount.Step = 0.1
+	ui.sharpenAmount.OnChanged = func(v float64) {
+		sharpenBinding.Set(v)
+	}
+	if !ui.sharpen.Checked {
+		ui.sharpenAmount.Disable()
+	}
+
 	// Live processing-load indicator — 5 colored blocks, each lighting up at a
 	// cost threshold. The thresholds are arbitrary and based on testing with a variety of videos and filter combinations, 
 	// but they should give a rough relative indication of how intensive the current settings are.
@@ -185,6 +199,19 @@ func (app *DownloaderApp) showPostProcessing() {
 	}
 	ui.denoiseMode.OnChanged = func(_ string) { refreshLoad() }
 
+	ui.sharpen.OnChanged = func(checked bool) {
+		if checked {
+			ui.sharpenAmount.Enable()
+		} else {
+			ui.sharpenAmount.Disable()
+		}
+		refreshLoad()
+	}
+	ui.sharpenAmount.OnChanged = func(v float64) {
+		sharpenBinding.Set(v)
+		refreshLoad()
+	}
+
 	// Upscale target is only relevant when upscale is enabled.
 	if !ui.upscaleVideo.Checked {
 		ui.upscaleTarget.Disable()
@@ -200,7 +227,6 @@ func (app *DownloaderApp) showPostProcessing() {
 	ui.upscaleTarget.OnChanged = func(_ string) { refreshLoad() }
 
 	// Simple toggles — just refresh the load indicator.
-	ui.sharpen.OnChanged      = func(_ bool) { refreshLoad() }
 	ui.vividMode.OnChanged    = func(_ bool) { refreshLoad() }
 	ui.deband.OnChanged       = func(_ bool) { refreshLoad() }
 	ui.hdrToSdr.OnChanged     = func(_ bool) { refreshLoad() }
@@ -239,6 +265,7 @@ func (app *DownloaderApp) showPostProcessing() {
 			{Text: "", Widget: sectionHeader("VIDEO ENHANCEMENT")},
 			{Text: "Vivid Mode", Widget: ui.vividMode, HintText: "Boost brightness, contrast, and saturation"},
 			{Text: "Sharpen Video", Widget: ui.sharpen, HintText: "Apply unsharp mask to restore edge detail"},
+			{Text: "Sharpen Intensity", Widget: container.NewBorder(nil, nil, nil, sharpenLabel, ui.sharpenAmount), HintText: "0.5x is subtle, 1.0x is default, 2.0x is aggressive"},
 			{Text: "Fix Banding", Widget: ui.deband, HintText: "Remove gradient banding steps in skies and dark scenes (deband)"},
 			{Text: "HDR to SDR", Widget: ui.hdrToSdr, HintText: "Tone-map 4K HDR content for standard monitors (zscale + Hable tonemap)"},
 			{Text: "", Widget: sectionDivider()},

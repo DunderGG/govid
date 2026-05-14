@@ -260,6 +260,7 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 	prefs.SetString("smoothMotionMode", app.ui.smoothMotionMode.Selected)
 	prefs.SetFloat("smoothFPS", app.ui.smoothMotionFPS.Value)
 	prefs.SetBool("sharpen", app.ui.sharpen.Checked)
+	prefs.SetFloat("sharpenAmount", app.ui.sharpenAmount.Value)
 	prefs.SetBool("normalize", app.ui.normalizeAudio.Checked)
 	prefs.SetBool("vividMode", app.ui.vividMode.Checked)
 	prefs.SetBool("denoise", app.ui.denoise.Checked)

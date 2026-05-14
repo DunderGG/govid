@@ -39,7 +39,20 @@ func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []stri
 		}
 	}
 	if app.ui.sharpen.Checked {
-		vfFilters = append(vfFilters, "unsharp=3:3:1.5:3:3:0.5")
+		amount := app.ui.sharpenAmount.Value
+		// luma_amount valid range in FFmpeg is 0 to 1.5.
+		// Scale the matrix size alongside the amount to give each range a
+		// different visual character.
+		lumaAmount := 0.5 + amount*0.5  // 0→0.5, 1→1.0, 2→1.5
+		chromaAmount := amount * 0.25   // 0→0.0, 1→0.25, 2→0.5
+		msize := 3
+		if amount >= 1.0 {
+			msize = 5
+		}
+		if amount >= 1.5 {
+			msize = 7
+		}
+		vfFilters = append(vfFilters, fmt.Sprintf("unsharp=%d:%d:%.2f:%d:%d:%.2f", msize, msize, lumaAmount, msize, msize, chromaAmount))
 	}
 	if app.ui.vividMode.Checked {
 		vfFilters = append(vfFilters, "eq=brightness=0.05:contrast=1.1:saturation=1.4")
