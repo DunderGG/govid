@@ -83,14 +83,18 @@ func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []stri
 		vfFilters = append(vfFilters, "__autocrop__")
 	}
 	if app.ui.upscaleVideo.Checked {
+		// Use FFmpeg's if() expression to skip rescaling when the video is already
+		// at or above the target height, avoiding a pointless re-encode.
+		// -2 keeps width proportional and divisible by 2.
+		// if(gte(ih,TARGET),ih,TARGET) → keep original height when input >= target.
 		switch app.ui.upscaleTarget.Selected {
 		case "1080p":
-			vfFilters = append(vfFilters, "scale=-2:1080:flags=lanczos")
+			vfFilters = append(vfFilters, "scale=-2:if(gte(ih\\,1080)\\,ih\\,1080):flags=lanczos")
 		case "1440p":
-			vfFilters = append(vfFilters, "scale=-2:1440:flags=lanczos")
+			vfFilters = append(vfFilters, "scale=-2:if(gte(ih\\,1440)\\,ih\\,1440):flags=lanczos")
 		case "4K (2160p)":
-			vfFilters = append(vfFilters, "scale=-2:2160:flags=lanczos")
-		default: // "2× (Double)"
+			vfFilters = append(vfFilters, "scale=-2:if(gte(ih\\,2160)\\,ih\\,2160):flags=lanczos")
+		default: // "2× (Double)" — no meaningful ceiling; always doubles
 			vfFilters = append(vfFilters, "scale=iw*2:ih*2:flags=lanczos")
 		}
 	}
