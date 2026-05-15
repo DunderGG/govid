@@ -287,11 +287,19 @@ func (app *DownloaderApp) showPostProcessing() {
 			{Text: "Normalize Audio", Widget: ui.normalizeAudio, HintText: "Loudness normalization via the loudnorm filter"},
 			{Text: "Night Mode", Widget: ui.nightMode, HintText: "Dynamic compression to balance quiet dialogue and loud effects (dynaudnorm)"},
 		},
-		OnSubmit: func() {
-			app.savePreferences(ui.path.Text)
-		},
-		SubmitText: "Apply Changes",
 	}
+
+	applyBtn := widget.NewButtonWithIcon("Apply", theme.ConfirmIcon(), func() {
+		app.savePreferences(ui.path.Text)
+	})
+
+	applyCloseBtn := widget.NewButtonWithIcon("Apply & Close", theme.ConfirmIcon(), func() {
+		app.savePreferences(ui.path.Text)
+		app.ppWindow.Close()
+	})
+	applyCloseBtn.Importance = widget.HighImportance
+
+	buttons := container.NewGridWithColumns(2, applyBtn, applyCloseBtn)
 
 	notice := widget.NewLabelWithStyle("⚠️ Most filters require FFmpeg and trigger a full re-encode.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 
@@ -305,7 +313,7 @@ func (app *DownloaderApp) showPostProcessing() {
 	)
 
 	title := widget.NewLabelWithStyle("Post-Processing Filters", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	footer := container.NewVBox(loadSection, widget.NewSeparator(), notice)
+	footer := container.NewVBox(loadSection, widget.NewSeparator(), buttons, notice)
 
 	scroll := container.NewScroll(form)
 	// Border layout: title pinned top, footer pinned bottom, scroll fills the rest.
