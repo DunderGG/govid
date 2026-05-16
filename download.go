@@ -173,16 +173,10 @@ func (app *DownloaderApp) startDownload() {
 				app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", index+1, len(urls)), color.RGBA{R: 0, G: 200, B: 200, A: 255})
 			}
 			if index > 0 {
-				// Reset state between URLs: runYtDlp closes the log file and disables the cancel button.
+				// Reset progress UI between URLs.
 				app.setProgressNow(0)
 				app.stats.targetPct = 0
 				fyne.Do(func() { app.ui.cancelBtn.Enable() })
-				if app.ui.saveLog.Checked {
-					logPath := filepath.Join(savePath, "GoVid_log.txt")
-					if file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-						app.log.file = file
-					}
-				}
 			}
 
 			paths := app.runYtDlp(runCtx, url, savePath, trimStart, trimEnd, index+1, len(urls))
@@ -230,6 +224,15 @@ func (app *DownloaderApp) startDownload() {
 				Content: msg,
 			})
 		}
+
+		// Close the log file here, after post-processing, so FFmpeg output is captured.
+		app.log.mutex.Lock()
+		if app.log.file != nil {
+			fmt.Fprintf(app.log.file, "[%s] [SYSTEM] Log file closed.\n", time.Now().Format("15:04:05"))
+			app.log.file.Close()
+			app.log.file = nil
+		}
+		app.log.mutex.Unlock()
 	}()
 }
 
@@ -472,13 +475,6 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 			app.setStatusIndicator("success")
 		}
 
-		app.log.mutex.Lock()
-		if app.log.file != nil {
-			fmt.Fprintf(app.log.file, "[%s] [SYSTEM] Log file closed.\n", time.Now().Format("15:04:05"))
-			app.log.file.Close()
-			app.log.file = nil
-		}
-		app.log.mutex.Unlock()
 		close(uiDone)
 	})
 	// Wait for the UI updates to commit before returning, 

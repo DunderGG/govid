@@ -62,12 +62,14 @@ func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []stri
 	}
 	if app.ui.hdrToSdr.Checked {
 		// Multi-step HDR-to-SDR pipeline: linearise → tonemap (Hable) → convert to BT.709.
-		vfFilters = append(vfFilters, "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=s=709:m=bt709:r=tv,format=yuv420p")
+		vfFilters = append(vfFilters, "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:min=gbr:r=tv,format=yuv420p")
 	}
 	if app.ui.denoise.Checked {
 		switch app.ui.denoiseMode.Selected {
 		case "NLMeans (HQ, slow)":
-			vfFilters = append(vfFilters, "nlmeans=10:7:5:3:3")
+			// s=1.0 strength, p=7 patch, pc=5 chroma-patch, r=15 research, rc=9 chroma-research.
+			// Research size must always exceed patch size or FFmpeg will reject the filter.
+			vfFilters = append(vfFilters, "nlmeans=1.0:7:5:15:9")
 		default: // ATADenoise (Fast)
 			vfFilters = append(vfFilters, "atadenoise=0a=0.02:0b=0.04:1a=0.02:1b=0.04:2a=0.02:2b=0.04")
 		}
@@ -214,6 +216,7 @@ func uniquePath(path string) string {
 type ppJob struct {
 	inputPath   string
 	tmpOutput   string
+	finalPath   string   // destination after FFmpeg succeeds; may differ from inputPath (e.g. .webm → .mkv)
 	ffmpegArgs  []string
 	vfFilters   []string // active video filters, for summary logging
 	afFilters   []string // active audio filters, for summary logging
@@ -256,13 +259,19 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 		}
 
 		tmpOutput := strings.TrimSuffix(inputPath, ext) + "_pp" + ext
+		finalPath := inputPath
 		encodeMode := "Stream copy"
 		if len(activeVF) > 0 {
-			encodeMode = "Re-encode (libx264, CRF 18, slower)"
+			if ext == ".webm" {
+				encodeMode = "Re-encode (libvpx-vp9, CRF 31)"
+			} else {
+				encodeMode = "Re-encode (libx264, CRF 18, slower)"
+			}
 		}
 		jobs = append(jobs, ppJob{
 			inputPath:  inputPath,
 			tmpOutput:  tmpOutput,
+			finalPath:  finalPath,
 			ffmpegArgs: buildFFmpegArgs(inputPath, tmpOutput, activeVF, afFilters),
 			vfFilters:  activeVF,
 			afFilters:  afFilters,
@@ -330,13 +339,22 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 // buildFFmpegArgs constructs the FFmpeg argument list for a single post-processing
 // job. The -threads placeholder is set to "0" and patched to the real count later.
 func buildFFmpegArgs(inputPath, tmpOutput string, vfFilters, afFilters []string) []string {
-	args := []string{"-y", "-threads", "0", "-stats_period", "2", "-i", inputPath}
+	// Note: -stats_period was added in FFmpeg 4.4; omitting it keeps progress
+	// reporting working on older builds (FFmpeg defaults to 0.5 s anyway).
+	args := []string{"-y", "-threads", "0", "-i", inputPath}
 	if len(vfFilters) > 0 {
-		// Re-encode with high quality settings to prevent the output from being
-		// smaller/worse than the original. CRF 18 is visually near-lossless for
-		// H.264. The slower preset squeezes more quality out at the same CRF.
 		args = append(args, "-vf", strings.Join(vfFilters, ","))
-		args = append(args, "-c:v", "libx264", "-crf", "18", "-preset", "slower")
+		// Choose encoder based on output container.
+		// libx264 cannot be muxed into WebM; use libvpx-vp9 instead.
+		// VP9 CRF 31 with -b:v 0 (constant-quality mode) is roughly equivalent
+		// in perceived quality to H.264 CRF 18.
+		if strings.ToLower(filepath.Ext(tmpOutput)) == ".webm" {
+			args = append(args, "-c:v", "libvpx-vp9", "-crf", "31", "-b:v", "0", "-deadline", "good", "-cpu-used", "2")
+		} else {
+			// CRF 18 is visually near-lossless for H.264. The slower preset
+			// squeezes more quality out at the same CRF.
+			args = append(args, "-c:v", "libx264", "-crf", "18", "-preset", "slower")
+		}
 	} else {
 		args = append(args, "-c:v", "copy")
 	}
@@ -369,6 +387,15 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 		color.RGBA{R: 0, G: 255, B: 255, A: 255},
 	)
 
+	// Warn when re-encoding WebM: VP9 is significantly slower than H.264.
+	// Suggest MKV as a faster alternative.
+	if strings.ToLower(filepath.Ext(job.inputPath)) == ".webm" && strings.Contains(job.encodeMode, "libvpx-vp9") {
+		app.appendOutput(
+			"[SYSTEM] ⚠ WebM re-encodes use VP9 which is much slower than H.264. Consider downloading as MKV for faster post-processing.",
+			color.RGBA{R: 255, G: 200, B: 0, A: 255},
+		)
+	}
+
 	// Capture input file size before processing.
 	var sizeBefore int64
 	if info, err := os.Stat(job.inputPath); err == nil {
@@ -400,8 +427,9 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 		return
 	}
 
-	// Stream stderr: progress lines go to the status bar; all lines are kept
-	// in errLines in case the job fails and we need to show the full output.
+	// Stream stderr: progress lines update the status bar and are discarded;
+	// all other lines are printed to the log live and kept in errLines so the
+	// error path can reference them if needed.
 	var errLines []string
 	scanner := bufio.NewScanner(stderrPipe)
 	scanner.Split(scanCRLF)
@@ -410,9 +438,11 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 		if line == "" {
 			continue
 		}
-		errLines = append(errLines, line)
 		if strings.HasPrefix(line, "frame=") {
 			app.ui.status.SetText("Post-Processing: " + formatFFmpegProgress(line))
+		} else {
+			errLines = append(errLines, line)
+			app.appendOutput(line, color.RGBA{R: 160, G: 160, B: 160, A: 255})
 		}
 	}
 
@@ -428,9 +458,6 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 			fmt.Sprintf("[ERROR] Post-processing failed: %v", err),
 			color.RGBA{R: 255, G: 0, B: 0, A: 255},
 		)
-		for _, line := range errLines {
-			app.appendOutput(line, color.RGBA{R: 180, G: 180, B: 180, A: 255})
-		}
 		os.Remove(job.tmpOutput)
 		return
 	}
@@ -442,7 +469,7 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 	}
 
 	os.Remove(job.inputPath)
-	os.Rename(job.tmpOutput, job.inputPath)
+	os.Rename(job.tmpOutput, job.finalPath)
 
 	// Build a human-readable size change string.
 	sizeDelta := ""
@@ -467,7 +494,7 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 
 	successColor := color.RGBA{R: 0, G: 200, B: 0, A: 255}
 	app.appendOutput("────────────────────────────────────────", color.RGBA{R: 0, G: 160, B: 0, A: 255})
-	app.appendOutput(fmt.Sprintf("POST-PROCESSING COMPLETE: %s", filepath.Base(job.inputPath)), successColor)
+	app.appendOutput(fmt.Sprintf("POST-PROCESSING COMPLETE: %s", filepath.Base(job.finalPath)), successColor)
 	app.appendOutput(fmt.Sprintf("   ├─ Duration:  %s", formatDuration(duration)), successColor)
 	app.appendOutput(fmt.Sprintf("   ├─ File size: %s", sizeDelta), successColor)
 	app.appendOutput(fmt.Sprintf("   ├─ Encoder:   %s", job.encodeMode), successColor)
