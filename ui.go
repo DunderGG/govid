@@ -79,7 +79,7 @@ func (app *DownloaderApp) showPostProcessing() {
 	ui.hdrToSdr.SetChecked(prefs.Bool("hdrToSdr"))
 	ui.denoise.SetChecked(prefs.Bool("denoise"))
 	ui.denoiseMode.Horizontal = true
-	ui.denoiseMode.SetSelected(prefs.StringWithFallback("denoiseMode", "ATADenoise (Fast)"))
+	ui.denoiseMode.SetSelected(prefs.StringWithFallback("denoiseMode", "hqdn3d (Balanced)"))
 	ui.deinterlace.SetChecked(prefs.Bool("deinterlace"))
 	ui.stabilize.SetChecked(prefs.Bool("stabilize"))
 	ui.autoCrop.SetChecked(prefs.Bool("autoCrop"))
@@ -272,7 +272,7 @@ func (app *DownloaderApp) showPostProcessing() {
 			// ── NOISE & ARTIFACTS ─────────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("NOISE & ARTIFACTS")},
 			{Text: "Denoise", Widget: ui.denoise, HintText: "HQ noise reduction for low-quality or grainy footage"},
-			{Text: "Denoise Mode", Widget: ui.denoiseMode, HintText: "NLMeans: highest quality, single-threaded | ATADenoise: fast, multi-threaded"},
+			{Text: "Denoise Mode", Widget: ui.denoiseMode, HintText: "NLMeans: highest quality, very slow | hqdn3d: spatial + temporal denoising, fast and effective"},
 			{Text: "Deinterlace", Widget: ui.deinterlace, HintText: "Remove combing artifacts from archival or TV-rip content (bwdif)"},
 			{Text: "Stabilize", Widget: ui.stabilize, HintText: "Smooth out shaky handheld footage (deshake)"},
 			{Text: "Auto-Crop", Widget: ui.autoCrop, HintText: "Detect and remove black letterbox/pillarbox bars automatically"},

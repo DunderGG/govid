@@ -198,6 +198,7 @@ This document outlines planned features, improvements, and known limitations for
 - [x] **Deinterlace**: Remove combing artifacts from older archival or TV-rip content via `bwdif`.
 - [x] **Dynamic Compression**: "Night Mode" for audio to balance dialogue and loud action.
 - [x] **Resolution Upscaling**: Professional upscaling (e.g., 720p to 1080p) via advanced FFmpeg scalars.
+- [ ] **Progress**: We are showing frame number, use that to show total progress.
 
 ### Portable Mode
 > Carry settings alongside the executable.

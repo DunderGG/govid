@@ -40,22 +40,18 @@ func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []stri
 	}
 	if app.ui.sharpen.Checked {
 		amount := app.ui.sharpenAmount.Value
-		// luma_amount valid range in FFmpeg is 0 to 1.5.
-		// Scale the matrix size alongside the amount to give each range a
-		// different visual character.
-		lumaAmount := 0.5 + amount*0.5  // 0→0.5, 1→1.0, 2→1.5
-		chromaAmount := amount * 0.25   // 0→0.0, 1→0.25, 2→0.5
-		msize := 3
-		if amount >= 1.0 {
-			msize = 5
-		}
-		if amount >= 1.5 {
-			msize = 7
-		}
-		vfFilters = append(vfFilters, fmt.Sprintf("unsharp=%d:%d:%.2f:%d:%d:%.2f", msize, msize, lumaAmount, msize, msize, chromaAmount))
+		// CAS (Contrast Adaptive Sharpening) adaptively sharpens edges while
+		// leaving smooth areas untouched, avoiding the haloing and noise
+		// amplification that unsharp mask produces.
+		// strength range: 0.0 (no effect) → 1.0 (maximum). Map slider 0–2 → 0.0–1.0.
+		strength := amount / 2.0
+		vfFilters = append(vfFilters, fmt.Sprintf("cas=strength=%.2f", strength))
 	}
 	if app.ui.vividMode.Checked {
-		vfFilters = append(vfFilters, "eq=brightness=0.05:contrast=1.1:saturation=1.4")
+		// gamma=1.05 lifts midtones naturally without clipping highlights the way
+		// a linear brightness shift does. contrast=1.05 and saturation=1.25 give
+		// a subtle "pop" without looking oversaturated.
+		vfFilters = append(vfFilters, "eq=contrast=1.05:saturation=1.25:gamma=1.05")
 	}
 	if app.ui.deband.Checked {
 		vfFilters = append(vfFilters, "deband")
@@ -67,11 +63,13 @@ func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []stri
 	if app.ui.denoise.Checked {
 		switch app.ui.denoiseMode.Selected {
 		case "NLMeans (HQ, slow)":
-			// s=1.0 strength, p=7 patch, pc=5 chroma-patch, r=15 research, rc=9 chroma-research.
-			// Research size must always exceed patch size or FFmpeg will reject the filter.
-			vfFilters = append(vfFilters, "nlmeans=1.0:7:5:15:9")
-		default: // ATADenoise (Fast)
-			vfFilters = append(vfFilters, "atadenoise=0a=0.02:0b=0.04:1a=0.02:1b=0.04:2a=0.02:2b=0.04")
+			// s=2.0 is noticeably more effective on compressed web video than the
+			// default s=1.0. Research size (15) must always exceed patch size (7).
+			vfFilters = append(vfFilters, "nlmeans=2.0:7:5:15:9")
+		default: // hqdn3d (Balanced)
+			// hqdn3d applies both spatial and temporal denoising in one pass.
+			// luma_spatial=4, chroma_spatial=3, luma_tmp=6, chroma_tmp=4.5
+			vfFilters = append(vfFilters, "hqdn3d=4:3:6:4.5")
 		}
 	}
 	if app.ui.deinterlace.Checked {
@@ -577,14 +575,16 @@ func filterShortName(filterStr string) string {
 		return "Smooth Motion (Balanced)"
 	case strings.HasPrefix(filterStr, "minterpolate"):
 		return "Smooth Motion (Precise)"
-	case strings.HasPrefix(filterStr, "unsharp"):
-		return "Sharpen"
+	case strings.HasPrefix(filterStr, "cas"):
+		return "Sharpen (CAS)"
 	case filterStr == "loudnorm":
 		return "Normalize Audio"
 	case strings.HasPrefix(filterStr, "eq="):
 		return "Vivid Mode"
 	case strings.HasPrefix(filterStr, "nlmeans"):
 		return "Denoise (NLMeans)"
+	case strings.HasPrefix(filterStr, "hqdn3d"):
+		return "Denoise (hqdn3d)"
 	case strings.HasPrefix(filterStr, "atadenoise"):
 		return "Denoise (ATADenoise)"
 	case strings.HasPrefix(filterStr, "zscale=t=linear"):
@@ -638,7 +638,7 @@ func (app *DownloaderApp) computeProcessingLoad() (int, string) {
 		switch ui.denoiseMode.Selected {
 		case "NLMeans (HQ, slow)":
 			cost += 40
-		default: // ATADenoise (Fast)
+		default: // hqdn3d (Balanced)
 			cost += 20
 		}
 	}

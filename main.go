@@ -144,7 +144,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			normalizeAudio:   widget.NewCheck("Normalize Audio", nil),
 			vividMode:        widget.NewCheck("Vivid Mode", nil),
 			denoise:          widget.NewCheck("Denoise", nil),
-			denoiseMode:      widget.NewRadioGroup([]string{"NLMeans (HQ, slow)", "ATADenoise (Fast)"}, nil),
+			denoiseMode:      widget.NewRadioGroup([]string{"NLMeans (HQ, slow)", "hqdn3d (Balanced)"}, nil),
 			hdrToSdr:         widget.NewCheck("HDR to SDR", nil),
 			deband:           widget.NewCheck("Fix Banding", nil),
 			autoCrop:         widget.NewCheck("Auto-Crop", nil),
@@ -178,7 +178,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	app.ui.normalizeAudio.SetChecked(prefs.Bool("normalize"))
 	app.ui.vividMode.SetChecked(prefs.Bool("vividMode"))
 	app.ui.denoise.SetChecked(prefs.Bool("denoise"))
-	app.ui.denoiseMode.SetSelected(prefs.StringWithFallback("denoiseMode", "ATADenoise (Fast)"))
+	app.ui.denoiseMode.SetSelected(prefs.StringWithFallback("denoiseMode", "hqdn3d (Balanced)"))
 	app.ui.hdrToSdr.SetChecked(prefs.Bool("hdrToSdr"))
 	app.ui.deband.SetChecked(prefs.Bool("deband"))
 	app.ui.autoCrop.SetChecked(prefs.Bool("autoCrop"))
