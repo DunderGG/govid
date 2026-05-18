@@ -137,10 +137,6 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Add "Minimize to Tray" support.
 - [ ] Right-click menu for tray icon (Pause/Resume, Open Folder, Exit).
 
-### General UI improvements
-> Any general improvements we can think of
-- [ ] Make sure only one Preferences window can be opened.
-
 ---
 
 ## 🔧 Technical Improvements
@@ -204,6 +200,11 @@ This document outlines planned features, improvements, and known limitations for
 > Carry settings alongside the executable.
 
 - [ ] Add a "Portable Mode" toggle to store preferences in `settings.json` locally.
+
+### General improvements
+> Any general improvements we can think of
+- [X] Make sure only one Preferences window can be opened.
+- [ ] The code for the guide window needs improving. Get rid of extremely long text strings.
 
 ---
 
