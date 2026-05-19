@@ -43,15 +43,17 @@ func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []stri
 		// CAS (Contrast Adaptive Sharpening) adaptively sharpens edges while
 		// leaving smooth areas untouched, avoiding the haloing and noise
 		// amplification that unsharp mask produces.
-		// strength range: 0.0 (no effect) → 1.0 (maximum). Map slider 0–2 → 0.0–1.0.
-		strength := amount / 2.0
+		// AMD recommends 0.3–0.5 for typical content; cap at 0.5 to prevent
+		// over-sharpening artifacts and excessive encoder bitrate.
+		// Maps slider 0–2 → CAS strength 0.0–0.5.
+		strength := amount * 0.35
 		vfFilters = append(vfFilters, fmt.Sprintf("cas=strength=%.2f", strength))
 	}
 	if app.ui.vividMode.Checked {
-		// gamma=1.05 lifts midtones naturally without clipping highlights the way
-		// a linear brightness shift does. contrast=1.05 and saturation=1.25 give
-		// a subtle "pop" without looking oversaturated.
-		vfFilters = append(vfFilters, "eq=contrast=1.05:saturation=1.25:gamma=1.05")
+		// contrast=1.15 adds a subtle pop; saturation=1.25 enriches colours.
+		// gamma_b=1.08 lifts the blue channel in midtones/highlights, counteracting
+		// the warm/yellow cast that boosted saturation introduces in white areas.
+		vfFilters = append(vfFilters, "eq=contrast=1.15:saturation=1.25:gamma_b=1.08")
 	}
 	if app.ui.deband.Checked {
 		vfFilters = append(vfFilters, "deband")
