@@ -11,10 +11,12 @@ import (
 	"context"
 	"fmt"
 	"image/color"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -214,14 +216,15 @@ func uniquePath(path string) string {
 
 // ppJob holds the inputs for a single file's FFmpeg post-processing pass.
 type ppJob struct {
-	inputPath   string
-	tmpOutput   string
-	finalPath   string   // destination after FFmpeg succeeds; may differ from inputPath (e.g. .webm → .mkv)
-	ffmpegArgs  []string
-	vfFilters   []string // active video filters, for summary logging
-	afFilters   []string // active audio filters, for summary logging
-	threads     int      // thread count assigned to this job
-	encodeMode  string   // human-readable encode strategy, for summary logging
+	inputPath    string
+	tmpOutput    string
+	finalPath    string   // destination after FFmpeg succeeds; may differ from inputPath (e.g. .webm → .mkv)
+	ffmpegArgs   []string
+	vfFilters    []string // active video filters, for summary logging
+	afFilters    []string // active audio filters, for summary logging
+	threads      int      // thread count assigned to this job
+	encodeMode   string   // human-readable encode strategy, for summary logging
+	totalFrames  int64    // total video frames, for progress percentage (0 = unknown)
 }
 
 // applyFFmpegFilters runs a concurrent worker pool to post-process each of
@@ -239,6 +242,11 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 	ffmpegPath := app.getLocalBinPath("ffmpeg")
 	if _, err := os.Stat(ffmpegPath); err != nil {
 		ffmpegPath = "ffmpeg"
+	}
+
+	ffprobePath := app.getLocalBinPath("ffprobe")
+	if _, err := os.Stat(ffprobePath); err != nil {
+		ffprobePath = "ffprobe"
 	}
 
 	// Build one job per file, skipping files that need no processing.
@@ -269,13 +277,14 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 			}
 		}
 		jobs = append(jobs, ppJob{
-			inputPath:  inputPath,
-			tmpOutput:  tmpOutput,
-			finalPath:  finalPath,
-			ffmpegArgs: buildFFmpegArgs(inputPath, tmpOutput, activeVF, afFilters),
-			vfFilters:  activeVF,
-			afFilters:  afFilters,
-			encodeMode: encodeMode,
+			inputPath:   inputPath,
+			tmpOutput:   tmpOutput,
+			finalPath:   finalPath,
+			ffmpegArgs:  buildFFmpegArgs(inputPath, tmpOutput, activeVF, afFilters),
+			vfFilters:   activeVF,
+			afFilters:   afFilters,
+			encodeMode:  encodeMode,
+			totalFrames: computeOutputFrameCount(ctx, ffprobePath, inputPath, probeFrameCount(ctx, ffprobePath, inputPath), activeVF),
 		})
 	}
 
@@ -334,6 +343,8 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 		}()
 	}
 	wg.Wait()
+	// All jobs done — clear progress from the status bar.
+	app.ui.status.SetText("Status: Idle")
 }
 
 // buildFFmpegArgs constructs the FFmpeg argument list for a single post-processing
@@ -439,7 +450,7 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 			continue
 		}
 		if strings.HasPrefix(line, "frame=") {
-			app.ui.status.SetText("Post-Processing: " + formatFFmpegProgress(line))
+			app.ui.status.SetText("Post-Processing: " + formatFFmpegProgress(line, job.totalFrames))
 		} else {
 			errLines = append(errLines, line)
 			app.appendOutput(line, color.RGBA{R: 160, G: 160, B: 160, A: 255})
@@ -448,9 +459,6 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 
 	err := cmd.Wait()
 	duration := time.Since(start)
-
-	// Restore status bar regardless of outcome.
-	app.ui.status.SetText("Status: Idle")
 
 	if err != nil {
 		atomic.StoreInt32(&app.ppFailed, 1)
@@ -505,7 +513,8 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 
 // formatFFmpegProgress parses a FFmpeg stats line ("frame=X fps=X ... time=HH:MM:SS speed=Xx")
 // and returns a compact human-readable string for the status bar.
-func formatFFmpegProgress(line string) string {
+// When totalFrames > 0 the current frame is converted to a percentage.
+func formatFFmpegProgress(line string, totalFrames int64) string {
 	get := func(key string) string {
 		idx := strings.Index(line, key+"=")
 		if idx == -1 {
@@ -519,14 +528,134 @@ func formatFFmpegProgress(line string) string {
 		return fields[0]
 	}
 	parts := []string{}
-	if val := get("frame"); val != "" { parts = append(parts, "frame "+val) }
+	frameStr := get("frame")
+	if frameStr != "" {
+		if totalFrames > 0 {
+			if current, err := strconv.ParseInt(frameStr, 10, 64); err == nil {
+				pct := math.Min(float64(current)/float64(totalFrames)*100, 100)
+				parts = append(parts, fmt.Sprintf("%.0f%%", pct))
+			}
+		} else {
+			parts = append(parts, "frame "+frameStr)
+		}
+	}
 	if val := get("fps"); val != "" && val != "0" { parts = append(parts, val+" fps") }
-	if val := get("time"); val != "" { parts = append(parts, "time "+val) }
+	// Show elapsed time only when we have no percentage (keeps the bar compact).
+	if totalFrames == 0 {
+		if val := get("time"); val != "" { parts = append(parts, "time "+val) }
+	}
 	if val := get("speed"); val != "" { parts = append(parts, "speed "+val) }
 	if len(parts) == 0 {
 		return line
 	}
 	return strings.Join(parts, " | ")
+}
+
+// probeFrameCount uses ffprobe to count the exact number of video packets in
+// the file index. For MP4 this reads the moov atom (instant); for MKV/WebM it
+// reads the cue points. Neither approach decodes any video data.
+// Both nb_frames metadata and avg_frame_rate×duration are unreliable for VFR
+// content — muxers often write nb_frames from declared fps×duration rather
+// than actual packet count, causing estimates to be 2–3× too high.
+func probeFrameCount(ctx context.Context, ffprobePath, inputPath string) int64 {
+	cmd := exec.CommandContext(ctx, ffprobePath,
+		"-v", "error",
+		"-select_streams", "v:0",
+		"-count_packets",
+		"-show_entries", "stream=nb_read_packets",
+		"-of", "csv=p=0",
+		inputPath,
+	)
+	hideWindow(cmd)
+	out, err := cmd.Output()
+	if err == nil && len(out) > 0 {
+		if n, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64); err == nil && n > 0 {
+			return n
+		}
+	}
+	// Fallback: duration × avg_frame_rate (less reliable but always available).
+	cmd2 := exec.CommandContext(ctx, ffprobePath,
+		"-v", "error",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=duration,avg_frame_rate",
+		"-of", "csv=p=0",
+		inputPath,
+	)
+	hideWindow(cmd2)
+	out2, _ := cmd2.Output()
+	fields := strings.SplitN(strings.TrimSpace(string(out2)), ",", 2)
+	if len(fields) == 2 {
+		dur, dErr := strconv.ParseFloat(strings.TrimSpace(fields[0]), 64)
+		fps := parseRationalFPS(strings.TrimSpace(fields[1]))
+		if dErr == nil && dur > 0 && fps > 0 {
+			return int64(math.Round(dur * fps))
+		}
+	}
+	return 0
+}
+
+// computeOutputFrameCount adjusts the probed input frame count to account for
+// filters that change the output frame rate or total frame count.
+//   - minterpolate=fps=N: outputs at a fixed target fps → duration × N
+//   - bwdif: send_field mode (default) outputs one frame per field → inputFrames × 2
+func computeOutputFrameCount(ctx context.Context, ffprobePath, inputPath string, inputFrames int64, vfFilters []string) int64 {
+	// minterpolate takes priority — its target fps determines the final count.
+	for _, f := range vfFilters {
+		if strings.HasPrefix(f, "minterpolate=fps=") {
+			rest := strings.TrimPrefix(f, "minterpolate=fps=")
+			if i := strings.IndexAny(rest, ":,"); i != -1 {
+				rest = rest[:i]
+			}
+			if targetFps, err := strconv.ParseFloat(rest, 64); err == nil && targetFps > 0 {
+				if dur := probeDuration(ctx, ffprobePath, inputPath); dur > 0 {
+					return int64(math.Round(dur * targetFps))
+				}
+			}
+			return inputFrames
+		}
+	}
+	// bwdif send_field (default) outputs one frame per interlaced field.
+	for _, f := range vfFilters {
+		if f == "bwdif" {
+			return inputFrames * 2
+		}
+	}
+	return inputFrames
+}
+
+// probeDuration returns the container duration of the file in seconds.
+func probeDuration(ctx context.Context, ffprobePath, inputPath string) float64 {
+	cmd := exec.CommandContext(ctx, ffprobePath,
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "csv=p=0",
+		inputPath,
+	)
+	hideWindow(cmd)
+	out, _ := cmd.Output()
+	dur, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	if err != nil || dur <= 0 {
+		return 0
+	}
+	return dur
+}
+
+// parseRationalFPS parses a "num/den" rational string (e.g. "30/1", "30000/1001")
+// as returned by ffprobe and returns the floating-point FPS value.
+func parseRationalFPS(s string) float64 {
+	parts := strings.SplitN(s, "/", 2)
+	if len(parts) != 2 {
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			return f
+		}
+		return 0
+	}
+	num, err1 := strconv.ParseFloat(parts[0], 64)
+	den, err2 := strconv.ParseFloat(parts[1], 64)
+	if err1 != nil || err2 != nil || den == 0 {
+		return 0
+	}
+	return num / den
 }
 
 // scanCRLF is a bufio.SplitFunc that splits on either \r or \n, handling the
