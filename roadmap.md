@@ -81,7 +81,7 @@ This document outlines planned features, improvements, and known limitations for
 - [x] Persist save destination using `fyne.CurrentApp().Preferences()`.
 - [x] Persist selected format and quality between sessions.
 - [x] Default save path to the executable's own directory for portability.
-- [ ] Make the log buffer line limit user-configurable (currently hard-coded to 200 lines).
+- [x] Make the log buffer line limit user-configurable (currently hard-coded to 200 lines).
 
 ### Speed & Concurrency Limits
 > Prevent downloads from saturating the user's connection.
@@ -119,9 +119,9 @@ This document outlines planned features, improvements, and known limitations for
 ### Resizable & Responsive Layout
 > Improve behavior when the window is resized.
 
-- [ ] Ensure the log output area grows vertically as the window is enlarged.
-- [ ] Prevent the header branding from overlapping on small window sizes.
-- [ ] Test and fix layout behavior on common resolutions (1366×768, 1920×1080).
+- [X] Ensure the log output area grows vertically as the window is enlarged.
+- [X] Prevent the header branding from overlapping on small window sizes.
+- [X] Test and fix layout behavior on common resolutions (1366×768, 1920×1080).
 - [ ] Add text wrapping or truncation to log label widgets to prevent horizontal overflow on very long video titles.
 
 ### Notifications on Completion
@@ -194,7 +194,7 @@ This document outlines planned features, improvements, and known limitations for
 - [x] **Deinterlace**: Remove combing artifacts from older archival or TV-rip content via `bwdif`.
 - [x] **Dynamic Compression**: "Night Mode" for audio to balance dialogue and loud action.
 - [x] **Resolution Upscaling**: Professional upscaling (e.g., 720p to 1080p) via advanced FFmpeg scalars.
-- [ ] **Progress**: We are showing frame number, use that to show total progress.
+- [X] **Progress**: We are showing frame number, use that to show total progress.
 
 ### Portable Mode
 > Carry settings alongside the executable.

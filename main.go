@@ -28,9 +28,12 @@ const (
 	windowHeight = 550
 
 	// UI formatting constants.
-	logBufferLimit = 200 // Max lines kept in the graphical log view.
-	fpsInterval    = 20  // Progress smoothing interval (in milliseconds).
+	fpsInterval = 20 // Progress smoothing interval (in milliseconds).
 )
+
+// logBufferLimit is the maximum number of lines kept in the graphical log view.
+// Older entries are trimmed from the top. Configurable via Preferences.
+var logBufferLimit = 200
 
 // version is injected at release build time via:
 //	-X main.version=1.0.0
@@ -58,6 +61,7 @@ type UIWidgets struct {
 	themeMode  *widget.RadioGroup   // Theme mode selector (Dark / Light)
 	cookies    *widget.Entry        // Path to a Mozilla/Netscape-format cookies file
 	savePrefs  *widget.Check        // Option to persist preferences between sessions
+	logLimit   *widget.Select       // Max lines kept in the graphical log view
 	batchMode  *widget.Check        // Option to switch URL input to multi-line batch mode
 	smoothMotion     *widget.Check      // Post-processing: Smooth to custom fps
 	smoothMotionMode *widget.RadioGroup // Quality mode for Smooth Motion
@@ -135,6 +139,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			themeMode:  widget.NewRadioGroup([]string{"Dark", "Light"}, nil),
 			cookies:    widget.NewEntry(),
 			savePrefs:  widget.NewCheck("Save preferences between sessions", nil),
+			logLimit:   widget.NewSelect([]string{"100", "200", "500", "1000", "5000", "Unlimited"}, nil),
 			batchMode:  widget.NewCheck("Batch Mode", nil),
 			smoothMotion:     widget.NewCheck("Enabled", nil),
 			smoothMotionMode: widget.NewRadioGroup([]string{"Precise (slow)", "Balanced", "Fast"}, nil),
@@ -190,6 +195,8 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	app.ui.batchMode.SetChecked(prefs.Bool("batchMode"))
 	app.ui.saveLog.SetChecked(prefs.Bool("saveLog"))
 	app.ui.notify.SetChecked(prefs.Bool("notify"))
+	app.ui.logLimit.SetSelected(prefs.StringWithFallback("logLimit", "200"))
+	logBufferLimit = parseLogLimit(prefs.StringWithFallback("logLimit", "200"))
 	return app
 }
 

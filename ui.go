@@ -339,6 +339,9 @@ func (app *DownloaderApp) showPreferences() {
 	ui := app.ui
 	prefs := fyne.CurrentApp().Preferences()
 
+	// Log Buffer Limit
+	ui.logLimit.SetSelected(prefs.StringWithFallback("logLimit", "200"))
+
 	// Speed Limit field
 	ui.maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
 	ui.maxSpeed.SetText(prefs.String("maxSpeed"))
@@ -374,11 +377,13 @@ func (app *DownloaderApp) showPreferences() {
 	form := &widget.Form{
 		Items: []*widget.FormItem{
 			{Text: "Save Preferences", Widget: ui.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
+			{Text: "Log Buffer Limit", Widget: ui.logLimit, HintText: "Max lines kept in the log view; older entries are removed from the top"},
 			{Text: "Max Download Speed", Widget: ui.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.themeMode, HintText: "Restart may be required for some changes"},
 			{Text: "Cookies File", Widget: cookiesRow, HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
 		},
 		OnSubmit: func() {
+			logBufferLimit = parseLogLimit(ui.logLimit.Selected)
 			app.savePreferences(ui.path.Text)
 
 			// Apply theme change and rebuild the UI so canvas.Rectangle colors
@@ -403,6 +408,7 @@ func (app *DownloaderApp) showPreferences() {
 			ui.maxSpeed.SetText("")
 			ui.cookies.SetText("")
 			ui.themeMode.SetSelected("Dark")
+			ui.logLimit.SetSelected("200")
 		}, app.prefsWindow)
 	})
 	resetBtn.Importance = widget.DangerImportance

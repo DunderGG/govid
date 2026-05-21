@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -276,6 +277,7 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 	prefs.SetBool("batchMode", app.ui.batchMode.Checked)
 	prefs.SetBool("saveLog", app.ui.saveLog.Checked)
 	prefs.SetBool("notify", app.ui.notify.Checked)
+	prefs.SetString("logLimit", app.ui.logLimit.Selected)
 }
 
 // resetPreferences clears all stored preferences and rebuilds the UI with
@@ -283,11 +285,25 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 // widgets to match after calling this.
 func (app *DownloaderApp) resetPreferences() {
 	prefs := fyne.CurrentApp().Preferences()
-	for _, pref := range []string{"savedPath", "format", "quality", "maxSpeed", "themeMode", "savePrefs", "cookiesPath"} {
+	for _, pref := range []string{"savedPath", "format", "quality", "maxSpeed", "themeMode", "savePrefs", "cookiesPath", "logLimit"} {
 		prefs.RemoveValue(pref)
 	}
+	logBufferLimit = 200
 	fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
 	app.createUI()
+}
+
+// parseLogLimit converts a log-limit preference string (e.g. "200", "Unlimited")
+// to an integer. Returns 200 for any unrecognised value.
+func parseLogLimit(logLimitString string) int {
+	if logLimitString == "Unlimited" {
+		return 1<<31 - 1 // effectively unlimited
+	}
+	n, err := strconv.Atoi(logLimitString)
+	if err != nil || n <= 0 {
+		return 200
+	}
+	return n
 }
 
 // openDownloadFolder launches the system file manager pointing at the current
