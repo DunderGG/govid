@@ -26,20 +26,12 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
-// AppConfig represents the JSON configuration file structure.
-type AppConfig struct {
-	Format   string `json:"format"`
-	Quality  string `json:"quality"`
-	Path     string `json:"path"`
-	MaxSpeed string `json:"maxSpeed"`
-}
-
 // loadConfigFromFile reads settings from govid.json and returns an AppConfig.
 // Unlike C++, it is safe to return a local pointer, it does not go "out of scope".
-// The Go compiler performs Escape Analysis. 
-// If the compiler sees that a local variable's address is being returned or shared outside the function, 
+// The Go compiler performs Escape Analysis.
+// If the compiler sees that a local variable's address is being returned or shared outside the function,
 // it "escapes" the stack and is automatically allocated on the heap instead.
-// The Go garbage collector then tracks that memory and 
+// The Go garbage collector then tracks that memory and
 // only frees it when it is no longer being used anywhere in the program.
 func (app *DownloaderApp) loadConfigFromFile() (*AppConfig, error) {
 	data, err := os.ReadFile("govid.json")
@@ -299,11 +291,11 @@ func parseLogLimit(logLimitString string) int {
 	if logLimitString == "Unlimited" {
 		return 1<<31 - 1 // effectively unlimited
 	}
-	n, err := strconv.Atoi(logLimitString)
-	if err != nil || n <= 0 {
+	logLimitInt, err := strconv.Atoi(logLimitString)
+	if err != nil || logLimitInt <= 0 {
 		return 200
 	}
-	return n
+	return logLimitInt
 }
 
 // openDownloadFolder launches the system file manager pointing at the current
@@ -393,6 +385,3 @@ func updateYtDlp() {
 		fmt.Printf("Error: %v\n", err)
 	}
 }
-
-// runUpdateInUI in helpers.go; the standalone updateYtDlp is kept here to satisfy
-// the -update flag path in main, which calls os.Exit after this returns.

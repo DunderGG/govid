@@ -214,19 +214,6 @@ func uniquePath(path string) string {
 	}
 }
 
-// ppJob holds the inputs for a single file's FFmpeg post-processing pass.
-type ppJob struct {
-	inputPath    string
-	tmpOutput    string
-	finalPath    string   // destination after FFmpeg succeeds; may differ from inputPath (e.g. .webm → .mkv)
-	ffmpegArgs   []string
-	vfFilters    []string // active video filters, for summary logging
-	afFilters    []string // active audio filters, for summary logging
-	threads      int      // thread count assigned to this job
-	encodeMode   string   // human-readable encode strategy, for summary logging
-	totalFrames  int64    // total video frames, for progress percentage (0 = unknown)
-}
-
 // applyFFmpegFilters runs a concurrent worker pool to post-process each of
 // the given files with the provided video/audio filters. Workers are bounded
 // to runtime.NumCPU() so that the total thread load across all FFmpeg processes
