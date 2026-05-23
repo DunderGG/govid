@@ -208,6 +208,52 @@ This document outlines planned features, improvements, and known limitations for
 
 ---
 
+## 🧹 Code Quality & Refactoring
+
+### Window Management Boilerplate
+> Eliminate repeated singleton-window guard patterns across ui.go.
+
+- [ ] Extract the `focusOrCreate` guard (`if app.xWindow != nil { RequestFocus; return }`) into a reusable helper — repeated ~4 times.
+- [ ] Extract `SetOnClosed(func() { app.xWindow = nil })` into a shared helper to remove identical closures on every dialog window.
+
+### Named Constants for Magic Numbers
+> Replace unexplained numeric literals with self-documenting names.
+
+- [ ] Define constants for dialog window sizes (`prefsWindowWidth`, `postProcessWindowHeight`, etc.) currently scattered across ui.go.
+- [ ] Define constants for post-processing load thresholds (e.g. `loadLightThreshold = 15`, `loadModerateThreshold = 35`) in postprocess.go.
+- [ ] Define constants for per-filter processing cost values (e.g. `costSmoothMotionFast`, `costDenoiseHQ`) in postprocess.go.
+- [ ] Replace the `1<<31 - 1` unlimited sentinel in `parseLogLimit` with `math.MaxInt32` for clarity.
+
+### SVG Icon Deduplication
+> Halve icon code volume by templating the dark/light variants.
+
+- [ ] Extract a `svgWithColor(color string) string` helper in icons.go — dark and light variants of each icon differ only in their fill color.
+
+### Split Long Functions
+> Break up functions that mix multiple concerns into focused sub-functions.
+
+- [ ] Split `runYtDlp()` (~180 lines) into `buildYtDlpArgs()` and `parseYtDlpOutput()` in download.go.
+- [ ] Split `createUI()` (~560 lines) into `createInputCard()`, `createStatusCard()`, and `createLogSection()` in ui.go.
+- [ ] Split `startDownload()` into `validateDownloadInputs()` and `initializeDownloadSession()` in download.go.
+
+### Naming Consistency
+> Align naming conventions across the codebase.
+
+- [ ] Fix the `smoothMotion` UI field vs. `"upscale"` preference key mismatch — both refer to the same setting.
+- [ ] Rename `ppJob` struct to `PostProcessJob` to match the full-word naming style of other structs (`DownloaderApp`, `UIWidgets`).
+
+### Error Handling
+> Remove silently ignored errors at system boundaries.
+
+- [ ] Check and handle errors from `cmd.StdoutPipe()` / `cmd.StderrPipe()` in download.go instead of discarding them with `_`.
+
+### Deduplicate Status Indicator Animation
+> The pulsing goroutines for "active" and "processing" states are nearly identical.
+
+- [ ] Extract a `pulseColor(stopCh chan struct{}, baseColor color.RGBA)` helper in helpers.go and reuse it for both animation states.
+
+---
+
 ## 💤 Low Priority
 
 ### Audio Controls
