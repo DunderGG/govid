@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -85,7 +86,7 @@ type DownloaderApp struct {
 
 	// Track processing failures across concurrent workers so we can adjust the
 	// Retry button text at the end of the batch.
-	ppFailed int32
+	ppFailed atomic.Int32
 }
 
 // AppConfig represents the JSON configuration file structure.

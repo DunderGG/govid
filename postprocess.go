@@ -19,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -120,7 +119,14 @@ func (app *DownloaderApp) detectCropFilter(ctx context.Context, ffmpegPath, inpu
 		"-f", "null", "-",
 	)
 	hideWindow(cmd)
-	out, _ := cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		app.appendOutput(
+			fmt.Sprintf("[SYSTEM] Auto-Crop: cropdetect failed, skipping (%v)", err),
+			color.RGBA{R: 255, G: 160, B: 0, A: 255},
+		)
+		return ""
+	}
 
 	// The last "crop=" line contains the tightest detected crop.
 	lastCrop := ""
@@ -174,7 +180,10 @@ func (app *DownloaderApp) resolveAutoCrop(ctx context.Context, ffmpegPath, input
 // final paths so callers can apply further post-processing.
 func (app *DownloaderApp) finalizeDownloadedFiles(savePath, downloadID string) []string {
 	pattern := filepath.Join(savePath, "*"+downloadID+"*")
-	matches, _ := filepath.Glob(pattern)
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil
+	}
 	var finalPaths []string
 	for _, tmpPath := range matches {
 		cleanBase := strings.Replace(filepath.Base(tmpPath), "_"+downloadID, "", 1)
@@ -186,7 +195,12 @@ func (app *DownloaderApp) finalizeDownloadedFiles(savePath, downloadID string) [
 				color.RGBA{R: 0, G: 255, B: 255, A: 255},
 			)
 		}
-		os.Rename(tmpPath, finalPath)
+		if err := os.Rename(tmpPath, finalPath); err != nil {
+			app.appendOutput(
+				fmt.Sprintf("[SYSTEM] Failed to rename file: %v", err),
+				color.RGBA{R: 255, G: 80, B: 80, A: 255},
+			)
+		}
 		finalPaths = append(finalPaths, finalPath)
 	}
 	return finalPaths
@@ -415,7 +429,12 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 					app.appendOutput(line, color.RGBA{R: 180, G: 180, B: 180, A: 255})
 				}
 			}
-			os.Remove(job.tmpOutput)
+			if removeErr := os.Remove(job.tmpOutput); removeErr != nil {
+				app.appendOutput(
+					fmt.Sprintf("[SYSTEM] Warning: could not remove temp file: %v", removeErr),
+					color.RGBA{R: 255, G: 160, B: 0, A: 255},
+				)
+			}
 		}
 		return
 	}
@@ -448,12 +467,17 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 	duration := time.Since(start)
 
 	if err != nil {
-		atomic.StoreInt32(&app.ppFailed, 1)
+		app.ppFailed.Store(1)
 		app.appendOutput(
 			fmt.Sprintf("[ERROR] Post-processing failed: %v", err),
 			color.RGBA{R: 255, G: 0, B: 0, A: 255},
 		)
-		os.Remove(job.tmpOutput)
+		if removeErr := os.Remove(job.tmpOutput); removeErr != nil {
+			app.appendOutput(
+				fmt.Sprintf("[SYSTEM] Warning: could not remove temp file: %v", removeErr),
+				color.RGBA{R: 255, G: 160, B: 0, A: 255},
+			)
+		}
 		return
 	}
 
@@ -463,8 +487,15 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 		sizeAfter = info.Size()
 	}
 
+	if err := os.Rename(job.tmpOutput, job.finalPath); err != nil {
+		app.appendOutput(
+			fmt.Sprintf("[SYSTEM] Failed to rename output file: %v", err),
+			color.RGBA{R: 255, G: 80, B: 80, A: 255},
+		)
+		app.ppFailed.Store(1)
+		return
+	}
 	os.Remove(job.inputPath)
-	os.Rename(job.tmpOutput, job.finalPath)
 
 	// Build a human-readable size change string.
 	sizeDelta := ""
@@ -569,7 +600,10 @@ func probeFrameCount(ctx context.Context, ffprobePath, inputPath string) int64 {
 		inputPath,
 	)
 	hideWindow(cmd2)
-	out2, _ := cmd2.Output()
+	out2, err := cmd2.Output()
+	if err != nil {
+		return 0
+	}
 	fields := strings.SplitN(strings.TrimSpace(string(out2)), ",", 2)
 	if len(fields) == 2 {
 		dur, dErr := strconv.ParseFloat(strings.TrimSpace(fields[0]), 64)
@@ -619,7 +653,10 @@ func probeDuration(ctx context.Context, ffprobePath, inputPath string) float64 {
 		inputPath,
 	)
 	hideWindow(cmd)
-	out, _ := cmd.Output()
+	out, err := cmd.Output()
+	if err != nil {
+		return 0
+	}
 	dur, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
 	if err != nil || dur <= 0 {
 		return 0

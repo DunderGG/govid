@@ -621,8 +621,9 @@ func (app *DownloaderApp) createUI() {
 		if err == nil {
 			ui.path.SetText(filepath.Dir(exePath))
 		} else {
-			cwd, _ := os.Getwd()
-			ui.path.SetText(cwd)
+			if cwd, err := os.Getwd(); err == nil {
+				ui.path.SetText(cwd)
+			}
 		}
 	}
 
