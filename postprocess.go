@@ -251,7 +251,7 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 	}
 
 	// Build one job per file, skipping files that need no processing.
-	var jobs []ppJob
+	var jobs []PostProcessJob
 	for _, inputPath := range filePaths {
 		ext := strings.ToLower(filepath.Ext(inputPath))
 		isAudioOnly := ext == ".mp3" || ext == ".m4a"
@@ -277,7 +277,7 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 				encodeMode = "Re-encode (libx264, CRF 18, slower)"
 			}
 		}
-		jobs = append(jobs, ppJob{
+		jobs = append(jobs, PostProcessJob{
 			inputPath:   inputPath,
 			tmpOutput:   tmpOutput,
 			finalPath:   finalPath,
@@ -327,7 +327,7 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 	}
 
 	// Push all jobs into a buffered channel and close it so workers stop when empty.
-	jobCh := make(chan ppJob, len(jobs))
+	jobCh := make(chan PostProcessJob, len(jobs))
 	for _, job := range jobs {
 		jobCh <- job
 	}
@@ -390,10 +390,10 @@ func patchThreadCount(args []string, count string) []string {
 	return args
 }
 
-// runFFmpegJob executes a single ppJob and streams FFmpeg's stderr to the UI
+// runFFmpegJob executes a single PostProcessJob and streams FFmpeg's stderr to the UI
 // in real-time. Progress stats (frame, fps, speed) update the status bar;
 // all other lines are collected for error reporting if the job fails.
-func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, job ppJob) {
+func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, job PostProcessJob) {
 	app.appendOutput(
 		fmt.Sprintf("[SYSTEM] Post-processing: %s", filepath.Base(job.inputPath)),
 		color.RGBA{R: 0, G: 255, B: 255, A: 255},

@@ -97,8 +97,8 @@ type AppConfig struct {
 	MaxSpeed string `json:"maxSpeed"`
 }
 
-// ppJob holds the inputs for a single file's FFmpeg post-processing pass.
-type ppJob struct {
+// PostProcessJob holds the inputs for a single file's FFmpeg post-processing pass.
+type PostProcessJob struct {
 	inputPath    string
 	tmpOutput    string
 	finalPath    string   // destination after FFmpeg succeeds; may differ from inputPath (e.g. .webm → .mkv)

@@ -289,7 +289,7 @@ func (app *DownloaderApp) resetPreferences() {
 // to an integer. Returns 200 for any unrecognised value.
 func parseLogLimit(logLimitString string) int {
 	if logLimitString == "Unlimited" {
-		return 1<<31 - 1 // effectively unlimited
+		return math.MaxInt32 // effectively unlimited
 	}
 	logLimitInt, err := strconv.Atoi(logLimitString)
 	if err != nil || logLimitInt <= 0 {
