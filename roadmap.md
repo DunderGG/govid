@@ -245,7 +245,7 @@ This document outlines planned features, improvements, and known limitations for
 ### Error Handling
 > Remove silently ignored errors at system boundaries.
 
-- [ ] Check and handle errors from `cmd.StdoutPipe()` / `cmd.StderrPipe()` in download.go instead of discarding them with `_`.
+- [x] Check and handle errors from `cmd.StdoutPipe()` / `cmd.StderrPipe()` in download.go instead of discarding them with `_`.
 
 ### Deduplicate Status Indicator Animation
 > The pulsing goroutines for "active" and "processing" states are nearly identical.

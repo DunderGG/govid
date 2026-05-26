@@ -386,17 +386,20 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		return nil
 	}
 
-	// If there is an error starting the process, report it and
-	// return nil so the caller knows not to proceed with post-processing.
-	if err := cmd.Start(); err != nil {
-		app.updateStatus(fmt.Sprintf("Failed to launch yt-dlp: %v", err))
-		return nil
-	}
-	if total > 1 {
-		app.updateStatus(fmt.Sprintf("Status: Downloading (%d of %d)...", index, total))
-	} else {
-		app.updateStatus("Status: Downloading...")
-	}
+		// If there is an error starting the process, report it and
+		// return nil so the caller knows not to proceed with post-processing.
+		cmd := exec.CommandContext(ctx, ytDlpPath, args...)
+		hideWindow(cmd)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			app.updateStatus(fmt.Sprintf("Failed to create stdout pipe: %v", err))
+			return nil
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			app.updateStatus(fmt.Sprintf("Failed to create stderr pipe: %v", err))
+			return nil
+		}
 
 	result := app.watchOutput(stdout, stderr)
 	err = cmd.Wait()
