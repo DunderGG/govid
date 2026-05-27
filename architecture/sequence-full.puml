@@ -1,0 +1,221 @@
+@startuml GoVid — Full Download Sequence
+
+skinparam participantPadding 10
+skinparam sequenceGroupBorderThickness 1
+skinparam sequenceGroupFontSize 11
+skinparam noteFontSize 11
+skinparam shadowing false
+
+actor       User            as U
+participant "Fyne UI"       as UI
+participant "DownloaderApp" as App
+participant "watchOutput\ngoroutines" as WO
+participant "yt-dlp"        as YT
+participant "FFmpeg"        as FF
+participant "OS / Disk"     as OS
+
+' ─────────────────────────────────────────────────────────────
+' 1. APPLICATION STARTUP
+' ─────────────────────────────────────────────────────────────
+group Startup
+    App -> App  : newDownloaderApp(window)\n  — init UIWidgets\n  — load Fyne preferences
+    App -> UI   : createUI()  — build layout, wire callbacks
+    App -> App  : createMainMenu()
+    App -> OS   : checkDependencies()\n  — Stat(yt-dlp), Stat(ffmpeg)
+    OS  --> App : found / missing
+    alt dependency missing
+        App -> UI : dialog.ShowError("missing tool")
+    end
+    UI  -> U    : ShowAndRun() — window visible
+end
+
+' ─────────────────────────────────────────────────────────────
+' 2. USER INITIATES DOWNLOAD
+' ─────────────────────────────────────────────────────────────
+U   -> UI  : enter URL(s), path, format, quality\n  optional: trim times, speed limit, cookies
+U   -> UI  : click "Download Now!"
+UI  -> App : startDownload()
+
+group Input Validation
+    App -> App : collect URLs (single / batch-mode split)
+    App -> App : validateTimestamp(trimStart, trimEnd)
+    alt validation fails
+        App -> UI : dialog.ShowError(...)
+        App --> U : [abort]
+    end
+end
+
+group Session Initialisation
+    App -> App  : savePreferences(savePath)
+    App -> UI   : reset log, progress bar, status → "Initializing…"
+    App -> UI   : setStatusIndicator("active")
+    App -> App  : ppFailed.Store(0)
+    alt saveLog.Checked
+        App -> OS : OpenFile("GoVid_log.txt", APPEND|CREATE|WRONLY)
+        OS  --> App : log file handle
+    end
+    App -> App  : context.WithCancel(Background)\n  → queueCtx / stopQueue
+end
+
+' ─────────────────────────────────────────────────────────────
+' 3. PROGRESS SMOOTHER GOROUTINE
+' ─────────────────────────────────────────────────────────────
+App -> App : go progressSmoother(queueCtx)\n  — ticks every 20 ms\n  — eases progress bar toward targetPct
+
+' ─────────────────────────────────────────────────────────────
+' 4. BATCH DOWNLOAD LOOP (goroutine)
+' ─────────────────────────────────────────────────────────────
+App -> App : go batchWorker(queueCtx)
+App -> App : buildPostProcessFilters()\n  → vfFilters, afFilters
+
+group loop [for each URL in queue]
+    alt batch mode (len > 1)
+        App -> App : context.WithCancel(queueCtx)\n  → runCtx / skipItem  (per-URL cancel)
+    end
+
+    App -> App : runYtDlp(runCtx, url, …)
+
+    group Build yt-dlp arguments
+        App -> App : select format flag (bestvideo+bestaudio / audio-only / WebM VP9…)
+        App -> App : apply quality height filter if set
+        App -> App : embed unique downloadID token in output template
+        App -> App : append ""--ffmpeg-location"", ""--limit-rate"", ""--cookies"" if set
+        App -> App : append ""--download-sections"" / ""--force-keyframes-at-cuts"" if trimming
+        App -> App : append ""--merge-output-format"", ""--remux-video"", ""--recode-video""
+    end
+
+    group Retry loop [attempt 1..3]
+        App -> OS  : exec.CommandContext(runCtx, yt-dlp, args…)
+        OS  -> YT  : spawn process
+        App -> YT  : StdoutPipe() + StderrPipe()
+        App -> YT  : cmd.Start()
+        App -> UI  : updateStatus("Downloading…")
+
+        App -> WO  : watchOutput(stdout, stderr)
+
+        group Concurrent output scanning
+            WO  -> YT : scan stdout line by line
+            loop stdout lines
+                WO  -> App : parseProgress(line)\n  — extract %, size → stats.targetPct
+                WO  -> UI  : appendOutput(line, foreground colour)
+            end
+            WO  -> WO : scanner.Err() check → log if I/O error
+
+            WO  -> YT : scan stderr line by line
+            loop stderr lines
+                WO  -> WO  : detect [Merger]/[VideoConvertor] → wasConverted
+                WO  -> WO  : check transientErrPatterns → hadTransientErr
+                WO  -> UI  : appendOutput(line, red/amber/grey/default)
+            end
+            WO  -> WO : scanner.Err() check → log if I/O error
+        end
+
+        WO  --> App : scanResult{sourceExts, wasConverted, hadTransientErr}
+        App -> YT  : cmd.Wait()
+        YT  --> App : exit code / error (cmdErr)
+
+        alt cmdErr == nil
+            App -> App : break retry loop  ✓
+        else cmdErr != nil && autoRetry.Checked && hadTransientErr && attempt < 3
+            App -> UI  : appendOutput("[SYSTEM] Transient error — retrying in Xs…")
+            App -> App : time.After(1s / 5s / 30s)  [or ctx.Done()]
+            note right : attempts: 1 s → 5 s → 30 s backoff
+        else permanent failure or auto-retry disabled
+            App -> App : break retry loop  ✗
+        end
+    end
+
+    alt cmdErr == nil
+        App -> OS  : finalizeDownloadedFiles(savePath, downloadID)\n  — Glob(*downloadID*)\n  — strip token, uniquePath\n  — os.Rename(tmp → final)
+        OS  --> App : []finalPaths
+    end
+
+    group UI result (fyne.Do)
+        alt cancelled (ctx.Err == Canceled)
+            App -> UI : appendOutput("DOWNLOAD ABORTED", stats summary)
+            App -> UI : setStatusIndicator("canceled")
+        else cmdErr != nil (failure)
+            App -> UI : appendOutput("DOWNLOAD FAILED")
+            App -> UI : setStatusIndicator("failed")
+            App -> App : ppFailed.Store(1)
+            alt notify.Checked
+                App -> OS : SendNotification("Download Failed")
+            end
+        else success
+            App -> UI : appendOutput("DOWNLOAD COMPLETE", duration/speed/format)
+            App -> UI : setProgressNow(1.0)
+            App -> UI : setStatusIndicator("success")
+        end
+    end
+
+    alt batch mode
+        App -> App : skipItem()  — release per-URL context
+    end
+end
+
+' ─────────────────────────────────────────────────────────────
+' 5. POST-PROCESSING (optional)
+' ─────────────────────────────────────────────────────────────
+alt hasPostProcess && len(allFinalPaths) > 0 && not cancelled
+    App -> UI  : updateStatus("Post-processing…")
+    App -> UI  : setStatusIndicator("processing")
+    App -> App : applyFFmpegFilters(queueCtx, allFinalPaths, vfFilters, afFilters)
+
+    group Worker pool [numWorkers = min(NumCPU, numJobs)]
+        loop for each PostProcessJob (concurrent)
+            App -> App  : resolveAutoCrop()\n  — if __autocrop__ sentinel present:
+            App -> FF   : cropdetect pass (first 60 s)
+            FF  --> App : crop=W:H:X:Y  (or "" if no bars)
+            App -> App  : buildFFmpegArgs(input, tmpOutput, vfFilters, afFilters)\n  — libx264 CRF 18 / libvpx-vp9 CRF 31 / stream-copy
+            App -> App  : patchThreadCount(args, threadsPerJob)
+            App -> OS   : exec FFmpeg process
+            OS  -> FF   : spawn process
+
+            loop FFmpeg stderr progress lines
+                FF  -> App : frame=N fps=X speed=Y
+                App -> UI  : updateStatus(progress %)
+            end
+
+            FF  --> App : exit code
+            alt FFmpeg success
+                App -> OS  : os.Rename(tmpOutput → finalPath)
+                App -> OS  : os.Remove(inputPath)  [original replaced]
+            else FFmpeg failure
+                App -> App : ppFailed.Store(1)
+                App -> OS  : os.Remove(tmpOutput)  [clean up partial]
+                App -> UI  : appendOutput("[SYSTEM] FFmpeg failed…", red)
+            end
+        end
+    end
+
+    alt all jobs done, not cancelled
+        App -> UI : updateStatus("Done.")
+        App -> UI : setStatusIndicator("success")
+        alt notify.Checked
+            App -> OS : SendNotification("All Done — N file(s) processed")
+        end
+    else cancelled
+        App -> UI : updateStatus("Canceled.")
+        App -> UI : setStatusIndicator("canceled")
+    end
+
+else no post-processing
+    alt notify.Checked && success
+        App -> OS : SendNotification("Download Complete")
+    end
+end
+
+' ─────────────────────────────────────────────────────────────
+' 6. SESSION TEARDOWN
+' ─────────────────────────────────────────────────────────────
+group Teardown
+    App -> OS  : log.file.Close()  [if saveLog was on]
+    App -> App : stopQueue()  — cancels queueCtx → stops progress smoother
+    alt ppFailed > 0
+        App -> UI : downloadBtn.SetText("Retry")
+    end
+    App -> UI  : downloadBtn.Enable()
+    App -> UI  : cancelBtn.Disable()
+end
+
+@enduml
