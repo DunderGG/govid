@@ -22,8 +22,23 @@ import (
 
 // scanResult holds metadata collected while reading a yt-dlp process's output.
 type scanResult struct {
-	sourceExts   []string // file extensions seen in "[download] Destination:" lines
-	wasConverted bool     // true when [Merger] or [VideoConvertor] appeared in stderr
+	sourceExts      []string // file extensions seen in "[download] Destination:" lines
+	wasConverted    bool     // true when [Merger] or [VideoConvertor] appeared in stderr
+	hadTransientErr bool     // true when a recoverable network/rate-limit error was seen in stderr
+}
+
+// transientErrPatterns are substrings that indicate a temporary failure worth retrying.
+var transientErrPatterns = []string{
+	"HTTP Error 429",
+	"Too Many Requests",
+	"Read timed out",
+	"urlopen error",
+	"Connection reset by peer",
+	"RemoteDisconnected",
+	"IncompleteRead",
+	"Connection refused",
+	"Network is unreachable",
+	"socket.timeout",
 }
 
 // watchOutput reads stdout and stderr from a running yt-dlp process concurrently,
@@ -50,6 +65,9 @@ func (app *DownloaderApp) watchOutput(stdout, stderr io.Reader) scanResult {
 			}
 			app.appendOutput(line, theme.ForegroundColor())
 		}
+		if err := scanner.Err(); err != nil {
+			app.appendOutput(fmt.Sprintf("[SYSTEM] stdout read error: %v", err), color.RGBA{R: 255, G: 165, B: 0, A: 255})
+		}
 	}()
 
 	waitGroup.Add(1)
@@ -61,6 +79,15 @@ func (app *DownloaderApp) watchOutput(stdout, stderr io.Reader) scanResult {
 			// Detect ffmpeg post-processing (merge or re-encode).
 			if strings.HasPrefix(line, "[Merger]") || strings.HasPrefix(line, "[VideoConvertor]") {
 				result.wasConverted = true
+			}
+			// Detect transient network / rate-limit errors so the caller can retry.
+			if !result.hadTransientErr {
+				for _, pattern := range transientErrPatterns {
+					if strings.Contains(line, pattern) {
+						result.hadTransientErr = true
+						break
+					}
+				}
 			}
 			var logColor color.Color
 			switch {
@@ -74,6 +101,9 @@ func (app *DownloaderApp) watchOutput(stdout, stderr io.Reader) scanResult {
 				logColor = theme.ForegroundColor()
 			}
 			app.appendOutput(line, logColor)
+		}
+		if err := scanner.Err(); err != nil {
+			app.appendOutput(fmt.Sprintf("[SYSTEM] stderr read error: %v", err), color.RGBA{R: 255, G: 165, B: 0, A: 255})
 		}
 	}()
 
