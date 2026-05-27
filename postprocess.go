@@ -495,7 +495,6 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 		app.ppFailed.Store(1)
 		return
 	}
-	os.Remove(job.inputPath)
 
 	// Build a human-readable size change string.
 	sizeDelta := ""
