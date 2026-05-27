@@ -269,6 +269,7 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 	prefs.SetBool("batchMode", app.ui.batchMode.Checked)
 	prefs.SetBool("saveLog", app.ui.saveLog.Checked)
 	prefs.SetBool("notify", app.ui.notify.Checked)
+	prefs.SetBool("autoRetry", app.ui.autoRetry.Checked)
 	prefs.SetString("logLimit", app.ui.logLimit.Selected)
 }
 

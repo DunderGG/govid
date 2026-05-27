@@ -373,18 +373,30 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		ytDlpPath = "yt-dlp"
 	}
 
-	cmd := exec.CommandContext(ctx, ytDlpPath, args...)
-	hideWindow(cmd)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		app.updateStatus(fmt.Sprintf("Failed to create stdout pipe: %v", err))
-		return nil
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		app.updateStatus(fmt.Sprintf("Failed to create stderr pipe: %v", err))
-		return nil
-	}
+	retryDelays := []time.Duration{time.Second, 5 * time.Second, 30 * time.Second}
+	var result scanResult
+	var cmdErr error
+	retryAborted := false
+
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			if !app.ui.autoRetry.Checked || !result.hadTransientErr {
+				break
+			}
+			delay := retryDelays[attempt-1]
+			app.appendOutput(fmt.Sprintf(
+				"[SYSTEM] Transient error detected — retrying in %v (attempt %d/3)...",
+				delay, attempt+1,
+			), color.RGBA{R: 255, G: 165, B: 0, A: 255})
+			select {
+			case <-ctx.Done():
+				retryAborted = true
+			case <-time.After(delay):
+			}
+			if retryAborted {
+				break
+			}
+		}
 
 		// If there is an error starting the process, report it and
 		// return nil so the caller knows not to proceed with post-processing.
@@ -401,12 +413,28 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 			return nil
 		}
 
-	result := app.watchOutput(stdout, stderr)
-	err = cmd.Wait()
+		// If there is an error starting the process, report it and
+		// return nil so the caller knows not to proceed with post-processing.
+		if err := cmd.Start(); err != nil {
+			app.updateStatus(fmt.Sprintf("Failed to launch yt-dlp: %v", err))
+			return nil
+		}
+		if total > 1 {
+			app.updateStatus(fmt.Sprintf("Status: Downloading (%d of %d)...", index, total))
+		} else {
+			app.updateStatus("Status: Downloading...")
+		}
+
+		result = app.watchOutput(stdout, stderr)
+		cmdErr = cmd.Wait()
+		if cmdErr == nil {
+			break
+		}
+	}
 
 	// Rename temp files to their clean, conflict-free names.
 	var finalPaths []string
-	if err == nil && downloadID != "" {
+	if cmdErr == nil && downloadID != "" {
 		finalPaths = app.finalizeDownloadedFiles(savePath, downloadID)
 	}
 
@@ -427,7 +455,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	uiDone := make(chan struct{})
 	fyne.Do(func() {
 		app.ui.cancelBtn.Disable()
-		if err != nil {
+		if cmdErr != nil {
 			if ctx.Err() == context.Canceled {
 				app.appendOutput("────────────────────────────────────────", color.RGBA{R: 255, G: 165, B: 255, A: 255})
 				app.appendOutput("DOWNLOAD ABORTED", color.RGBA{R: 255, G: 165, B: 0, A: 255})

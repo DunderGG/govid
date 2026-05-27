@@ -159,8 +159,8 @@ This document outlines planned features, improvements, and known limitations for
 ### Error Recovery & Retry Logic
 > Handle transient network failures more gracefully.
 
-- [ ] Offer an automatic retry with exponential backoff (1, 5, 30 seconds).
 - [x] Detect common transient errors (timeout, rate limit) in yt-dlp stderr output.
+- [x] Offer an automatic retry with exponential backoff (1, 5, 30 seconds).
 - [x] Surface a "Retry" button in the UI after a failed download.
 
 ### UX Improvements

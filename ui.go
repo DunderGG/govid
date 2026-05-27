@@ -609,6 +609,9 @@ func (app *DownloaderApp) createUI() {
 	ui.notify.OnChanged = func(checked bool) {
 		fyne.CurrentApp().Preferences().SetBool("notify", checked)
 	}
+	ui.autoRetry.OnChanged = func(checked bool) {
+		fyne.CurrentApp().Preferences().SetBool("autoRetry", checked)
+	}
 	ui.path.SetPlaceHolder("Download folder...")
 
 	// Load previously saved path from preferences.
@@ -734,7 +737,7 @@ func (app *DownloaderApp) createUI() {
 					ui.trimEnd,
 				),
 			),
-			container.NewHBox(ui.saveLog, ui.notify),
+			container.NewHBox(ui.saveLog, ui.notify, ui.autoRetry),
 			container.NewGridWithColumns(3, ui.downloadBtn, openFolderBtn, ui.cancelBtn),
 		),
 	)

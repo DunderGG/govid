@@ -50,6 +50,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			quality:    widget.NewSelect(nil, nil),
 			saveLog:    widget.NewCheck("Save output to log file", nil),
 			notify:     widget.NewCheck("Notify on Completion", nil),
+			autoRetry:  widget.NewCheck("Auto-retry", nil),
 			downloadBtn: widget.NewButtonWithIcon("Download Now!", nil, nil),
 			cancelBtn:  widget.NewButton("", nil),
 			statusDot:  canvas.NewCircle(color.RGBA{R: 100, G: 100, B: 115, A: 255}),
@@ -117,6 +118,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	app.ui.batchMode.SetChecked(prefs.Bool("batchMode"))
 	app.ui.saveLog.SetChecked(prefs.Bool("saveLog"))
 	app.ui.notify.SetChecked(prefs.Bool("notify"))
+	app.ui.autoRetry.SetChecked(prefs.Bool("autoRetry"))
 	app.ui.logLimit.SetSelected(prefs.StringWithFallback("logLimit", "200"))
 	logBufferLimit = parseLogLimit(prefs.StringWithFallback("logLimit", "200"))
 	return app
