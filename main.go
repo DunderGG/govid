@@ -16,6 +16,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -160,9 +161,24 @@ func main() {
 	downloader.createUI()
 	downloader.checkDependencies()
 
-	// Ensure the whole process exits when the main window is closed,
-	// even if secondary windows (Preferences, About, etc.) are still open.
+	// Show a confirmation dialog if a download or post-processing job is active.
 	myWindow.SetCloseIntercept(func() {
+		if downloader.isRunning.Load() {
+			dialog.ShowConfirm(
+				"Job in Progress",
+				"A download or post-processing job is currently running.\nAre you sure you want to quit?",
+				func(confirmed bool) {
+					if confirmed {
+						if downloader.cancelFn != nil {
+							downloader.cancelFn()
+						}
+						myApp.Quit()
+					}
+				},
+				myWindow,
+			)
+			return
+		}
 		myApp.Quit()
 	})
 

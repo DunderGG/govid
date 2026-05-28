@@ -87,7 +87,8 @@ type DownloaderApp struct {
 
 	// Track processing failures across concurrent workers so we can adjust the
 	// Retry button text at the end of the batch.
-	ppFailed atomic.Int32
+	ppFailed  atomic.Int32
+	isRunning atomic.Bool  // true while a download or post-processing session is active
 }
 
 // AppConfig represents the JSON configuration file structure.

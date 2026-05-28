@@ -79,6 +79,7 @@ func (app *DownloaderApp) startDownload() {
 	app.ui.downloadBtn.SetText("Download Now!")
 	app.setStatusIndicator("active")
 	app.ppFailed.Store(0)
+	app.isRunning.Store(true)
 
 	// Initialize logging to file if the option is checked.
 	if app.ui.saveLog.Checked {
@@ -138,6 +139,7 @@ func (app *DownloaderApp) startDownload() {
 		// Always stop the smoother and re-enable the download button when the
 		// batch finishes, regardless of how it ends.
 		defer stopQueue()
+		defer app.isRunning.Store(false)
 		defer fyne.Do(func() {
 			if app.ppFailed.Load() > 0 {
 				app.ui.downloadBtn.SetText("Retry")
