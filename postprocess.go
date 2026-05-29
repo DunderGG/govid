@@ -435,6 +435,15 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 					color.RGBA{R: 255, G: 160, B: 0, A: 255},
 				)
 			}
+			return
+		}
+		// FFmpeg succeeded — still need to promote the temp file to its final name.
+		if renameErr := os.Rename(job.tmpOutput, job.finalPath); renameErr != nil {
+			app.appendOutput(
+				fmt.Sprintf("[SYSTEM] Failed to rename output file: %v", renameErr),
+				color.RGBA{R: 255, G: 80, B: 80, A: 255},
+			)
+			app.ppFailed.Store(1)
 		}
 		return
 	}
