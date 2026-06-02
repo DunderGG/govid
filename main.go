@@ -52,6 +52,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			saveLog:    widget.NewCheck("Save output to log file", nil),
 			notify:     widget.NewCheck("Notify on Completion", nil),
 			autoRetry:  widget.NewCheck("Auto-retry", nil),
+			enablePostProcess: widget.NewCheck("Post-Processing", nil),
 			downloadBtn: widget.NewButtonWithIcon("Download Now!", nil, nil),
 			cancelBtn:  widget.NewButton("", nil),
 			statusDot:  canvas.NewCircle(color.RGBA{R: 100, G: 100, B: 115, A: 255}),
@@ -104,6 +105,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	app.ui.smoothMotionFPS.SetValue(fps)
 	
 	app.ui.sharpen.SetChecked(prefs.Bool("sharpen"))
+	app.ui.sharpenAmount.SetValue(prefs.FloatWithFallback("sharpenAmount", 1.0))
 	app.ui.normalizeAudio.SetChecked(prefs.Bool("normalize"))
 	app.ui.vividMode.SetChecked(prefs.Bool("vividMode"))
 	app.ui.denoise.SetChecked(prefs.Bool("denoise"))
@@ -120,6 +122,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	app.ui.saveLog.SetChecked(prefs.Bool("saveLog"))
 	app.ui.notify.SetChecked(prefs.Bool("notify"))
 	app.ui.autoRetry.SetChecked(prefs.Bool("autoRetry"))
+	app.ui.enablePostProcess.SetChecked(prefs.BoolWithFallback("enablePostProcess", true))
 	app.ui.logLimit.SetSelected(prefs.StringWithFallback("logLimit", "200"))
 	logBufferLimit = parseLogLimit(prefs.StringWithFallback("logLimit", "200"))
 	return app

@@ -25,6 +25,7 @@ type UIWidgets struct {
 	saveLog    *widget.Check       // Option to persist output to a .txt file
 	notify     *widget.Check       // Option to send a system notification on completion
 	autoRetry  *widget.Check       // Option to automatically retry on transient errors
+	enablePostProcess *widget.Check // Master toggle to enable/disable all post-processing
 	downloadBtn *widget.Button     // Start button for downloads
 	cancelBtn  *widget.Button      // Stop button for active downloads
 	statusDot  *canvas.Circle      // Animated state indicator dot next to the status label

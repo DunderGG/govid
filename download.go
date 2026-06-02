@@ -148,7 +148,11 @@ func (app *DownloaderApp) startDownload() {
 		})
 
 		// Build filters once — they come from UI state and are the same for every URL.
-		vfFilters, afFilters := app.buildPostProcessFilters()
+		// Skipped entirely when the master post-processing toggle is off.
+		var vfFilters, afFilters []string
+		if app.ui.enablePostProcess.Checked {
+			vfFilters, afFilters = app.buildPostProcessFilters()
+		}
 		hasPostProcess := len(vfFilters) > 0 || len(afFilters) > 0
 
 		// Collect finalized paths from every successful download so post-processing
