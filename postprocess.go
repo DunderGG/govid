@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"fyne.io/fyne/v2"
 )
 
 // buildPostProcessFilters reads the post-processing checkbox state from the UI
@@ -345,7 +347,7 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 	}
 	wg.Wait()
 	// All jobs done — clear progress from the status bar.
-	app.ui.status.SetText("Status: Idle")
+	fyne.Do(func() { app.ui.status.SetText("Status: Idle") })
 }
 
 // buildFFmpegArgs constructs the FFmpeg argument list for a single post-processing
@@ -465,7 +467,8 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 			continue
 		}
 		if strings.HasPrefix(line, "frame=") {
-			app.ui.status.SetText("Post-Processing: " + formatFFmpegProgress(line, job.totalFrames))
+			progress := formatFFmpegProgress(line, job.totalFrames)
+			fyne.Do(func() { app.ui.status.SetText("Post-Processing: " + progress) })
 		} else {
 			errLines = append(errLines, line)
 			app.appendOutput(line, color.RGBA{R: 160, G: 160, B: 160, A: 255})
