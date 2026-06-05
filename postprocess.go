@@ -474,6 +474,9 @@ func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, j
 			app.appendOutput(line, color.RGBA{R: 160, G: 160, B: 160, A: 255})
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		app.appendOutput(fmt.Sprintf("[SYSTEM] FFmpeg output read error: %v", err), color.RGBA{R: 255, G: 165, B: 0, A: 255})
+	}
 
 	err := cmd.Wait()
 	duration := time.Since(start)
