@@ -118,6 +118,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	app.ui.nightMode.SetChecked(prefs.Bool("nightMode"))
 	app.ui.upscaleVideo.SetChecked(prefs.Bool("upscaleVideo"))
 	app.ui.upscaleTarget.SetSelected(prefs.StringWithFallback("upscaleTarget", "2× (Double)"))
+	app.ui.cookies.SetText(prefs.String("cookiesPath"))
 	app.ui.batchMode.SetChecked(prefs.Bool("batchMode"))
 	app.ui.saveLog.SetChecked(prefs.Bool("saveLog"))
 	app.ui.notify.SetChecked(prefs.Bool("notify"))
