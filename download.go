@@ -312,7 +312,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 
 	// Build the full argument list for yt-dlp.
 	args := []string{
-		"--newline", "--progress", "--verbose", "--no-part", "--no-continue",
+		"--newline", "--progress", "--verbose", "--no-part", "--no-continue", "--no-playlist",
 		"-f", formatFlag, "-P", savePath, "-o", outputTemplate,
 	}
 
