@@ -49,7 +49,7 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Automatic thumbnail and chapter injection via FFMPEG.
 
 ### Authentication Support
-> Support age-restricted or private videos.
+> Support downloading from websites like Twitter, which requires cookies.
 
 - [X] Add a "Cookies File" selector in Preferences to pass `--cookies` to yt-dlp.
 
@@ -205,6 +205,8 @@ This document outlines planned features, improvements, and known limitations for
 > Any general improvements we can think of
 - [X] Make sure only one Preferences window can be opened.
 - [ ] The code for the guide window needs improving. Get rid of extremely long text strings.
+- [ ] The UI sometimes freezes. There might be issues with the mutexes/contexts?
+- [ ] Errors from ffmpeg sometimes gets buried in the verbose logs. Maybe Errors should be logged to separate file?
 
 ---
 
