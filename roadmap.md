@@ -205,7 +205,6 @@ This document outlines planned features, improvements, and known limitations for
 > Any general improvements we can think of
 - [X] Make sure only one Preferences window can be opened.
 - [ ] The code for the guide window needs improving. Get rid of extremely long text strings.
-- [ ] The UI sometimes freezes. There might be issues with the mutexes/contexts?
 - [ ] Errors from ffmpeg sometimes gets buried in the verbose logs. Maybe Errors should be logged to separate file?
 
 ---
@@ -253,6 +252,43 @@ This document outlines planned features, improvements, and known limitations for
 > The pulsing goroutines for "active" and "processing" states are nearly identical.
 
 - [ ] Extract a `pulseColor(stopCh chan struct{}, baseColor color.RGBA)` helper in helpers.go and reuse it for both animation states.
+
+---
+
+## ⚡ UI Performance & Stability
+
+### Event Queue Backpressure
+> Prevent the UI thread from being overwhelmed by too many frequent `fyne.Do` calls.
+
+- [ ] Add throttling/coalescing for status text updates during FFmpeg progress (e.g. max 5-10 updates/sec).
+- [ ] Add throttling/coalescing for progress-bar smoothing updates so idle frames are skipped when value changes are tiny.
+- [ ] Avoid enqueueing repeated identical status/progress values to the UI thread.
+
+### Log Rendering Efficiency
+> Reduce UI work when many log lines are produced.
+
+- [ ] Add batched log flush (buffer lines and append on a short interval) instead of per-line UI updates.
+- [ ] Add a hard upper cap for on-screen log lines even when user selects "Unlimited" (file logging remains unlimited).
+- [ ] Avoid forced `ScrollToBottom()` on every append when user has manually scrolled up.
+
+### Goroutine Lifecycle Hygiene
+> Ensure background tickers/goroutines never outlive their intended state.
+
+- [ ] Add lightweight lifecycle diagnostics (start/stop markers + goroutine count) around pulse, smoother, and post-process progress loops.
+- [ ] Audit all ticker-based loops to guarantee a single owner and deterministic stop path.
+- [ ] Add a safe shutdown path that cancels active contexts and confirms worker completion before quit.
+
+### UI Thread Safety Audit
+> Eliminate remaining direct widget mutations outside `fyne.Do`.
+
+- [ ] Add/maintain a checklist of all widget writes and enforce UI-thread-safe wrappers.
+- [ ] Add regression checks for known freeze scenarios (idle after long run, long batch with verbose logs).
+
+### Observability for Freeze Reports
+> Make future freeze incidents diagnosable from logs.
+
+- [ ] Add optional debug mode that periodically logs UI heartbeat, queued update counters, and active worker counts.
+- [ ] Add a "Copy Diagnostics" action that captures runtime state (settings + goroutine/ticker snapshot) for bug reports.
 
 ---
 
