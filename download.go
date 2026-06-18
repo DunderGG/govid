@@ -83,7 +83,12 @@ func (app *DownloaderApp) startDownload() {
 
 	// Initialize logging to file if the option is checked.
 	if app.ui.saveLog.Checked {
-		logPath := filepath.Join(savePath, "GoVid_log.txt")
+		// Each day gets its own log file named "GoVid_log_YYYY-MM-DD.txt" in the save directory. 
+		dateStamp := time.Now().Format("2006-01-02")
+		logPath := filepath.Join(savePath, fmt.Sprintf("GoVid_log_%s.txt", dateStamp))
+		// If the file already exists, new logs are appended to it.
+		// If the file does not exist, it is created. 
+		// In both cases, the file is opened in write-only mode.
 		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err == nil {
 			app.log.file = f
