@@ -85,6 +85,7 @@ type DownloaderApp struct {
 	helpWindow   fyne.Window
 	prefsWindow  fyne.Window
 	ppWindow     fyne.Window
+	historyWindow fyne.Window
 
 	// Track processing failures across concurrent workers so we can adjust the
 	// Retry button text at the end of the batch.

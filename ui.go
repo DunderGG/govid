@@ -29,6 +29,10 @@ import (
 
 // createMainMenu builds the application's top-level menu bar.
 func (app *DownloaderApp) createMainMenu() {
+	historyMenu := fyne.NewMenuItem("History", func() {
+		app.showHistory()
+	})
+
 	updateMenu := fyne.NewMenuItem("Update yt-dlp", func() {
 		dialog.ShowConfirm("Update yt-dlp", "This will run 'yt-dlp -U' to update the tool. Continue?", func(ok bool) {
 			if ok {
@@ -50,12 +54,49 @@ func (app *DownloaderApp) createMainMenu() {
 	})
 
 	mainMenu := fyne.NewMainMenu(
+		fyne.NewMenu("File", historyMenu),
 		fyne.NewMenu("Tools", updateMenu, prefsMenu, fyne.NewMenuItem("Post-Processing", func() {
 			app.showPostProcessing()
 		})),
 		fyne.NewMenu("Help", configHelpMenu, fyne.NewMenuItemSeparator(), aboutMenu),
 	)
 	app.window.SetMainMenu(mainMenu)
+}
+
+// showHistory opens a window listing previously downloaded URLs from disk.
+func (app *DownloaderApp) showHistory() {
+	if app.historyWindow != nil {
+		app.historyWindow.RequestFocus()
+		return
+	}
+
+	entries, err := loadDownloadHistory()
+	if err != nil {
+		dialog.ShowError(fmt.Errorf("failed to load download history: %v", err), app.window)
+		return
+	}
+
+	text := widget.NewMultiLineEntry()
+	text.SetPlaceHolder("No download history yet.")
+	if len(entries) > 0 {
+		var lines []string
+		for i := len(entries) - 1; i >= 0; i-- {
+			lines = append(lines, fmt.Sprintf("%s | %s", entries[i].DownloadedAt, entries[i].URL))
+		}
+		text.SetText(strings.Join(lines, "\n"))
+	}
+	text.Disable()
+
+	scroll := container.NewScroll(text)
+	scroll.SetMinSize(fyne.NewSize(760, 420))
+
+	app.historyWindow = fyne.CurrentApp().NewWindow("Download History")
+	app.historyWindow.SetContent(container.NewPadded(scroll))
+	app.historyWindow.Resize(fyne.NewSize(800, 460))
+	app.historyWindow.SetOnClosed(func() {
+		app.historyWindow = nil
+	})
+	app.historyWindow.Show()
 }
 
 // showPostProcessing opens a window for specialized hardware/software filters.

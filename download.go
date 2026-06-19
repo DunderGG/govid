@@ -447,6 +447,12 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	// Rename temp files to their clean, conflict-free names.
 	var finalPaths []string
 	if cmdErr == nil && downloadID != "" {
+		if historyErr := appendDownloadHistory(rawURL); historyErr != nil {
+			app.appendOutput(
+				fmt.Sprintf("[SYSTEM] Warning: failed to record history: %v", historyErr),
+				color.RGBA{R: 255, G: 160, B: 0, A: 255},
+			)
+		}
 		finalPaths = app.finalizeDownloadedFiles(savePath, downloadID)
 	}
 
