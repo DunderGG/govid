@@ -66,8 +66,9 @@ type DownloadStats struct {
 
 // LogManager handles file-based logging operations.
 type LogManager struct {
-	file  *os.File   // The persistent log file on disk
-	mutex sync.Mutex // Prevents data races when writing from multiple goroutines
+	file       *os.File   // The persistent log file on disk
+	mutex      sync.Mutex // Prevents data races when writing from multiple goroutines
+	errorMutex sync.Mutex // Serializes writes to the daily error log file
 }
 
 // DownloaderApp acts as a coordinator, holding pointers to the specialized

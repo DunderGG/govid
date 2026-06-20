@@ -15,6 +15,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -135,6 +136,47 @@ func (app *DownloaderApp) appendOutput(line string, col color.Color) {
 		fmt.Fprintf(app.log.file, "[%s] %s\n", time.Now().Format("15:04:05"), line)
 	}
 	app.log.mutex.Unlock()
+
+	if isErrorLogLine(line) {
+		app.appendErrorOutput(line)
+	}
+}
+
+// appendErrorOutput writes error-like lines to a daily error log file.
+func (app *DownloaderApp) appendErrorOutput(line string) {
+	errorPath := app.dailyErrorLogPath()
+	app.log.errorMutex.Lock()
+	defer app.log.errorMutex.Unlock()
+
+	f, err := os.OpenFile(errorPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	fmt.Fprintf(f, "[%s] %s\n", time.Now().Format("15:04:05"), line)
+}
+
+// dailyErrorLogPath returns today's error log file path in the current save folder.
+func (app *DownloaderApp) dailyErrorLogPath() string {
+	dir := strings.TrimSpace(app.ui.path.Text)
+	if dir == "" {
+		exePath, err := os.Executable()
+		if err == nil {
+			dir = filepath.Dir(exePath)
+		}
+	}
+	if dir == "" {
+		dir = "."
+	}
+	dateStamp := time.Now().Format("2006-01-02")
+	return filepath.Join(dir, fmt.Sprintf("GoVid_errors_%s.txt", dateStamp))
+}
+
+// isErrorLogLine returns true when a log line looks like an error worth mirroring.
+func isErrorLogLine(line string) bool {
+	upper := strings.ToUpper(line)
+	return strings.Contains(upper, "ERROR") || strings.Contains(upper, "FAILED")
 }
 
 // setStatusIndicator updates the status dot color to reflect the current

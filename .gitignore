@@ -39,3 +39,4 @@ go.work.sum
 *.syso
 GoVid
 /release/*
+download_history.json
