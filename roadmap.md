@@ -322,8 +322,9 @@ This document outlines planned features, improvements, and known limitations for
 ### Download History
 > Keep a record of previously downloaded files.
 
-- [ ] Maintain a local SQLite or JSON file storing URL, filename, date, and format.
-- [ ] Show a "History" panel or tab in the UI.
+- [X] Maintain a local SQLite or JSON file storing URL, filename, date, and format.
+- [ ] Capture and store the real source title in history using a structured yt-dlp output field; fall back to filename/title inference if unavailable.
+- [X] Show a "History" panel or tab in the UI.
 - [ ] Warn the user when they paste a URL that has already been downloaded.
 
 ### Structural Refactoring

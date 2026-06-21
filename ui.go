@@ -81,7 +81,23 @@ func (app *DownloaderApp) showHistory() {
 	if len(entries) > 0 {
 		var lines []string
 		for i := len(entries) - 1; i >= 0; i-- {
-			lines = append(lines, fmt.Sprintf("%s | %s", entries[i].DownloadedAt, entries[i].URL))
+			entry := entries[i]
+			title := entry.OriginalTitle
+			if title == "" {
+				title = entry.FinalFilename
+			}
+			if title == "" {
+				title = entry.URL
+			}
+			lines = append(lines,
+				fmt.Sprintf("%s | %s", entry.DownloadedAt, title),
+				fmt.Sprintf("  URL: %s", entry.URL),
+				fmt.Sprintf("  Saved As: %s", entry.FinalFilename),
+				fmt.Sprintf("  Path: %s", entry.SavedPath),
+				fmt.Sprintf("  Format/Quality: %s / %s", entry.Format, entry.Quality),
+				fmt.Sprintf("  Post-Processed: %t", entry.PostProcessed),
+				"",
+			)
 		}
 		text.SetText(strings.Join(lines, "\n"))
 	}
