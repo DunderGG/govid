@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -78,29 +79,28 @@ func (app *DownloaderApp) showHistory() {
 
 	text := widget.NewMultiLineEntry()
 	text.SetPlaceHolder("No download history yet.")
-	if len(entries) > 0 {
-		var lines []string
-		for i := len(entries) - 1; i >= 0; i-- {
-			entry := entries[i]
-			title := entry.OriginalTitle
-			if title == "" {
-				title = entry.FinalFilename
-			}
-			if title == "" {
-				title = entry.URL
-			}
-			lines = append(lines,
-				fmt.Sprintf("%s | %s", entry.DownloadedAt, title),
-				fmt.Sprintf("  URL: %s", entry.URL),
-				fmt.Sprintf("  Saved As: %s", entry.FinalFilename),
-				fmt.Sprintf("  Path: %s", entry.SavedPath),
-				fmt.Sprintf("  Format/Quality: %s / %s", entry.Format, entry.Quality),
-				fmt.Sprintf("  Post-Processed: %t", entry.PostProcessed),
-				"",
-			)
+	var lines []string
+
+	// Iterate backwards so the most recent downloads appear at the top. 
+	for _, entry := range slices.Backward(entries) {
+		title := entry.OriginalTitle
+		if title == "" {
+			title = entry.FinalFilename
 		}
-		text.SetText(strings.Join(lines, "\n"))
+		if title == "" {
+			title = entry.URL
+		}
+		lines = append(lines,
+			fmt.Sprintf("%s | %s", entry.DownloadedAt, title),
+			fmt.Sprintf("  URL: %s", entry.URL),
+			fmt.Sprintf("  Saved As: %s", entry.FinalFilename),
+			fmt.Sprintf("  Path: %s", entry.SavedPath),
+			fmt.Sprintf("  Format/Quality: %s / %s", entry.Format, entry.Quality),
+			fmt.Sprintf("  Post-Processed: %t", entry.PostProcessed),
+			"",
+		)
 	}
+	text.SetText(strings.Join(lines, "\n"))
 	text.Disable()
 
 	scroll := container.NewScroll(text)
