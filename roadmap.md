@@ -48,6 +48,34 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Allow the user to toggle thumbnail embedding from the UI options.
 - [ ] Automatic thumbnail and chapter injection via FFMPEG.
 
+### Queue Manager
+> Give users better control over batch downloads.
+
+- [ ] Add pause, resume, cancel, retry, and reordering for queued downloads.
+- [ ] Show per-item status, ETA, and completion state in the queue list.
+- [ ] Preserve queued items after app restarts if the user chooses to save the session.
+
+### Presets / Profiles
+> Save common download setups for quick reuse.
+
+- [ ] Let users save named presets for common workflows like audio-only, 1080p MP4, and playlist downloads.
+- [ ] Allow presets to store format, quality, output path, subtitles, metadata, and speed-limit settings.
+- [ ] Add preset import/export so users can move their settings between machines.
+
+### yt-dlp Auto-Update
+> Keep the bundled downloader current without manual steps.
+
+- [ ] Check whether yt-dlp is outdated when the app starts or on demand.
+- [ ] Add a one-click update action for yt-dlp in the Tools menu.
+- [ ] Show the currently installed yt-dlp version alongside the latest available version.
+
+### Format Browser
+> Make yt-dlp format selection easier to understand.
+
+- [ ] Show available formats in a readable table with resolution, codec, bitrate, and container.
+- [ ] Add a preview of the final format choice before starting a download.
+- [ ] Let users pin or favorite preferred formats for faster selection.
+
 ### Authentication Support
 > Support downloading from websites like Twitter, which requires cookies.
 
@@ -331,10 +359,13 @@ This document outlines planned features, improvements, and known limitations for
 > Decouple core logic from the main UI controller.
 
 - [ ] Break down the "God Object" `DownloaderApp` into specialized components.
-- [ ] **DownloadEngine**: Extract yt-dlp execution and state management (cancellation/progress).
-- [ ] **FilterPipeline**: Extract FFmpeg filter building, detection, and concurrent job logic.
-- [ ] **UIManager**: Separate widget lifecycle and layout from business logic.
-- [ ] **PreferenceService**: Centralize preference loading/saving away from the app struct.
+	- [ ] **DownloadEngine**: Extract yt-dlp execution, retries, cancellation, and progress parsing.
+	- [ ] **FilterPipeline**: Extract FFmpeg filter composition, crop detection, worker pool orchestration, and post-process execution.
+	- [ ] **UIManager**: Own widget lifecycle, window state, menu wiring, and UI-only rendering concerns.
+	- [ ] **PreferenceService**: Centralize preference load/save/reset logic and defaults.
+	- [ ] **HistoryService**: Centralize download history persistence, schema evolution, and lookup helpers.
+	- [ ] **LogService**: Centralize session log/error log routing, rotation policy, and structured log helpers.
+	- [ ] **DependencyService**: Isolate binary discovery, dependency checks, and updater command execution.
 
 ### Log Management
 > Improve technical troubleshooting.
