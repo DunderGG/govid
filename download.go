@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"image/color"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -255,194 +254,47 @@ func (app *DownloaderApp) startDownload() {
 // index and total indicate the position within a batch (both 1 for single downloads).
 func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath string, trimStart string, trimEnd string, index, total int) []string {
 	startTime := time.Now()
-	formatFlag := "bestvideo+bestaudio/best"
-	extension := "mp4"
 
-	quality := app.ui.quality.Selected
-	height := ""
-	switch quality {
-	case "1080p":
-		height = "1080"
-	case "720p":
-		height = "720"
-	case "480p":
-		height = "480"
-	case "360p":
-		height = "360"
-	}
-
-	selection := app.ui.format.Selected
-	if strings.Contains(selection, "MP3") {
-		formatFlag = "bestaudio/best"
-		extension = "mp3"
-	} else if strings.Contains(selection, "M4A") {
-		formatFlag = "bestaudio[ext=m4a]/bestaudio/best"
-		extension = "m4a"
-	} else {
-		if height != "" {
-			formatFlag = fmt.Sprintf("bestvideo[height<=%s]+bestaudio/best[height<=%s]/best", height, height)
-		}
-		if strings.Contains(selection, "WebM") {
-			extension = "webm"
-			// Prefer VP9/AV1 + Opus — the native WebM codecs — so the streams
-			// remux losslessly without re-encoding. Fall back to any best stream.
-			if height != "" {
-				formatFlag = fmt.Sprintf(
-					"bestvideo[vcodec^=vp9][height<=%s]+bestaudio[acodec=opus]/bestvideo[vcodec^=av01][height<=%s]+bestaudio[acodec=opus]/bestvideo[height<=%s]+bestaudio/best",
-					height, height, height,
-				)
-			} else {
-				formatFlag = "bestvideo[vcodec^=vp9]+bestaudio[acodec=opus]/bestvideo[vcodec^=av01]+bestaudio[acodec=opus]/bestvideo+bestaudio/best"
-			}
-		} else if strings.Contains(selection, "MKV") {
-			extension = "mkv"
-		}
-	}
-
-	qualitySuffix := ""
-	if height != "" {
-		qualitySuffix = "_" + quality
-	}
-
-	// Embed a unique token into the filename while yt-dlp is running so it never
-	// conflicts with existing files mid-download. After a successful download the
-	// token is stripped and the file is renamed; a numeric suffix is appended only
-	// if a file with the desired clean name already exists.
-	downloadID := fmt.Sprintf("GOVID%d", time.Now().UnixNano())
-
-	outputTemplate := "GoVid_%(title)s" + qualitySuffix + "_" + downloadID + ".%(ext)s"
-	if trimStart != "" || trimEnd != "" {
-		outputTemplate = "GoVid_%(title)s" + qualitySuffix + "_TRIM_" + downloadID + ".%(ext)s"
-	}
-
-	// Build the full argument list for yt-dlp.
-	args := []string{
-		"--newline", "--progress", "--verbose", "--no-part", "--no-continue", "--no-playlist",
-		"-f", formatFlag, "-P", savePath, "-o", outputTemplate,
-	}
-
-	// Use bundled ffmpeg if available.
-	ffmpegPath := app.getLocalBinPath("ffmpeg")
-	if _, err := os.Stat(ffmpegPath); err == nil {
-		args = append(args, "--ffmpeg-location", ffmpegPath)
-	}
-
-	// Apply speed limit if set.
+	// Resolve speed limit: prefer current UI value, fall back to saved preference.
 	limit := strings.TrimSpace(app.ui.maxSpeed.Text)
-	// If the user didn't enter a limit this time, check if there's a saved preference from before.
 	if limit == "" {
 		limit = fyne.CurrentApp().Preferences().String("maxSpeed")
 	}
-	// Append the limit argument if we found a value after checking both the current input and saved preferences.
-	if limit != "" {
-		args = append(args, "--limit-rate", limit)
+
+	engine := NewDownloadEngine(
+		app.resolvedBinPath("yt-dlp"),
+		app.resolvedBinPath("ffmpeg"),
+	)
+
+	built := engine.BuildArgs(DownloadRequest{
+		URL:         rawURL,
+		SavePath:    savePath,
+		Format:      app.ui.format.Selected,
+		Quality:     app.ui.quality.Selected,
+		TrimStart:   trimStart,
+		TrimEnd:     trimEnd,
+		MaxSpeed:    limit,
+		CookiesPath: strings.TrimSpace(app.ui.cookies.Text),
+	})
+
+	args := built.Args
+	extension := built.Extension
+	downloadID := built.DownloadID
+	selection := app.ui.format.Selected
+	quality := app.ui.quality.Selected
+
+	if built.HasTrim {
+		app.appendOutput(
+			fmt.Sprintf("[SYSTEM] Trimming: %s → %s", built.TrimDisplayStart, built.TrimDisplayEnd),
+			color.RGBA{R: 0, G: 255, B: 255, A: 255},
+		)
 	}
 
-	// Apply cookies file if set.
-	cookiesPath := strings.TrimSpace(app.ui.cookies.Text)
-	if cookiesPath != "" {
-		if _, err := os.Stat(cookiesPath); err == nil {
-			args = append(args, "--cookies", cookiesPath)
-		}
-	}
-
-	if extension == "mp3" || extension == "m4a" {
-		// Default --audio-quality is 5 (medium) for most formats, but we want 0 (best) for the audio-focused formats.
-		args = append(args, "--extract-audio", "--audio-format", extension, "--audio-quality", "0")
-	} else if extension != "" {
-		// Tell yt-dlp which container to use when merging separate video+audio
-		// streams (avoids mismatches like .webm streams merged into .mp4).
-		args = append(args, "--merge-output-format", extension)
-		// Prefer lossless container remux; fall back to re-encode only if the
-		// source codec is incompatible with the target container.
-		args = append(args, "--remux-video", extension, "--recode-video", extension)
-	}
-
-	// Trim: pass start/end to yt-dlp with keyframe-accurate cuts.
-	if trimStart != "" || trimEnd != "" {
-		// Start downloading from 0 or the specified time.
-		start, displayStart := trimStart, trimStart
-		if start == "" {
-			start = "0"
-			displayStart = "start"
-		}
-		// Stop downloading at the specified time or the end of the video.
-		end, displayEnd := trimEnd, trimEnd
-		if end == "" {
-			end  = "inf"
-			displayEnd = "end"
-		}
-
-		args = append(args, "--download-sections", fmt.Sprintf("*%s-%s", start, end))
-		args = append(args, "--force-keyframes-at-cuts")
-		app.appendOutput(fmt.Sprintf("[SYSTEM] Trimming: %s → %s", displayStart, displayEnd), color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	}
-
-	args = append(args, rawURL)
-
-	ytDlpPath := app.getLocalBinPath("yt-dlp")
-	if _, err := os.Stat(ytDlpPath); err != nil {
-		ytDlpPath = "yt-dlp"
-	}
-
-	retryDelays := []time.Duration{time.Second, 5 * time.Second, 30 * time.Second}
-	var result scanResult
-	var cmdErr error
-	retryAborted := false
-
-	for attempt := 0; attempt < 3; attempt++ {
-		if attempt > 0 {
-			if !app.ui.autoRetry.Checked || !result.hadTransientErr {
-				break
-			}
-			delay := retryDelays[attempt-1]
-			app.appendOutput(fmt.Sprintf(
-				"[SYSTEM] Transient error detected — retrying in %v (attempt %d/3)...",
-				delay, attempt+1,
-			), color.RGBA{R: 255, G: 165, B: 0, A: 255})
-			select {
-			case <-ctx.Done():
-				retryAborted = true
-			case <-time.After(delay):
-			}
-			if retryAborted {
-				break
-			}
-		}
-
-		// If there is an error starting the process, report it and
-		// return nil so the caller knows not to proceed with post-processing.
-		cmd := exec.CommandContext(ctx, ytDlpPath, args...)
-		hideWindow(cmd)
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			app.updateStatus(fmt.Sprintf("Failed to create stdout pipe: %v", err))
-			return nil
-		}
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			app.updateStatus(fmt.Sprintf("Failed to create stderr pipe: %v", err))
-			return nil
-		}
-
-		// If there is an error starting the process, report it and
-		// return nil so the caller knows not to proceed with post-processing.
-		if err := cmd.Start(); err != nil {
-			app.updateStatus(fmt.Sprintf("Failed to launch yt-dlp: %v", err))
-			return nil
-		}
-		if total > 1 {
-			app.updateStatus(fmt.Sprintf("Status: Downloading (%d of %d)...", index, total))
-		} else {
-			app.updateStatus("Status: Downloading...")
-		}
-
-		result = app.watchOutput(stdout, stderr)
-		cmdErr = cmd.Wait()
-		if cmdErr == nil {
-			break
-		}
-	}
+	result, cmdErr := engine.Execute(ctx, args, app.ui.autoRetry.Checked, index, total, ProcessCallbacks{
+		OnLog:       app.appendOutput,
+		OnStatus:    app.updateStatus,
+		WatchOutput: app.watchOutput,
+	})
 
 	// Rename temp files to their clean, conflict-free names.
 	var finalPaths []string
@@ -607,4 +459,14 @@ func (app *DownloaderApp) getLocalBinPath(toolName string) string {
 		toolName += ".exe"
 	}
 	return filepath.Join(filepath.Dir(exePath), "bin", toolName)
+}
+
+// resolvedBinPath returns the path to use for the given tool: the bundled
+// binary if it exists on disk, otherwise the bare tool name for PATH lookup.
+func (app *DownloaderApp) resolvedBinPath(toolName string) string {
+	local := app.getLocalBinPath(toolName)
+	if _, err := os.Stat(local); err == nil {
+		return local
+	}
+	return toolName
 }
