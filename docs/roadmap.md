@@ -360,7 +360,7 @@ This document outlines planned features, improvements, and known limitations for
 
 - [ ] Break down the "God Object" `DownloaderApp` into specialized components.
 	- [x] **DownloadEngine**: Extract yt-dlp execution, retries, cancellation, and progress parsing.
-	- [ ] **PPEngine**: Extract FFmpeg filter composition, crop detection, worker pool orchestration, and post-process execution.
+	- [x] **PPEngine**: Extract FFmpeg filter composition, crop detection, worker pool orchestration, and post-process execution.
 	- [ ] **UIManager**: Own widget lifecycle, window state, menu wiring, and UI-only rendering concerns.
 	- [ ] **PreferenceService**: Centralize preference load/save/reset logic and defaults.
 	- [ ] **HistoryService**: Centralize download history persistence, schema evolution, and lookup helpers.

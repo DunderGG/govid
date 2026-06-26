@@ -3,11 +3,12 @@
 // Responsibilities:
 //   - Building the video/audio filter lists from the current UI state.
 //   - Renaming temp files to their clean, conflict-free final names.
-//   - Running a dedicated FFmpeg pass to apply post-processing filters.
+//   - Thin applyFFmpegFilters wrapper: collects binary paths and wires
+//     PPCallbacks before delegating to PPEngine.ApplyFilters.
+//   - Utility and probe functions used by PPEngine (same package).
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"image/color"
@@ -15,13 +16,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
-
-	"fyne.io/fyne/v2"
 )
 
 // buildPostProcessFilters reads the post-processing checkbox state from the UI
@@ -112,68 +109,17 @@ func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []stri
 	return
 }
 
-// detectCropFilter runs a quick FFmpeg cropdetect pass on the first 60 seconds of
-// the file and returns a "crop=W:H:X:Y" filter string, or "" if no bars were found.
-func (app *DownloaderApp) detectCropFilter(ctx context.Context, ffmpegPath, inputPath string) string {
-	cmd := exec.CommandContext(ctx, ffmpegPath,
-		"-t", "60", "-i", inputPath,
-		"-vf", "cropdetect=limit=24:round=16:reset=0",
-		"-f", "null", "-",
-	)
-	hideWindow(cmd)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		app.appendOutput(
-			fmt.Sprintf("[SYSTEM] Auto-Crop: cropdetect failed, skipping (%v)", err),
-			color.RGBA{R: 255, G: 160, B: 0, A: 255},
-		)
-		return ""
-	}
+// detectCropFilter, resolveAutoCrop, and runFFmpegJob are methods on PPEngine in pp_engine.go.
 
-	// The last "crop=" line contains the tightest detected crop.
-	lastCrop := ""
-	for _, line := range strings.Split(string(out), "\n") {
-		if idx := strings.Index(line, "crop="); idx != -1 {
-			fields := strings.Fields(line[idx:])
-			if len(fields) > 0 {
-				lastCrop = fields[0]
-			}
-		}
-	}
-	if lastCrop == "" {
-		app.appendOutput("[SYSTEM] Auto-Crop: no black bars detected, skipping.", color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	} else {
-		app.appendOutput(fmt.Sprintf("[SYSTEM] Auto-Crop: detected %s", lastCrop), color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	}
-	return lastCrop
-}
-
-// resolveAutoCrop replaces the "__autocrop__" sentinel in a vfFilters slice with
-// the actual crop filter detected from the specific file. If detection fails the
-// sentinel is silently dropped so the rest of the filter chain still runs.
-func (app *DownloaderApp) resolveAutoCrop(ctx context.Context, ffmpegPath, inputPath string, filters []string) []string {
-	hasSentinel := false
-	for _, filter := range filters {
-		if filter == "__autocrop__" {
-			hasSentinel = true
-			break
-		}
-	}
-	if !hasSentinel {
-		return filters
-	}
-	cropFilter := app.detectCropFilter(ctx, ffmpegPath, inputPath)
-	var resolved []string
-	for _, filter := range filters {
-		if filter == "__autocrop__" {
-			if cropFilter != "" {
-				resolved = append(resolved, cropFilter)
-			}
-		} else {
-			resolved = append(resolved, filter)
-		}
-	}
-	return resolved
+// applyFFmpegFilters creates a PPEngine from resolved binary paths and delegates
+// to PPEngine.ApplyFilters, wiring the app's log/status/failure callbacks.
+func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfFilters, afFilters []string) {
+	engine := NewPPEngine(app.resolvedBinPath("ffmpeg"), app.resolvedBinPath("ffprobe"))
+	engine.ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks{
+		OnLog:     app.appendOutput,
+		OnStatus:  app.updateStatus,
+		OnFailure: func() { app.ppFailed.Store(1) },
+	})
 }
 
 // finalizeDownloadedFiles finds all files written by yt-dlp under the given
@@ -230,126 +176,6 @@ func uniquePath(path string) string {
 	}
 }
 
-// applyFFmpegFilters runs a concurrent worker pool to post-process each of
-// the given files with the provided video/audio filters. Workers are bounded
-// to runtime.NumCPU() so that the total thread load across all FFmpeg processes
-// never exceeds the available core count. Each worker receives an evenly
-// divided thread budget so concurrent jobs don't compete for CPU.
-// Video filters are skipped for audio-only files. The original file is replaced
-// with the filtered output only if FFmpeg succeeds.
-func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfFilters, afFilters []string) {
-	if len(filePaths) == 0 || (len(vfFilters) == 0 && len(afFilters) == 0) {
-		return
-	}
-
-	ffmpegPath := app.getLocalBinPath("ffmpeg")
-	if _, err := os.Stat(ffmpegPath); err != nil {
-		ffmpegPath = "ffmpeg"
-	}
-
-	ffprobePath := app.getLocalBinPath("ffprobe")
-	if _, err := os.Stat(ffprobePath); err != nil {
-		ffprobePath = "ffprobe"
-	}
-
-	// Build one job per file, skipping files that need no processing.
-	var jobs []PostProcessJob
-	for _, inputPath := range filePaths {
-		ext := strings.ToLower(filepath.Ext(inputPath))
-		isAudioOnly := ext == ".mp3" || ext == ".m4a"
-
-		activeVF := vfFilters
-		if isAudioOnly {
-			activeVF = nil // video filters don't apply to audio-only files
-		} else {
-			// Resolve the __autocrop__ sentinel to an actual crop filter for this specific file.
-			activeVF = app.resolveAutoCrop(ctx, ffmpegPath, inputPath, activeVF)
-		}
-		if len(activeVF) == 0 && len(afFilters) == 0 {
-			continue
-		}
-
-		tmpOutput := strings.TrimSuffix(inputPath, ext) + "_pp" + ext
-		finalPath := inputPath
-		encodeMode := "Stream copy"
-		if len(activeVF) > 0 {
-			if ext == ".webm" {
-				encodeMode = "Re-encode (libvpx-vp9, CRF 31)"
-			} else {
-				encodeMode = "Re-encode (libx264, CRF 18, slower)"
-			}
-		}
-		jobs = append(jobs, PostProcessJob{
-			inputPath:   inputPath,
-			tmpOutput:   tmpOutput,
-			finalPath:   finalPath,
-			ffmpegArgs:  buildFFmpegArgs(inputPath, tmpOutput, activeVF, afFilters),
-			vfFilters:   activeVF,
-			afFilters:   afFilters,
-			encodeMode:  encodeMode,
-			totalFrames: computeOutputFrameCount(ctx, ffprobePath, inputPath, probeFrameCount(ctx, ffprobePath, inputPath), activeVF),
-		})
-	}
-
-	if len(jobs) == 0 {
-		return
-	}
-
-	// Log a summary of the active filters before starting any workers.
-	var filterSummary []string
-	filterSummary = append(filterSummary, fmt.Sprintf("files: %d", len(jobs)))
-	if len(vfFilters) > 0 {
-		filterSummary = append(filterSummary, "vf: "+strings.Join(vfFilters, ", "))
-	}
-	if len(afFilters) > 0 {
-		filterSummary = append(filterSummary, "af: "+strings.Join(afFilters, ", "))
-	}
-	app.appendOutput(
-		fmt.Sprintf("[SYSTEM] Starting post-processing (%s)", strings.Join(filterSummary, " | ")),
-		color.RGBA{R: 0, G: 255, B: 255, A: 255},
-	)
-
-	// Cap workers at the number of logical CPU cores and at the number of jobs.
-	numWorkers := runtime.NumCPU()
-	if numWorkers > len(jobs) {
-		numWorkers = len(jobs)
-	}
-
-	// Divide available cores evenly so concurrent FFmpeg processes don't
-	// fight each other for threads. Minimum 1 thread per process.
-	threadsPerJob := runtime.NumCPU() / numWorkers
-	if threadsPerJob < 1 {
-		threadsPerJob = 1
-	}
-
-	// Patch the -threads value in each job's arg list now that we know the count.
-	for i := range jobs {
-		jobs[i].threads = threadsPerJob
-		jobs[i].ffmpegArgs = patchThreadCount(jobs[i].ffmpegArgs, fmt.Sprintf("%d", threadsPerJob))
-	}
-
-	// Push all jobs into a buffered channel and close it so workers stop when empty.
-	jobCh := make(chan PostProcessJob, len(jobs))
-	for _, job := range jobs {
-		jobCh <- job
-	}
-	close(jobCh)
-
-	var wg sync.WaitGroup
-	for range numWorkers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for job := range jobCh {
-				app.runFFmpegJob(ctx, ffmpegPath, job)
-			}
-		}()
-	}
-	wg.Wait()
-	// All jobs done — clear progress from the status bar.
-	fyne.Do(func() { app.ui.status.SetText("Status: Idle") })
-}
-
 // buildFFmpegArgs constructs the FFmpeg argument list for a single post-processing
 // job. The -threads placeholder is set to "0" and patched to the real count later.
 func buildFFmpegArgs(inputPath, tmpOutput string, vfFilters, afFilters []string) []string {
@@ -390,157 +216,6 @@ func patchThreadCount(args []string, count string) []string {
 		}
 	}
 	return args
-}
-
-// runFFmpegJob executes a single PostProcessJob and streams FFmpeg's stderr to the UI
-// in real-time. Progress stats (frame, fps, speed) update the status bar;
-// all other lines are collected for error reporting if the job fails.
-func (app *DownloaderApp) runFFmpegJob(ctx context.Context, ffmpegPath string, job PostProcessJob) {
-	app.appendOutput(
-		fmt.Sprintf("[SYSTEM] Post-processing: %s", filepath.Base(job.inputPath)),
-		color.RGBA{R: 0, G: 255, B: 255, A: 255},
-	)
-
-	// Warn when re-encoding WebM: VP9 is significantly slower than H.264.
-	// Suggest MKV as a faster alternative.
-	if strings.ToLower(filepath.Ext(job.inputPath)) == ".webm" && strings.Contains(job.encodeMode, "libvpx-vp9") {
-		app.appendOutput(
-			"[SYSTEM] ⚠ WebM re-encodes use VP9 which is much slower than H.264. Consider downloading as MKV for faster post-processing.",
-			color.RGBA{R: 255, G: 200, B: 0, A: 255},
-		)
-	}
-
-	// Capture input file size before processing.
-	var sizeBefore int64
-	if info, err := os.Stat(job.inputPath); err == nil {
-		sizeBefore = info.Size()
-	}
-
-	start := time.Now()
-	cmd := exec.CommandContext(ctx, ffmpegPath, job.ffmpegArgs...)
-	hideWindow(cmd)
-
-	stderrPipe, pipeErr := cmd.StderrPipe()
-	if pipeErr != nil {
-		// Fallback: run without streaming.
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			app.appendOutput(fmt.Sprintf("[ERROR] Post-processing failed: %v", err), color.RGBA{R: 255, A: 255})
-			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-				if line != "" {
-					app.appendOutput(line, color.RGBA{R: 180, G: 180, B: 180, A: 255})
-				}
-			}
-			if removeErr := os.Remove(job.tmpOutput); removeErr != nil {
-				app.appendOutput(
-					fmt.Sprintf("[SYSTEM] Warning: could not remove temp file: %v", removeErr),
-					color.RGBA{R: 255, G: 160, B: 0, A: 255},
-				)
-			}
-			return
-		}
-		// FFmpeg succeeded — still need to promote the temp file to its final name.
-		if renameErr := os.Rename(job.tmpOutput, job.finalPath); renameErr != nil {
-			app.appendOutput(
-				fmt.Sprintf("[SYSTEM] Failed to rename output file: %v", renameErr),
-				color.RGBA{R: 255, G: 80, B: 80, A: 255},
-			)
-			app.ppFailed.Store(1)
-		}
-		return
-	}
-
-	if err := cmd.Start(); err != nil {
-		app.appendOutput(fmt.Sprintf("[ERROR] Could not start FFmpeg: %v", err), color.RGBA{R: 255, A: 255})
-		return
-	}
-
-	// Stream stderr: progress lines update the status bar and are discarded;
-	// all other lines are printed to the log live and kept in errLines so the
-	// error path can reference them if needed.
-	var errLines []string
-	scanner := bufio.NewScanner(stderrPipe)
-	scanner.Split(scanCRLF)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-		if strings.HasPrefix(line, "frame=") {
-			progress := formatFFmpegProgress(line, job.totalFrames)
-			fyne.Do(func() { app.ui.status.SetText("Post-Processing: " + progress) })
-		} else {
-			errLines = append(errLines, line)
-			app.appendOutput(line, color.RGBA{R: 160, G: 160, B: 160, A: 255})
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		app.appendOutput(fmt.Sprintf("[SYSTEM] FFmpeg output read error: %v", err), color.RGBA{R: 255, G: 165, B: 0, A: 255})
-	}
-
-	err := cmd.Wait()
-	duration := time.Since(start)
-
-	if err != nil {
-		app.ppFailed.Store(1)
-		app.appendOutput(
-			fmt.Sprintf("[ERROR] Post-processing failed: %v", err),
-			color.RGBA{R: 255, G: 0, B: 0, A: 255},
-		)
-		if removeErr := os.Remove(job.tmpOutput); removeErr != nil {
-			app.appendOutput(
-				fmt.Sprintf("[SYSTEM] Warning: could not remove temp file: %v", removeErr),
-				color.RGBA{R: 255, G: 160, B: 0, A: 255},
-			)
-		}
-		return
-	}
-
-	// Capture output size before the rename so we can compute the delta.
-	var sizeAfter int64
-	if info, err := os.Stat(job.tmpOutput); err == nil {
-		sizeAfter = info.Size()
-	}
-
-	if err := os.Rename(job.tmpOutput, job.finalPath); err != nil {
-		app.appendOutput(
-			fmt.Sprintf("[SYSTEM] Failed to rename output file: %v", err),
-			color.RGBA{R: 255, G: 80, B: 80, A: 255},
-		)
-		app.ppFailed.Store(1)
-		return
-	}
-
-	// Build a human-readable size change string.
-	sizeDelta := ""
-	if sizeBefore > 0 && sizeAfter > 0 {
-		deltaPct := (float64(sizeAfter)-float64(sizeBefore))/float64(sizeBefore)*100
-		sign := "+"
-		if deltaPct < 0 {
-			sign = ""
-		}
-		sizeDelta = fmt.Sprintf("%s → %s (%s%.1f%%)",
-			formatBytes(sizeBefore), formatBytes(sizeAfter), sign, deltaPct)
-	}
-
-	// Collect active filter names for the summary.
-	var filterNames []string
-	for _, vfFilter := range job.vfFilters {
-		filterNames = append(filterNames, filterShortName(vfFilter))
-	}
-	for _, afFilter := range job.afFilters {
-		filterNames = append(filterNames, filterShortName(afFilter))
-	}
-
-	successColor := color.RGBA{R: 0, G: 200, B: 0, A: 255}
-	app.appendOutput("────────────────────────────────────────", color.RGBA{R: 0, G: 160, B: 0, A: 255})
-	app.appendOutput(fmt.Sprintf("POST-PROCESSING COMPLETE: %s", filepath.Base(job.finalPath)), successColor)
-	app.appendOutput(fmt.Sprintf("   ├─ Duration:  %s", formatDuration(duration)), successColor)
-	app.appendOutput(fmt.Sprintf("   ├─ File size: %s", sizeDelta), successColor)
-	app.appendOutput(fmt.Sprintf("   ├─ Encoder:   %s", job.encodeMode), successColor)
-	app.appendOutput(fmt.Sprintf("   ├─ Threads:   %d", job.threads), successColor)
-	app.appendOutput(fmt.Sprintf("   └─ Filters:   %s", strings.Join(filterNames, ", ")), successColor)
-	app.appendOutput("────────────────────────────────────────", color.RGBA{R: 0, G: 160, B: 0, A: 255})
 }
 
 // formatFFmpegProgress parses a FFmpeg stats line ("frame=X fps=X ... time=HH:MM:SS speed=Xx")
