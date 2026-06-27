@@ -28,3 +28,40 @@ This version groups the audit items into priority buckets so you can tackle the 
 - [ ] Isolate icon and embedded asset code — Keep generated or embedded asset files separate from application logic so they stay predictable and easier to update.
 - [ ] Preserve platform-specific wrappers — Keep Windows and non-Windows process handling in dedicated build-tag files so the rest of the app can stay cross-platform and simple.
 
+## DownloadEngine
+
+**Done:** `DownloadEngine` struct introduced in `download_engine.go`. It owns the yt-dlp and ffmpeg binary paths and exposes two methods: `BuildArgs(DownloadRequest) DownloadArgs` (pure argument construction, no I/O) and `Execute(ctx, args, autoRetry, index, total, ProcessCallbacks) (scanResult, error)` (retry loop with exponential backoff). `ProcessCallbacks` bridges log, status, and output-scanning events back to the UI without Fyne imports. `download.go` is now a thin orchestration layer that collects UI state and delegates to the engine.
+
+**Next steps:**
+
+1. **Move `watchOutput` / `parseProgress` out of `DownloaderApp`** — these are called through `ProcessCallbacks.WatchOutput` but still live on `DownloaderApp` because they write to `app.stats` (progress tracking state). Extracting them requires either moving `DownloadStats` into `DownloadEngine` or passing a `OnProgress(pct float64, size string)` callback so the engine owns no mutable UI state.
+
+2. **Move `finalizeDownloadedFiles` to `DownloadEngine`** — it is called right after `Execute` in `runYtDlp` and is purely file-system work (glob, rename, uniquePath). A `FinalizeFiles(savePath, downloadID string, onLog func(...)) []string` method would complete the engine's ownership of a single URL's full lifecycle.
+
+3. **Move `runYtDlp` to `DownloadEngine`** — once the two steps above are done, `runYtDlp` becomes a pure composition of `BuildArgs` + `Execute` + `FinalizeFiles` with no remaining UI state reads, and can become `engine.Run(ctx, req, callbacks)`.
+
+## PPEngine
+
+**Done:** `PPEngine` struct introduced in `pp_engine.go`. It owns the ffmpeg and ffprobe binary paths and exposes `ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks)`. `PPCallbacks` bridges log, status, and failure events to the UI. Private methods `detectCropFilter`, `resolveAutoCrop`, and `runJob` are fully engine-owned. `postprocess.go` is now a thin layer containing `buildPostProcessFilters` (reads UI state) and a 5-line `applyFFmpegFilters` wrapper.
+
+**Next steps:**
+
+1. **Move `buildPostProcessFilters` out of `DownloaderApp`** — it currently reads checkbox and slider values directly from `*UIWidgets`. The clean solution is a `PostProcessSettings` value struct (all plain fields) that `buildPostProcessFilters` accepts as input instead of reading `app.ui.*`. The caller (UIManager or DownloaderApp) populates it from widget state and passes it to a free function or a `PPEngine` method.
+
+2. **Move probe functions to `PPEngine`** — `probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, and `parseRationalFPS` are free functions in `postprocess.go` only because `PPEngine` did not exist when they were written. They have no UI dependency and belong as private methods on `PPEngine`.
+
+3. **Move `buildFFmpegArgs` and `patchThreadCount` to `PPEngine`** — same reasoning as the probe functions; both are pure helpers used exclusively by `PPEngine.runJob` and `PPEngine.ApplyFilters`.
+
+## UIManager
+
+**Done:** `UIManager` struct introduced in `ui_manager.go`. It owns the five singleton window fields (`aboutWindow`, `helpWindow`, `historyWindow`, `prefsWindow`, `ppWindow`) previously scattered on `DownloaderApp`. The three self-contained show methods (`showAbout`, `showHistory`, `showConfigHelp`) have moved to `UIManager`; their counterparts on `DownloaderApp` are now one-line delegates.
+
+**Next steps — blocked until other services are extracted:**
+
+1. **Move `showPreferences` to UIManager** — currently calls `savePreferences`, `resetPreferences`, `loadConfigFromFile`, `applyConfig`, `createUI`. Once `PreferenceService` owns those, `showPreferences` needs only a `PreferenceService` reference and an `onThemeChange` callback, which is manageable.
+
+2. **Move `showPostProcessing` to UIManager** — currently calls `computeProcessingLoad`, `buildPostProcessFilters`, `savePreferences`. Once `PreferenceService` and `PPEngine` are the named dependencies, the callback surface shrinks to two objects.
+
+3. **Move `createMainMenu` to UIManager** — menu item callbacks (`startDownload`, `runUpdateInUI`, `showPostProcessing`, etc.) become `UIManager` callback fields, wired at construction time. Depends on `DependencyService` for the updater action.
+
+4. **Move `createUI` to UIManager** — the largest step. The main window layout reads from `*UIWidgets` and calls back into almost every service. This should be last, after all other services exist, so callbacks are typed references rather than raw closures over `DownloaderApp`.

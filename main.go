@@ -43,7 +43,8 @@ var (
 // newDownloaderApp constructs and fully initialises a DownloaderApp.
 func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	app := &DownloaderApp{
-		window: window,
+		window:    window,
+		uiManager: NewUIManager(window),
 		ui: &UIWidgets{
 			entry:      widget.NewEntry(),
 			path:       widget.NewEntry(),

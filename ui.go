@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -64,61 +63,15 @@ func (app *DownloaderApp) createMainMenu() {
 	app.window.SetMainMenu(mainMenu)
 }
 
-// showHistory opens a window listing previously downloaded URLs from disk.
+// showHistory delegates to UIManager which owns the window state.
 func (app *DownloaderApp) showHistory() {
-	if app.historyWindow != nil {
-		app.historyWindow.RequestFocus()
-		return
-	}
-
-	entries, err := loadDownloadHistory()
-	if err != nil {
-		dialog.ShowError(fmt.Errorf("failed to load download history: %v", err), app.window)
-		return
-	}
-
-	text := widget.NewMultiLineEntry()
-	text.SetPlaceHolder("No download history yet.")
-	var lines []string
-
-	// Iterate backwards so the most recent downloads appear at the top. 
-	for _, entry := range slices.Backward(entries) {
-		title := entry.OriginalTitle
-		if title == "" {
-			title = entry.FinalFilename
-		}
-		if title == "" {
-			title = entry.URL
-		}
-		lines = append(lines,
-			fmt.Sprintf("%s | %s", entry.DownloadedAt, title),
-			fmt.Sprintf("  URL: %s", entry.URL),
-			fmt.Sprintf("  Saved As: %s", entry.FinalFilename),
-			fmt.Sprintf("  Path: %s", entry.SavedPath),
-			fmt.Sprintf("  Format/Quality: %s / %s", entry.Format, entry.Quality),
-			fmt.Sprintf("  Post-Processed: %t", entry.PostProcessed),
-			"",
-		)
-	}
-	text.SetText(strings.Join(lines, "\n"))
-	text.Disable()
-
-	scroll := container.NewScroll(text)
-	scroll.SetMinSize(fyne.NewSize(760, 420))
-
-	app.historyWindow = fyne.CurrentApp().NewWindow("Download History")
-	app.historyWindow.SetContent(container.NewPadded(scroll))
-	app.historyWindow.Resize(fyne.NewSize(800, 460))
-	app.historyWindow.SetOnClosed(func() {
-		app.historyWindow = nil
-	})
-	app.historyWindow.Show()
+	app.uiManager.showHistory()
 }
 
 // showPostProcessing opens a window for specialized hardware/software filters.
 func (app *DownloaderApp) showPostProcessing() {
-	if app.ppWindow != nil {
-		app.ppWindow.RequestFocus()
+	if app.uiManager.ppWindow != nil {
+		app.uiManager.ppWindow.RequestFocus()
 		return
 	}
 
@@ -352,7 +305,7 @@ func (app *DownloaderApp) showPostProcessing() {
 
 	applyCloseBtn := widget.NewButtonWithIcon("Apply & Close", theme.ConfirmIcon(), func() {
 		app.savePreferences(ui.path.Text)
-		app.ppWindow.Close()
+		app.uiManager.ppWindow.Close()
 	})
 	applyCloseBtn.Importance = widget.HighImportance
 
@@ -376,20 +329,20 @@ func (app *DownloaderApp) showPostProcessing() {
 	// Border layout: title pinned top, footer pinned bottom, scroll fills the rest.
 	content := container.NewBorder(title, footer, nil, nil, scroll)
 
-	app.ppWindow = fyne.CurrentApp().NewWindow("Post-Processing Settings")
-	app.ppWindow.SetContent(container.NewPadded(content))
-	app.ppWindow.Resize(fyne.NewSize(680, 580))
-	app.ppWindow.SetFixedSize(false)
-	app.ppWindow.SetOnClosed(func() {
-		app.ppWindow = nil
+	app.uiManager.ppWindow = fyne.CurrentApp().NewWindow("Post-Processing Settings")
+	app.uiManager.ppWindow.SetContent(container.NewPadded(content))
+	app.uiManager.ppWindow.Resize(fyne.NewSize(680, 580))
+	app.uiManager.ppWindow.SetFixedSize(false)
+	app.uiManager.ppWindow.SetOnClosed(func() {
+		app.uiManager.ppWindow = nil
 	})
-	app.ppWindow.Show()
+	app.uiManager.ppWindow.Show()
 }
 
 // showPreferences opens a window for general application settings.
 func (app *DownloaderApp) showPreferences() {
-	if app.prefsWindow != nil {
-		app.prefsWindow.RequestFocus()
+	if app.uiManager.prefsWindow != nil {
+		app.uiManager.prefsWindow.RequestFocus()
 		return
 	}
 
@@ -418,7 +371,7 @@ func (app *DownloaderApp) showPreferences() {
 			}
 			ui.cookies.SetText(reader.URI().Path())
 			reader.Close()
-		}, app.prefsWindow)
+		}, app.uiManager.prefsWindow)
 		// Filter for common cookie file extensions
 		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".cookies", ".dat"}))
 		fileDialog.Show()
@@ -466,155 +419,53 @@ func (app *DownloaderApp) showPreferences() {
 			ui.cookies.SetText("")
 			ui.themeMode.SetSelected("Dark")
 			ui.logLimit.SetSelected("200")
-		}, app.prefsWindow)
+		}, app.uiManager.prefsWindow)
 	})
 	resetBtn.Importance = widget.DangerImportance
 
 	loadConfigBtn := widget.NewButtonWithIcon("Load from Config (govid.json)", theme.SettingsIcon(), func() {
 		config, err := app.loadConfigFromFile()
 		if err != nil {
-			dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), app.prefsWindow)
+			dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), app.uiManager.prefsWindow)
 			return
 		}
 		err = app.applyConfig(config)
 		if err != nil {
-			dialog.ShowCustom("Config Loaded with Warnings", "OK", widget.NewLabel(err.Error()), app.prefsWindow)
+			dialog.ShowCustom("Config Loaded with Warnings", "OK", widget.NewLabel(err.Error()), app.uiManager.prefsWindow)
 		} else {
-			dialog.ShowInformation("Config Loaded", "Preferences updated from govid.json", app.prefsWindow)
+			dialog.ShowInformation("Config Loaded", "Preferences updated from govid.json", app.uiManager.prefsWindow)
 		}
 	})
 
-	app.prefsWindow = fyne.CurrentApp().NewWindow("Preferences")
-	app.prefsWindow.SetContent(container.NewPadded(container.NewVBox(
+	app.uiManager.prefsWindow = fyne.CurrentApp().NewWindow("Preferences")
+	app.uiManager.prefsWindow.SetContent(container.NewPadded(container.NewVBox(
 		form,
 		widget.NewSeparator(),
 		container.NewGridWithColumns(2, loadConfigBtn, resetBtn),
 	)))
-	app.prefsWindow.Resize(fyne.NewSize(500, 360))
-	app.prefsWindow.SetOnClosed(func() {
-		app.prefsWindow = nil
+	app.uiManager.prefsWindow.Resize(fyne.NewSize(500, 360))
+	app.uiManager.prefsWindow.SetOnClosed(func() {
+		app.uiManager.prefsWindow = nil
 	})
-	app.prefsWindow.Show()
+	app.uiManager.prefsWindow.Show()
 }
 
-// showConfigHelp opens a scrollable window explaining all configuration options.
+// showConfigHelp delegates to UIManager which owns the window state.
 func (app *DownloaderApp) showConfigHelp() {
-	if app.helpWindow != nil {
-		app.helpWindow.RequestFocus()
-		return
-	}
-
-	type helpItem struct {
-		label string
-		desc  string
-	}
-
-	items := []helpItem{
-		{"Video URL", "Paste any URL supported by yt-dlp, such as a **YouTube**, **Vimeo**, or **Twitter/X** link."},
-		{"Save Destination", "The folder where the downloaded file will be saved. GoVid remembers this between sessions."},
-		{"Output Format", "The container format for the downloaded file:\n  * **MP4** – widely compatible, recommended for most uses\n  * **MKV** – flexible container, ideal for high-quality archiving\n  * **WebM** – open format, good for web use\n  * **MP3** – audio only, compressed\n  * **M4A** – audio only, Apple/iTunes compatible"},
-		{"Max Quality", "Sets the maximum resolution yt-dlp will request:\n  * **Best Quality** – downloads the highest resolution available\n  * **1080p** / **720p** / **480p** / **360p** – caps the resolution to save space or bandwidth"},
-		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\n\nAccepted formats:\n  * `HH:MM:SS` (e.g. 01:30:00)\n  * `MM:SS` (e.g. 01:30)\n  * `Seconds` (e.g. 90)\n\nEither field can be used alone:\n  * **Trim Start only** → downloads from that point to the end\n  * **Trim End only** → downloads from the start to that point"},
-		{"Allow Duplicate Downloads", "When checked, a timestamp is added to the filename so re-downloading the same video does not overwrite the previous file."},
-		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a **GoVid_log.txt** file in your save destination folder."},
-		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
-		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
-		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow (dial-up speed)\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
-		{"Cookies File", "Found in **Tools → Preferences**. Path to a `cookies.txt` file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file or let it fall into unauthorized hands. Use a trusted browser extension (like 'Get cookies.txt LOCALLY') to export your active session."},
-		{"Post-Processing", "Found in **Tools → Post-Processing**. Enhance your downloads using FFmpeg. Most filters trigger a full re-encode.\n\n⚠️ **WebM files** use VP9 encoding which is significantly slower than H.264 — use MKV for faster post-processing.\n\n---\n\n**Video Enhancement**\n\n  * **Sharpen Video** – applies CAS (Contrast Adaptive Sharpening), which sharpens edges while leaving smooth areas untouched. Far less haloing than a traditional unsharp mask.\n\n  * **Vivid Mode** – boosts contrast and saturation for a vivid look, with a slight blue-channel lift to keep white areas neutral rather than yellow.\n\n  * **HDR to SDR** – converts HDR10/HLG video to standard dynamic range using Hable tonemapping via `zscale` + `tonemap`. Requires an FFmpeg build with `libzimg`.\n\n  * **Fix Banding** – applies the `deband` filter to smooth out colour banding artifacts common in gradients and dark scenes.\n\n---\n\n**Noise & Motion**\n\n  * **Denoise** – removes noise and grain from compressed or low-quality video. Two modes:\n    - **hqdn3d (Balanced)** – fast spatial + temporal denoising in a single pass. Good default for most videos.\n    - **NLMeans (HQ, slow)** – higher quality but much slower. Best for heavily degraded sources.\n\n  * **Smooth Motion** – interpolates new frames to increase the frame rate for smoother playback. Three modes:\n    - **Precise (slow)** – full motion-compensated interpolation. Best quality; mostly single-threaded.\n    - **Balanced** – ~40% faster than Precise with similar visual quality. Good default.\n    - **Fast** – frame blending. Fully multi-threaded; slightly softer on fast motion.\n\n  * **Deinterlace** – removes combing artifacts from interlaced content (archival footage, TV rips) using the `bwdif` filter.\n\n  * **Stabilize** – smooths out shaky handheld footage using the `deshake` filter.\n\n---\n\n**Geometry**\n\n  * **Auto-Crop** – runs a `cropdetect` pass on the first 60 seconds of the file to measure black bars, then removes them. Skipped if no bars are detected.\n\n  * **Upscale Video** – enlarges the video using Lanczos resampling. If the source is already at or above the target resolution, the scaling step is skipped automatically.\n    - **2× (Double)** – doubles both dimensions\n    - **1080p / 1440p / 4K** – scales to a fixed height, preserving aspect ratio\n\n---\n\n**Audio**\n\n  * **Normalize Audio** – EBU R128 loudness normalization via the `loudnorm` filter. Brings quiet and loud sources to a consistent perceived volume.\n\n  * **Night Mode** – dynamic range compression (`dynaudnorm`) to balance quiet dialogue against loud effects. Useful for watching at night without adjusting the volume constantly."},
-		{"Cancel", "Stops the active download immediately. In batch mode, it skips the current URL and moves on to the next one."},
-		{"Open Folder", "Opens your chosen save destination in the system file manager."},
-		{"JSON Configuration", "For advanced users, GoVid supports loading settings from a `govid.json` file located in the application folder.\n\n**Format Example:**\n```json\n{\n  \"path\": \"C:\\\\Downloads\",\n  \"format\": \"MP4\",\n  \"quality\": \"1080p\",\n  \"maxSpeed\": \"5M\"\n}\n```\nTo apply changes made to this file, go to **Tools → Preferences** and click **Load from Config (govid.json)**. Note that standard JSON does not support comments; adding them will cause a loading error.\n\n**Supported Values:**\n* **format**: `MP4`, `MKV`, `WebM`, `MP3`, `M4A`\n* **quality**: `Best Quality`, `1080p`, `720p`, `480p`, `360p`\n* **path**: Any valid absolute folder path\n* **maxSpeed**: Numeric value with unit, e.g., `50K`, `5M`, `1G` (or blank for unlimited)"},
-	}
-
-	content := container.NewVBox()
-	for _, item := range items {
-		title := widget.NewRichTextFromMarkdown("### " + item.label)
-		title.Wrapping = fyne.TextWrapOff
-
-		body := widget.NewRichTextFromMarkdown(item.desc)
-		for segIdx := range body.Segments {
-			if segment, ok := body.Segments[segIdx].(*widget.TextSegment); ok {
-				// Make bold text use the theme's primary color for better visual hierarchy
-				if segment.Style.TextStyle.Bold {
-					segment.Style.ColorName = theme.ColorNamePrimary
-				}
-				// Ensure code segments have slightly more visibility
-				if segment.Style.TextStyle.Monospace {
-					segment.Style.ColorName = theme.ColorNameWarning
-				}
-			}
-		}
-		body.Wrapping = fyne.TextWrapWord
-
-		content.Add(title)
-		content.Add(body)
-		content.Add(widget.NewSeparator())
-	}
-
-	scroll := container.NewScroll(content)
-	scroll.SetMinSize(fyne.NewSize(520, 420))
-
-	app.helpWindow = fyne.CurrentApp().NewWindow("GoVid Guide")
-	app.helpWindow.SetContent(container.NewPadded(scroll))
-	app.helpWindow.Resize(fyne.NewSize(550, 500))
-	app.helpWindow.SetOnClosed(func() {
-		app.helpWindow = nil
-	})
-	app.helpWindow.Show()
+	app.uiManager.showConfigHelp()
 }
 
 // showPostProcessingButton adds a button to the main UI to open the PP window.
+
 func (app *DownloaderApp) getPostProcessingButton() *widget.Button {
 	return widget.NewButtonWithIcon("Post-Processing", theme.SettingsIcon(), func() {
 		app.showPostProcessing()
 	})
 }
 
-// showAbout opens a small window with information about the creator and the app.
+// showAbout delegates to UIManager which owns the window state.
 func (app *DownloaderApp) showAbout() {
-	if app.aboutWindow != nil {
-		app.aboutWindow.RequestFocus()
-		return
-	}
-
-	logo := canvas.NewImageFromResource(resourceAppiconPng)
-	logo.FillMode = canvas.ImageFillContain
-	logo.SetMinSize(fyne.NewSize(80, 80))
-
-	appName := canvas.NewText("GoVid", theme.PrimaryColor())
-	appName.TextSize = 24
-	appName.TextStyle = fyne.TextStyle{Bold: true}
-	appName.Alignment = fyne.TextAlignCenter
-
-	versionLabel := widget.NewLabelWithStyle("v"+version, fyne.TextAlignCenter, fyne.TextStyle{Monospace: true})
-
-	tagline := widget.NewLabelWithStyle("A high-performance video downloader\nbuilt with Go and Fyne.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
-
-	author := widget.NewLabelWithStyle("Created by David Bennehag", fyne.TextAlignCenter, fyne.TextStyle{})
-	website := widget.NewHyperlink("dunder.gg", parseURL("https://dunder.gg"))
-	github := widget.NewHyperlink("github.com/DunderGG/govid", parseURL("https://github.com/DunderGG/govid"))
-
-	links := container.NewHBox(layout.NewSpacer(), website, widget.NewLabel("•"), github, layout.NewSpacer())
-
-	content := container.NewVBox(
-		container.NewCenter(logo),
-		container.NewCenter(appName),
-		container.NewCenter(versionLabel),
-		container.NewCenter(tagline),
-		widget.NewSeparator(),
-		container.NewCenter(author),
-		links,
-	)
-
-	app.aboutWindow = fyne.CurrentApp().NewWindow("About GoVid")
-	app.aboutWindow.SetContent(container.NewPadded(content))
-	app.aboutWindow.Resize(fyne.NewSize(360, 280))
-	app.aboutWindow.SetFixedSize(true)
-	app.aboutWindow.SetOnClosed(func() {
-		app.aboutWindow = nil
-	})
-	app.aboutWindow.Show()
+	app.uiManager.showAbout()
 }
 
 // parseURL is a small helper to safely parse a URL string for use in hyperlinks.
