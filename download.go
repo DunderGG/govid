@@ -88,9 +88,9 @@ func (app *DownloaderApp) startDownload() {
 		// If the file already exists, new logs are appended to it.
 		// If the file does not exist, it is created. 
 		// In both cases, the file is opened in write-only mode.
-		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err == nil {
-			app.log.file = f
+			app.log.file = file
 			app.appendOutput(fmt.Sprintf("[SYSTEM] Logging to: %s", logPath), color.RGBA{R: 0, G: 255, B: 255, A: 255})
 			app.logSessionConfiguration(urls, savePath, trimStart, trimEnd)
 		} else {
@@ -400,11 +400,11 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 //   - HH:MM:SS  (e.g. 01:30:00)
 //   - MM:SS     (e.g. 01:30)
 //   - plain seconds, optionally with decimals (e.g. 90 or 90.5)
-func validateTimestamp(s string) error {
-	if s == "" {
+func validateTimestamp(timestamp string) error {
+	if timestamp == "" {
 		return nil
 	}
-	matched, _ := regexp.MatchString(`^\d+:\d{2}:\d{2}$|^\d+:\d{2}$|^\d+(\.\d+)?$`, s)
+	matched, _ := regexp.MatchString(`^\d+:\d{2}:\d{2}$|^\d+:\d{2}$|^\d+(\.\d+)?$`, timestamp)
 	if !matched {
 		return fmt.Errorf("use HH:MM:SS, MM:SS or seconds (e.g. 90)")
 	}
@@ -464,9 +464,9 @@ func (app *DownloaderApp) getLocalBinPath(toolName string) string {
 // resolvedBinPath returns the path to use for the given tool: the bundled
 // binary if it exists on disk, otherwise the bare tool name for PATH lookup.
 func (app *DownloaderApp) resolvedBinPath(toolName string) string {
-	local := app.getLocalBinPath(toolName)
-	if _, err := os.Stat(local); err == nil {
-		return local
+	path := app.getLocalBinPath(toolName)
+	if _, err := os.Stat(path); err == nil {
+		return path
 	}
 	return toolName
 }

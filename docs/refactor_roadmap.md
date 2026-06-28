@@ -40,6 +40,8 @@ This version groups the audit items into priority buckets so you can tackle the 
 
 3. **Move `runYtDlp` to `DownloadEngine`** — once the two steps above are done, `runYtDlp` becomes a pure composition of `BuildArgs` + `Execute` + `FinalizeFiles` with no remaining UI state reads, and can become `engine.Run(ctx, req, callbacks)`.
 
+4. **Refactor `execute`** - The function `Execute()` takes too many arguments.
+
 ## PPEngine
 
 **Done:** `PPEngine` struct introduced in `pp_engine.go`. It owns the ffmpeg and ffprobe binary paths and exposes `ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks)`. `PPCallbacks` bridges log, status, and failure events to the UI. Private methods `detectCropFilter`, `resolveAutoCrop`, and `runJob` are fully engine-owned. `postprocess.go` is now a thin layer containing `buildPostProcessFilters` (reads UI state) and a 5-line `applyFFmpegFilters` wrapper.

@@ -1,4 +1,4 @@
-// download_engine.go — yt-dlp execution engine, free of UI dependencies.
+// download_engine.go — yt-dlp execution engine.
 //
 // Responsibilities:
 //   - DownloadEngine: typed component holding tool paths, with methods for
@@ -6,8 +6,7 @@
 //   - DownloadRequest: typed value object holding per-download inputs.
 //   - DownloadArgs: typed value object holding the resolved argument list
 //     and derived metadata (extension, downloadID, trim display strings).
-//   - ProcessCallbacks: bridge that lets the engine report events to the UI
-//     layer without importing Fyne.
+//   - ProcessCallbacks: bridge that lets the engine report events to the UI.
 package main
 
 import (
