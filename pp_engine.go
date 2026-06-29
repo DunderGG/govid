@@ -1,10 +1,9 @@
-// pp_engine.go — FFmpeg post-processing engine, free of UI dependencies.
+// pp_engine.go — FFmpeg post-processing engine.
 //
 // Responsibilities:
 //   - PPEngine: typed component holding FFmpeg tool paths, with methods for
 //     crop detection, filter resolution, and concurrent post-processing jobs.
-//   - PPCallbacks: bridge that lets the engine report events to the UI layer
-//     without importing Fyne.
+//   - PPCallbacks: bridge that lets the engine report events to the UI layer.
 package main
 
 import (
@@ -36,7 +35,7 @@ func NewPPEngine(ffmpegPath, ffprobePath string) *PPEngine {
 	}
 }
 
-// PPCallbacks lets PPEngine report events to the UI layer without importing Fyne.
+// PPCallbacks lets PPEngine report events back to the UI layer.
 type PPCallbacks struct {
 	// OnLog is called for every message the engine wants to show in the log view.
 	OnLog func(line string, col color.Color)
@@ -51,11 +50,14 @@ type PPCallbacks struct {
 // of the file and returns a "crop=W:H:X:Y" filter string, or "" if no bars were
 // found or detection failed.
 func (engine *PPEngine) detectCropFilter(ctx context.Context, inputPath string, cb PPCallbacks) string {
+	// Run FFmpeg with cropdetect on the first 60 seconds of the input file.
 	cmd := exec.CommandContext(ctx, engine.FFmpegPath,
 		"-t", "60", "-i", inputPath,
 		"-vf", "cropdetect=limit=24:round=16:reset=0",
 		"-f", "null", "-",
 	)
+
+	// Hide the FFmpeg console window on Windows to avoid flashing a black box.
 	hideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -76,6 +78,7 @@ func (engine *PPEngine) detectCropFilter(ctx context.Context, inputPath string, 
 			}
 		}
 	}
+
 	if lastCrop == "" {
 		cb.OnLog("[SYSTEM] Auto-Crop: no black bars detected, skipping.", color.RGBA{R: 0, G: 255, B: 255, A: 255})
 	} else {
@@ -95,9 +98,13 @@ func (engine *PPEngine) resolveAutoCrop(ctx context.Context, inputPath string, f
 			break
 		}
 	}
+
+	// If no sentinel is present, return the original filters unchanged.
 	if !hasSentinel {
 		return filters
 	}
+
+	// Run cropdetect on the file to get the actual crop filter.
 	cropFilter := engine.detectCropFilter(ctx, inputPath, cb)
 	var resolved []string
 	for _, filter := range filters {
@@ -129,6 +136,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		)
 	}
 
+	// sizeBefore is used to compute the delta in file size after post-processing.
 	var sizeBefore int64
 	if info, err := os.Stat(job.inputPath); err == nil {
 		sizeBefore = info.Size()
@@ -142,6 +150,8 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	if pipeErr != nil {
 		// Fallback: run without streaming.
 		out, err := cmd.CombinedOutput()
+		
+		// If FFmpeg fails, log the error and the captured output.
 		if err != nil {
 			cb.OnLog(fmt.Sprintf("[ERROR] Post-processing failed: %v", err), color.RGBA{R: 255, A: 255})
 			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -157,7 +167,8 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 			}
 			return
 		}
-		// FFmpeg succeeded — still need to promote the temp file to its final name.
+
+		// If FFmpeg succeeded, still need to promote the temp file to its final name.
 		if renameErr := os.Rename(job.tmpOutput, job.finalPath); renameErr != nil {
 			cb.OnLog(
 				fmt.Sprintf("[SYSTEM] Failed to rename output file: %v", renameErr),
@@ -173,6 +184,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		return
 	}
 
+	// Stream FFmpeg's stderr in real-time to the log and status bar.
 	var errLines []string
 	scanner := bufio.NewScanner(stderrPipe)
 	scanner.Split(scanCRLF)
@@ -210,11 +222,13 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		return
 	}
 
+	// sizeAfter is used to compute the delta in file size after post-processing.
 	var sizeAfter int64
 	if info, err := os.Stat(job.tmpOutput); err == nil {
 		sizeAfter = info.Size()
 	}
 
+	// Promote the temp file to its final name, replacing the original.
 	if err := os.Rename(job.tmpOutput, job.finalPath); err != nil {
 		cb.OnLog(
 			fmt.Sprintf("[SYSTEM] Failed to rename output file: %v", err),
@@ -246,11 +260,11 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	successColor := color.RGBA{R: 0, G: 200, B: 0, A: 255}
 	cb.OnLog("────────────────────────────────────────", color.RGBA{R: 0, G: 160, B: 0, A: 255})
 	cb.OnLog(fmt.Sprintf("POST-PROCESSING COMPLETE: %s", filepath.Base(job.finalPath)), successColor)
-	cb.OnLog(fmt.Sprintf("   ├─ Duration:  %s", formatDuration(duration)), successColor)
-	cb.OnLog(fmt.Sprintf("   ├─ File size: %s", sizeDelta), successColor)
-	cb.OnLog(fmt.Sprintf("   ├─ Encoder:   %s", job.encodeMode), successColor)
-	cb.OnLog(fmt.Sprintf("   ├─ Threads:   %d", job.threads), successColor)
-	cb.OnLog(fmt.Sprintf("   └─ Filters:   %s", strings.Join(filterNames, ", ")), successColor)
+	cb.OnLog(fmt.Sprintf("   ├─ Duration:   %s", formatDuration(duration)), successColor)
+	cb.OnLog(fmt.Sprintf("   ├─ Size Delta: %s", sizeDelta), successColor)
+	cb.OnLog(fmt.Sprintf("   ├─ Encoder:    %s", job.encodeMode), successColor)
+	cb.OnLog(fmt.Sprintf("   ├─ Threads:    %d", job.threads), successColor)
+	cb.OnLog(fmt.Sprintf("   └─ Filters:    %s", strings.Join(filterNames, ", ")), successColor)
 	cb.OnLog("────────────────────────────────────────", color.RGBA{R: 0, G: 160, B: 0, A: 255})
 }
 
@@ -333,17 +347,21 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 		threadsPerJob = 1
 	}
 
+	// Assign the thread budget to each job and patch each job's FFmpeg thread arg accordingly.
 	for i := range jobs {
 		jobs[i].threads = threadsPerJob
 		jobs[i].ffmpegArgs = patchThreadCount(jobs[i].ffmpegArgs, fmt.Sprintf("%d", threadsPerJob))
 	}
 
+	// Create a channel to distribute jobs to workers and close it after all jobs are sent.
 	jobCh := make(chan PostProcessJob, len(jobs))
 	for _, job := range jobs {
 		jobCh <- job
 	}
 	close(jobCh)
 
+	// Launch a worker pool to process jobs concurrently. Each worker reads from the job channel
+	// until it is closed, then exits. The WaitGroup ensures we wait for all workers to finish.
 	var wg sync.WaitGroup
 	for range numWorkers {
 		wg.Add(1)

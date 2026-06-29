@@ -40,7 +40,7 @@ This version groups the audit items into priority buckets so you can tackle the 
 
 3. **Move `runYtDlp` to `DownloadEngine`** — once the two steps above are done, `runYtDlp` becomes a pure composition of `BuildArgs` + `Execute` + `FinalizeFiles` with no remaining UI state reads, and can become `engine.Run(ctx, req, callbacks)`.
 
-4. **Refactor `execute`** - The function `Execute()` takes too many arguments.
+4. **Refactor `execute`** — The function `Execute()` takes too many arguments.
 
 ## PPEngine
 
@@ -53,6 +53,10 @@ This version groups the audit items into priority buckets so you can tackle the 
 2. **Move probe functions to `PPEngine`** — `probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, and `parseRationalFPS` are free functions in `postprocess.go` only because `PPEngine` did not exist when they were written. They have no UI dependency and belong as private methods on `PPEngine`.
 
 3. **Move `buildFFmpegArgs` and `patchThreadCount` to `PPEngine`** — same reasoning as the probe functions; both are pure helpers used exclusively by `PPEngine.runJob` and `PPEngine.ApplyFilters`.
+
+4. **Refactor `runJob()`** — Or document it better. The multiple renaming and error handling is quite confusing.
+
+5. **One operation per line** — For example, break the "totalFrames: computeOutputFrameCount(ctx, engine.FFprobePath, inputPath, probeFrameCount(ctx, engine.FFprobePath, inputPath), activeVF)" into separate operations.
 
 ## UIManager
 
