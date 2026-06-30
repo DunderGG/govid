@@ -1,9 +1,9 @@
-// ui_manager.go — Singleton secondary window management, free of business logic.
+// ui_manager.go — Singleton window management.
 //
 // Responsibilities:
 //   - UIManager: typed component that owns the secondary window references
 //     (About, Help, History, Preferences, Post-Processing) and ensures at
-//     most one instance of each is open at any time.
+//     most one window instance open at a time.
 //   - showAbout, showHistory, showConfigHelp: moved here because they are
 //     self-contained UI construction with no calls into business logic.
 //   - showPreferences, showPostProcessing, createMainMenu, createUI remain on
@@ -25,8 +25,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// UIManager owns references to all secondary (non-main) windows and ensures
-// each is a singleton — at most one instance open at a time.
+// UIManager owns references to all (non-main, for now) windows and ensures
+// each is a singleton — at most one window instance open at a time.
 type UIManager struct {
 	mainWindow    fyne.Window // reference to the primary window for dialog parenting
 	aboutWindow   fyne.Window
@@ -43,9 +43,9 @@ func NewUIManager(mainWindow fyne.Window) *UIManager {
 
 // showAbout opens a small window with information about the creator and the app.
 // It is a singleton: if already open, the existing window is focused instead.
-func (m *UIManager) showAbout() {
-	if m.aboutWindow != nil {
-		m.aboutWindow.RequestFocus()
+func (manager *UIManager) showAbout() {
+	if manager.aboutWindow != nil {
+		manager.aboutWindow.RequestFocus()
 		return
 	}
 
@@ -53,6 +53,7 @@ func (m *UIManager) showAbout() {
 	logo.FillMode = canvas.ImageFillContain
 	logo.SetMinSize(fyne.NewSize(80, 80))
 
+	//TODO: theme.PrimaryColor() is deprecated.
 	appName := canvas.NewText("GoVid", theme.PrimaryColor())
 	appName.TextSize = 24
 	appName.TextStyle = fyne.TextStyle{Bold: true}
@@ -75,25 +76,26 @@ func (m *UIManager) showAbout() {
 		links,
 	)
 
-	m.aboutWindow = fyne.CurrentApp().NewWindow("About GoVid")
-	m.aboutWindow.SetContent(container.NewPadded(content))
-	m.aboutWindow.Resize(fyne.NewSize(360, 280))
-	m.aboutWindow.SetFixedSize(true)
-	m.aboutWindow.SetOnClosed(func() { m.aboutWindow = nil })
-	m.aboutWindow.Show()
+	manager.aboutWindow = fyne.CurrentApp().NewWindow("About GoVid")
+	manager.aboutWindow.SetContent(container.NewPadded(content))
+	manager.aboutWindow.Resize(fyne.NewSize(360, 280))
+	manager.aboutWindow.SetFixedSize(true)
+	manager.aboutWindow.SetOnClosed(func() { manager.aboutWindow = nil })
+	manager.aboutWindow.Show()
 }
 
 // showHistory opens a window listing previously downloaded URLs from disk.
 // It is a singleton: if already open, the existing window is focused instead.
-func (m *UIManager) showHistory() {
-	if m.historyWindow != nil {
-		m.historyWindow.RequestFocus()
+func (manager *UIManager) showHistory() {
+	if manager.historyWindow != nil {
+		manager.historyWindow.RequestFocus()
 		return
 	}
 
+	// Load the download history from disk. If it fails, show an error dialog and abort.
 	entries, err := loadDownloadHistory()
 	if err != nil {
-		dialog.ShowError(fmt.Errorf("failed to load download history: %v", err), m.mainWindow)
+		dialog.ShowError(fmt.Errorf("failed to load download history: %v", err), manager.mainWindow)
 		return
 	}
 
@@ -125,18 +127,18 @@ func (m *UIManager) showHistory() {
 	scroll := container.NewScroll(text)
 	scroll.SetMinSize(fyne.NewSize(760, 420))
 
-	m.historyWindow = fyne.CurrentApp().NewWindow("Download History")
-	m.historyWindow.SetContent(container.NewPadded(scroll))
-	m.historyWindow.Resize(fyne.NewSize(800, 460))
-	m.historyWindow.SetOnClosed(func() { m.historyWindow = nil })
-	m.historyWindow.Show()
+	manager.historyWindow = fyne.CurrentApp().NewWindow("Download History")
+	manager.historyWindow.SetContent(container.NewPadded(scroll))
+	manager.historyWindow.Resize(fyne.NewSize(800, 460))
+	manager.historyWindow.SetOnClosed(func() { manager.historyWindow = nil })
+	manager.historyWindow.Show()
 }
 
 // showConfigHelp opens a scrollable window explaining all configuration options.
 // It is a singleton: if already open, the existing window is focused instead.
-func (m *UIManager) showConfigHelp() {
-	if m.helpWindow != nil {
-		m.helpWindow.RequestFocus()
+func (manager *UIManager) showConfigHelp() {
+	if manager.helpWindow != nil {
+		manager.helpWindow.RequestFocus()
 		return
 	}
 
@@ -188,9 +190,9 @@ func (m *UIManager) showConfigHelp() {
 	scroll := container.NewScroll(content)
 	scroll.SetMinSize(fyne.NewSize(520, 420))
 
-	m.helpWindow = fyne.CurrentApp().NewWindow("GoVid Guide")
-	m.helpWindow.SetContent(container.NewPadded(scroll))
-	m.helpWindow.Resize(fyne.NewSize(550, 500))
-	m.helpWindow.SetOnClosed(func() { m.helpWindow = nil })
-	m.helpWindow.Show()
+	manager.helpWindow = fyne.CurrentApp().NewWindow("GoVid Guide")
+	manager.helpWindow.SetContent(container.NewPadded(scroll))
+	manager.helpWindow.Resize(fyne.NewSize(550, 500))
+	manager.helpWindow.SetOnClosed(func() { manager.helpWindow = nil })
+	manager.helpWindow.Show()
 }
