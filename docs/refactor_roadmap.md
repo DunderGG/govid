@@ -13,7 +13,7 @@ This version groups the audit items into priority buckets so you can tackle the 
 
 ## Medium Priority
 
-- [ ] Centralize preference loading — Move preference reads and default values into a small settings-loading layer so UI code stays focused on layout and event wiring.
+- [x] Centralize preference loading — Move preference reads and default values into a small settings-loading layer so UI code stays focused on layout and event wiring.
 - [ ] Extract shared window-focus logic — Create one helper for the repeated focus-or-create pattern so every dialog and tool window behaves consistently.
 - [ ] Replace hard-coded post-processing thresholds with constants — Name the thresholds and cost values so the code self-documents what each value means and is easier to tune later.
 - [ ] Keep LogManager focused on one job — Separate file appending and log persistence from mutex and error-handling details if the type grows further.
@@ -71,3 +71,15 @@ This version groups the audit items into priority buckets so you can tackle the 
 3. **Move `createMainMenu` to UIManager** — menu item callbacks (`startDownload`, `runUpdateInUI`, `showPostProcessing`, etc.) become `UIManager` callback fields, wired at construction time. Depends on `DependencyService` for the updater action.
 
 4. **Move `createUI` to UIManager** — the largest step. The main window layout reads from `*UIWidgets` and calls back into almost every service. This should be last, after all other services exist, so callbacks are typed references rather than raw closures over `DownloaderApp`.
+
+## PreferenceService
+
+**Done:** `PreferenceService` struct introduced in `preference_service.go`. It owns all preference key constants (`prefSavedPath`, `prefFormat`, etc.) and default value constants (`defaultThemeMode`, `defaultSmoothFPS`, etc.) that were previously scattered as inline string/numeric literals. `AppPreferences` is a plain value struct with no Fyne widget references — safe to construct and pass anywhere. `PreferenceService.Load()` reads the Fyne store and returns a fully-defaulted `AppPreferences`; `Save(AppPreferences)` writes it back with the savePrefs gate preserved; `Reset()` removes all managed keys in one call. `DownloaderApp.prefSvc` is initialised in `newDownloaderApp`. `applyPreferencesToWidgets(AppPreferences)` in `helpers.go` is the single place that translates a loaded struct into widget state. `savePreferences` now builds an `AppPreferences` from widget state and calls `prefSvc.Save`. `resetPreferences` calls `prefSvc.Reset()`. All raw `fyne.CurrentApp().Preferences()` reads have been removed from `ui.go` (`showPostProcessing`, `showPreferences`, `createUI`).
+
+**Next steps:**
+
+1. **Move `showPreferences` to UIManager** — now that `PreferenceService` owns all persistence, `showPreferences` only needs `app.prefSvc`, an `onThemeChange` callback, and `applyPreferencesToWidgets`. The dependency surface is small enough to pass through a constructor.
+
+2. **Move `loadConfigFromFile` / `applyConfig` to `PreferenceService`** — these read `govid.json` and merge its values into preferences. They are currently methods on `DownloaderApp` but have no UI dependency; a `LoadFromFile(path string) (*AppConfig, error)` method and a `MergeConfig(cfg *AppConfig, ui *UIWidgets)` helper would remove the last preference-adjacent code from `DownloaderApp`.
+
+3. **Remove the three inline `fyne.CurrentApp().Preferences().SetBool(...)` onChanged handlers** — `notify`, `autoRetry`, and `enablePostProcess` still write directly to the Fyne store on change. Replace each with a call to `app.savePreferences(app.ui.path.Text)` so every write goes through the service.

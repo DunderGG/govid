@@ -76,27 +76,27 @@ func (app *DownloaderApp) showPostProcessing() {
 	}
 
 	ui := app.ui
-	prefs := fyne.CurrentApp().Preferences()
+	prefs := app.prefSvc.Load()
 
 	// Reload all post-processing prefs so the window always shows persisted state.
-	ui.smoothMotion.SetChecked(prefs.Bool("upscale"))
+	ui.smoothMotion.SetChecked(prefs.SmoothMotion)
 	ui.smoothMotionMode.Horizontal = true
-	ui.smoothMotionMode.SetSelected(prefs.StringWithFallback("smoothMotionMode", "Balanced"))
-	ui.sharpen.SetChecked(prefs.Bool("sharpen"))
-	ui.sharpenAmount.SetValue(prefs.FloatWithFallback("sharpenAmount", 1.0))
-	ui.vividMode.SetChecked(prefs.Bool("vividMode"))
-	ui.deband.SetChecked(prefs.Bool("deband"))
-	ui.hdrToSdr.SetChecked(prefs.Bool("hdrToSdr"))
-	ui.denoise.SetChecked(prefs.Bool("denoise"))
+	ui.smoothMotionMode.SetSelected(prefs.SmoothMotionMode)
+	ui.sharpen.SetChecked(prefs.Sharpen)
+	ui.sharpenAmount.SetValue(prefs.SharpenAmount)
+	ui.vividMode.SetChecked(prefs.VividMode)
+	ui.deband.SetChecked(prefs.Deband)
+	ui.hdrToSdr.SetChecked(prefs.HDRToSDR)
+	ui.denoise.SetChecked(prefs.Denoise)
 	ui.denoiseMode.Horizontal = true
-	ui.denoiseMode.SetSelected(prefs.StringWithFallback("denoiseMode", "hqdn3d (Balanced)"))
-	ui.deinterlace.SetChecked(prefs.Bool("deinterlace"))
-	ui.stabilize.SetChecked(prefs.Bool("stabilize"))
-	ui.autoCrop.SetChecked(prefs.Bool("autoCrop"))
-	ui.upscaleVideo.SetChecked(prefs.Bool("upscaleVideo"))
-	ui.upscaleTarget.SetSelected(prefs.StringWithFallback("upscaleTarget", "2× (Double)"))
-	ui.normalizeAudio.SetChecked(prefs.Bool("normalize"))
-	ui.nightMode.SetChecked(prefs.Bool("nightMode"))
+	ui.denoiseMode.SetSelected(prefs.DenoiseMode)
+	ui.deinterlace.SetChecked(prefs.Deinterlace)
+	ui.stabilize.SetChecked(prefs.Stabilize)
+	ui.autoCrop.SetChecked(prefs.AutoCrop)
+	ui.upscaleVideo.SetChecked(prefs.UpscaleVideo)
+	ui.upscaleTarget.SetSelected(prefs.UpscaleTarget)
+	ui.normalizeAudio.SetChecked(prefs.NormalizeAudio)
+	ui.nightMode.SetChecked(prefs.NightMode)
 
 	// FPS slider for smooth motion — use a bound float so the label updates live.
 	fpsBinding := binding.NewFloat()
@@ -347,22 +347,22 @@ func (app *DownloaderApp) showPreferences() {
 	}
 
 	ui := app.ui
-	prefs := fyne.CurrentApp().Preferences()
+	prefs := app.prefSvc.Load()
 
 	// Log Buffer Limit
-	ui.logLimit.SetSelected(prefs.StringWithFallback("logLimit", "200"))
+	ui.logLimit.SetSelected(prefs.LogLimit)
 
 	// Speed Limit field
 	ui.maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
-	ui.maxSpeed.SetText(prefs.String("maxSpeed"))
+	ui.maxSpeed.SetText(prefs.MaxSpeed)
 
 	// Theme Mode field — horizontal radio group for a simple two-option toggle.
 	ui.themeMode.Horizontal = true
-	ui.themeMode.SetSelected(prefs.StringWithFallback("themeMode", "Dark"))
+	ui.themeMode.SetSelected(prefs.ThemeMode)
 
 	// Cookies field
 	ui.cookies.SetPlaceHolder("Path to cookies.txt (optional)")
-	ui.cookies.SetText(prefs.String("cookiesPath"))
+	ui.cookies.SetText(prefs.CookiesPath)
 
 	cookiesBrowse := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
 		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
@@ -382,7 +382,7 @@ func (app *DownloaderApp) showPreferences() {
 	cookiesRow := container.NewBorder(nil, nil, nil, container.NewHBox(cookiesBrowse, cookiesClear), ui.cookies)
 
 	// Save Preferences toggle.
-	ui.savePrefs.SetChecked(prefs.BoolWithFallback("savePrefs", true))
+	ui.savePrefs.SetChecked(prefs.SavePrefs)
 
 	form := &widget.Form{
 		Items: []*widget.FormItem{
@@ -515,19 +515,19 @@ func (app *DownloaderApp) createUI() {
 		fyne.CurrentApp().Preferences().SetBool("saveLog", checked)
 	}
 	ui.notify.OnChanged = func(checked bool) {
-		fyne.CurrentApp().Preferences().SetBool("notify", checked)
+		fyne.CurrentApp().Preferences().SetBool(prefNotify, checked)
 	}
 	ui.autoRetry.OnChanged = func(checked bool) {
-		fyne.CurrentApp().Preferences().SetBool("autoRetry", checked)
+		fyne.CurrentApp().Preferences().SetBool(prefAutoRetry, checked)
 	}
 	ui.enablePostProcess.OnChanged = func(checked bool) {
-		fyne.CurrentApp().Preferences().SetBool("enablePostProcess", checked)
+		fyne.CurrentApp().Preferences().SetBool(prefEnablePostProcess, checked)
 	}
 	ui.path.SetPlaceHolder("Download folder...")
 
 	// Load previously saved path from preferences.
-	prefs := fyne.CurrentApp().Preferences()
-	savedPath := prefs.String("savedPath")
+	prefs := app.prefSvc.Load()
+	savedPath := prefs.SavedPath
 	if savedPath != "" {
 		ui.path.SetText(savedPath)
 	} else {
@@ -560,8 +560,8 @@ func (app *DownloaderApp) createUI() {
 
 	ui.format.Options = []string{"MP4", "MKV", "WebM", "MP3", "M4A"}
 
-	savedFormat := prefs.String("format")
-	savedQuality := prefs.String("quality")
+	savedFormat := prefs.Format
+	savedQuality := prefs.Quality
 
 	if savedFormat != "" {
 		ui.format.SetSelected(savedFormat)

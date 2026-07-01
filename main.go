@@ -89,44 +89,11 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 		log:   &LogManager{},
 	}
 
-	// Load saved preferences from the Fyne preferences system.
-	prefs := fyne.CurrentApp().Preferences()
-	// Ensure the theme selector always has a valid value so savePreferences never
-	// writes an empty string, which would suppress the "Dark" fallback on next launch.
-	savedTheme := prefs.StringWithFallback("themeMode", "Dark")
-	app.ui.themeMode.SetSelected(savedTheme)
-	// Set the savePrefs toggle first since it gates whether the other preferences are loaded.
-	app.ui.savePrefs.SetChecked(prefs.BoolWithFallback("savePrefs", true))
-	// Load post-processing state so buildPostProcessFilters reads correct values
-	// even if the Preferences window has never been opened this session.
-	app.ui.smoothMotion.SetChecked(prefs.Bool("upscale"))
-	app.ui.smoothMotionMode.SetSelected(prefs.StringWithFallback("smoothMotionMode", "Balanced"))
-	
-	fps := prefs.FloatWithFallback("smoothFPS", 60)
-	app.ui.smoothMotionFPS.SetValue(fps)
-	
-	app.ui.sharpen.SetChecked(prefs.Bool("sharpen"))
-	app.ui.sharpenAmount.SetValue(prefs.FloatWithFallback("sharpenAmount", 1.0))
-	app.ui.normalizeAudio.SetChecked(prefs.Bool("normalize"))
-	app.ui.vividMode.SetChecked(prefs.Bool("vividMode"))
-	app.ui.denoise.SetChecked(prefs.Bool("denoise"))
-	app.ui.denoiseMode.SetSelected(prefs.StringWithFallback("denoiseMode", "hqdn3d (Balanced)"))
-	app.ui.hdrToSdr.SetChecked(prefs.Bool("hdrToSdr"))
-	app.ui.deband.SetChecked(prefs.Bool("deband"))
-	app.ui.autoCrop.SetChecked(prefs.Bool("autoCrop"))
-	app.ui.stabilize.SetChecked(prefs.Bool("stabilize"))
-	app.ui.deinterlace.SetChecked(prefs.Bool("deinterlace"))
-	app.ui.nightMode.SetChecked(prefs.Bool("nightMode"))
-	app.ui.upscaleVideo.SetChecked(prefs.Bool("upscaleVideo"))
-	app.ui.upscaleTarget.SetSelected(prefs.StringWithFallback("upscaleTarget", "2× (Double)"))
-	app.ui.cookies.SetText(prefs.String("cookiesPath"))
-	app.ui.batchMode.SetChecked(prefs.Bool("batchMode"))
-	app.ui.saveLog.SetChecked(prefs.Bool("saveLog"))
-	app.ui.notify.SetChecked(prefs.Bool("notify"))
-	app.ui.autoRetry.SetChecked(prefs.Bool("autoRetry"))
-	app.ui.enablePostProcess.SetChecked(prefs.BoolWithFallback("enablePostProcess", true))
-	app.ui.logLimit.SetSelected(prefs.StringWithFallback("logLimit", "200"))
-	logBufferLimit = parseLogLimit(prefs.StringWithFallback("logLimit", "200"))
+	// Load saved preferences and apply them to all widgets.
+	app.prefSvc = NewPreferenceService(fyne.CurrentApp().Preferences())
+	prefs := app.prefSvc.Load()
+	app.applyPreferencesToWidgets(prefs)
+	logBufferLimit = parseLogLimit(prefs.LogLimit)
 	return app
 }
 
@@ -145,7 +112,7 @@ func main() {
 	myApp := app.NewWithID("com.govid.downloader")
 
 	// Apply the user's preferred theme or the custom GoVid theme.
-	themePref := myApp.Preferences().StringWithFallback("themeMode", "Dark")
+	themePref := myApp.Preferences().StringWithFallback(prefThemeMode, defaultThemeMode)
 	switch themePref {
 	case "Light":
 		myApp.Settings().SetTheme(&lightTheme{})

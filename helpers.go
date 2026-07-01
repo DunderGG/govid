@@ -272,58 +272,82 @@ func (app *DownloaderApp) setProgressNow(pct float64) {
 	app.stats.targetPct = pct
 }
 
-// savePreferences persists the format, quality, and save-path selections
-// so they are restored on the next launch.
-// The savePrefs toggle itself is always written so the user's choice survives
-// a restart. All other settings are only written when the toggle is enabled.
-func (app *DownloaderApp) savePreferences(savePath string) {
-	prefs := fyne.CurrentApp().Preferences()
-	prefs.SetBool("savePrefs", app.ui.savePrefs.Checked)
-	
-	// Don't save the other preferences if the user has disabled the toggle, just return.
-	if !app.ui.savePrefs.Checked {
-		return
-	}
+// applyPreferencesToWidgets writes the values from an AppPreferences struct
+// into the corresponding UI widgets. Called at startup and after a reset.
+func (app *DownloaderApp) applyPreferencesToWidgets(p AppPreferences) {
+	ui := app.ui
+	ui.themeMode.SetSelected(p.ThemeMode)
+	ui.savePrefs.SetChecked(p.SavePrefs)
+	ui.smoothMotion.SetChecked(p.SmoothMotion)
+	ui.smoothMotionMode.SetSelected(p.SmoothMotionMode)
+	ui.smoothMotionFPS.SetValue(p.SmoothFPS)
+	ui.sharpen.SetChecked(p.Sharpen)
+	ui.sharpenAmount.SetValue(p.SharpenAmount)
+	ui.normalizeAudio.SetChecked(p.NormalizeAudio)
+	ui.vividMode.SetChecked(p.VividMode)
+	ui.denoise.SetChecked(p.Denoise)
+	ui.denoiseMode.SetSelected(p.DenoiseMode)
+	ui.hdrToSdr.SetChecked(p.HDRToSDR)
+	ui.deband.SetChecked(p.Deband)
+	ui.autoCrop.SetChecked(p.AutoCrop)
+	ui.stabilize.SetChecked(p.Stabilize)
+	ui.deinterlace.SetChecked(p.Deinterlace)
+	ui.nightMode.SetChecked(p.NightMode)
+	ui.upscaleVideo.SetChecked(p.UpscaleVideo)
+	ui.upscaleTarget.SetSelected(p.UpscaleTarget)
+	ui.cookies.SetText(p.CookiesPath)
+	ui.batchMode.SetChecked(p.BatchMode)
+	ui.saveLog.SetChecked(p.SaveLog)
+	ui.notify.SetChecked(p.Notify)
+	ui.autoRetry.SetChecked(p.AutoRetry)
+	ui.enablePostProcess.SetChecked(p.EnablePostProcess)
+	ui.logLimit.SetSelected(p.LogLimit)
+	ui.maxSpeed.SetText(p.MaxSpeed)
+}
 
-	prefs.SetString("savedPath", savePath)
-	prefs.SetString("format", app.ui.format.Selected)
-	prefs.SetString("quality", app.ui.quality.Selected)
-	prefs.SetString("maxSpeed", strings.TrimSpace(app.ui.maxSpeed.Text))
-	prefs.SetString("themeMode", app.ui.themeMode.Selected)
-	prefs.SetString("cookiesPath", strings.TrimSpace(app.ui.cookies.Text))
-	prefs.SetBool("upscale", app.ui.smoothMotion.Checked)
-	prefs.SetString("smoothMotionMode", app.ui.smoothMotionMode.Selected)
-	prefs.SetFloat("smoothFPS", app.ui.smoothMotionFPS.Value)
-	prefs.SetBool("sharpen", app.ui.sharpen.Checked)
-	prefs.SetFloat("sharpenAmount", app.ui.sharpenAmount.Value)
-	prefs.SetBool("normalize", app.ui.normalizeAudio.Checked)
-	prefs.SetBool("vividMode", app.ui.vividMode.Checked)
-	prefs.SetBool("denoise", app.ui.denoise.Checked)
-	prefs.SetString("denoiseMode", app.ui.denoiseMode.Selected)
-	prefs.SetBool("hdrToSdr", app.ui.hdrToSdr.Checked)
-	prefs.SetBool("deband", app.ui.deband.Checked)
-	prefs.SetBool("autoCrop", app.ui.autoCrop.Checked)
-	prefs.SetBool("stabilize", app.ui.stabilize.Checked)
-	prefs.SetBool("deinterlace", app.ui.deinterlace.Checked)
-	prefs.SetBool("nightMode", app.ui.nightMode.Checked)
-	prefs.SetBool("upscaleVideo", app.ui.upscaleVideo.Checked)
-	prefs.SetString("upscaleTarget", app.ui.upscaleTarget.Selected)
-	prefs.SetBool("batchMode", app.ui.batchMode.Checked)
-	prefs.SetBool("saveLog", app.ui.saveLog.Checked)
-	prefs.SetBool("notify", app.ui.notify.Checked)
-	prefs.SetBool("autoRetry", app.ui.autoRetry.Checked)
-	prefs.SetBool("enablePostProcess", app.ui.enablePostProcess.Checked)
-	prefs.SetString("logLimit", app.ui.logLimit.Selected)
+// savePreferences collects the current widget state into an AppPreferences
+// struct and delegates persistence to PreferenceService.Save.
+func (app *DownloaderApp) savePreferences(savePath string) {
+	ui := app.ui
+	app.prefSvc.Save(AppPreferences{
+		SavePrefs:         ui.savePrefs.Checked,
+		SavedPath:         savePath,
+		Format:            ui.format.Selected,
+		Quality:           ui.quality.Selected,
+		MaxSpeed:          strings.TrimSpace(ui.maxSpeed.Text),
+		ThemeMode:         ui.themeMode.Selected,
+		CookiesPath:       strings.TrimSpace(ui.cookies.Text),
+		LogLimit:          ui.logLimit.Selected,
+		BatchMode:         ui.batchMode.Checked,
+		SaveLog:           ui.saveLog.Checked,
+		Notify:            ui.notify.Checked,
+		AutoRetry:         ui.autoRetry.Checked,
+		EnablePostProcess: ui.enablePostProcess.Checked,
+		SmoothMotion:      ui.smoothMotion.Checked,
+		SmoothMotionMode:  ui.smoothMotionMode.Selected,
+		SmoothFPS:         ui.smoothMotionFPS.Value,
+		Sharpen:           ui.sharpen.Checked,
+		SharpenAmount:     ui.sharpenAmount.Value,
+		NormalizeAudio:    ui.normalizeAudio.Checked,
+		VividMode:         ui.vividMode.Checked,
+		Denoise:           ui.denoise.Checked,
+		DenoiseMode:       ui.denoiseMode.Selected,
+		HDRToSDR:          ui.hdrToSdr.Checked,
+		Deband:            ui.deband.Checked,
+		AutoCrop:          ui.autoCrop.Checked,
+		Stabilize:         ui.stabilize.Checked,
+		Deinterlace:       ui.deinterlace.Checked,
+		NightMode:         ui.nightMode.Checked,
+		UpscaleVideo:      ui.upscaleVideo.Checked,
+		UpscaleTarget:     ui.upscaleTarget.Selected,
+	})
 }
 
 // resetPreferences clears all stored preferences and rebuilds the UI with
 // defaults. The Preferences window is responsible for resetting its own
 // widgets to match after calling this.
 func (app *DownloaderApp) resetPreferences() {
-	prefs := fyne.CurrentApp().Preferences()
-	for _, pref := range []string{"savedPath", "format", "quality", "maxSpeed", "themeMode", "savePrefs", "cookiesPath", "logLimit"} {
-		prefs.RemoveValue(pref)
-	}
+	app.prefSvc.Reset()
 	logBufferLimit = 200
 	fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
 	app.createUI()
