@@ -1,0 +1,386 @@
+@startuml GoVid — Class Architecture
+
+skinparam shadowing false
+skinparam classFontSize 12
+skinparam classAttributeFontSize 11
+skinparam classBorderColor #888888
+skinparam arrowColor #555555
+skinparam packageBorderColor #AAAAAA
+skinparam interfaceBorderColor #6272A4
+skinparam interfaceBackgroundColor #E8EEFF
+skinparam noteBackgroundColor #FFFDE7
+skinparam noteBorderColor #CCCC88
+skinparam stereotypeCBackgroundColor #E0E0FF
+
+hide empty members
+
+' ════════════════════════════════════════════════════════════
+' APPLICATION CORE
+' ════════════════════════════════════════════════════════════
+package "Application Core" #F0F4F8 {
+
+    class DownloaderApp <<coordinator>> {
+        +window : fyne.Window
+        +ui : *UIWidgets
+        +stats : *DownloadStats
+        +log : *LogManager
+        +cancelFn : context.CancelFunc
+        +stopPulse : chan struct{}
+        +uiManager : *UIManager
+        +prefSvc : *PreferenceService
+        +ppFailed : atomic.Int32
+        +isRunning : atomic.Bool
+        --
+        +startDownload()
+        +runYtDlp(ctx, url, path, ...)
+        +applyPreferencesToWidgets(p)
+        +savePreferences(path)
+        +resetPreferences()
+        +checkDependencies()
+        +createUI()
+        +createMainMenu()
+        +buildPostProcessFilters() : vf, af
+        +applyFFmpegFilters(ctx, paths, vf, af)
+    }
+
+}
+
+' ════════════════════════════════════════════════════════════
+' UI LAYER
+' ════════════════════════════════════════════════════════════
+package "UI Layer" #F0F8F0 {
+
+    class UIWidgets <<ui>> {
+        ' — Download controls —
+        +entry : *widget.Entry
+        +path : *widget.Entry
+        +format : *widget.Select
+        +quality : *widget.Select
+        +downloadBtn : *widget.Button
+        +cancelBtn : *widget.Button
+        +progress : *widget.ProgressBar
+        +status : *widget.Label
+        +statusDot : *canvas.Circle
+        ' — Session options —
+        +saveLog : *widget.Check
+        +notify : *widget.Check
+        +autoRetry : *widget.Check
+        +enablePostProcess : *widget.Check
+        +batchMode : *widget.Check
+        +maxSpeed : *widget.Entry
+        +trimStart : *widget.Entry
+        +trimEnd : *widget.Entry
+        +cookies : *widget.Entry
+        ' — Settings controls —
+        +savePrefs : *widget.Check
+        +themeMode : *widget.RadioGroup
+        +logLimit : *widget.Select
+        ' — Post-processing controls (12 fields) —
+        +smoothMotion : *widget.Check
+        +sharpen : *widget.Check
+        +normalizeAudio : *widget.Check
+        +vividMode : *widget.Check
+        +denoise : *widget.Check
+        +hdrToSdr : *widget.Check
+        +deband : *widget.Check
+        +autoCrop : *widget.Check
+        +stabilize : *widget.Check
+        +deinterlace : *widget.Check
+        +nightMode : *widget.Check
+        +upscaleVideo : *widget.Check
+    }
+
+    class UIManager <<service>> {
+        -mainWindow : fyne.Window
+        -aboutWindow : fyne.Window
+        -helpWindow : fyne.Window
+        -historyWindow : fyne.Window
+        -prefsWindow : fyne.Window
+        -ppWindow : fyne.Window
+        --
+        +showAbout()
+        +showHistory()
+        +showConfigHelp()
+    }
+
+}
+
+' ════════════════════════════════════════════════════════════
+' DOWNLOAD ENGINE
+' ════════════════════════════════════════════════════════════
+package "Download Engine" #FFF8F0 {
+
+    class DownloadEngine <<service>> {
+        +YtDlpPath : string
+        +FFmpegPath : string
+        --
+        +BuildArgs(req DownloadRequest) : DownloadArgs
+        +Execute(ctx, args, autoRetry,\n  index, total, cb) : scanResult
+    }
+
+    class DownloadRequest <<data>> {
+        +URL : string
+        +SavePath : string
+        +Format : string
+        +Quality : string
+        +TrimStart : string
+        +TrimEnd : string
+        +MaxSpeed : string
+        +CookiesPath : string
+        +AutoRetry : bool
+    }
+
+    class DownloadArgs <<data>> {
+        +Args : []string
+    }
+
+    class ProcessCallbacks <<bridge>> {
+        +Log : func(line string, col color.Color)
+        +Status : func(msg string)
+        +WatchOutput : func(stdout, stderr io.Reader) scanResult
+        +ShowRetry : func(n, total int, delay time.Duration)
+    }
+
+    class scanResult <<data>> {
+        +hadTransientErr : bool
+    }
+
+}
+
+' ════════════════════════════════════════════════════════════
+' POST-PROCESSING ENGINE
+' ════════════════════════════════════════════════════════════
+package "Post-Processing Engine" #F8F0FF {
+
+    class PPEngine <<service>> {
+        +FFmpegPath : string
+        +FFprobePath : string
+        --
+        +ApplyFilters(ctx, files, vf, af, cb)
+        -detectCropFilter(ctx, input, cb) : string
+        -resolveAutoCrop(ctx, input, filters, cb) : []string
+        -runJob(ctx, job, cb)
+    }
+
+    class PPCallbacks <<bridge>> {
+        +OnLog : func(line string, col color.Color)
+        +OnStatus : func(msg string)
+        +OnFailure : func()
+    }
+
+    class PostProcessJob <<data>> {
+        -inputPath : string
+        -tmpOutput : string
+        -finalPath : string
+        -ffmpegArgs : []string
+        -vfFilters : []string
+        -afFilters : []string
+        -threads : int
+        -encodeMode : string
+        -totalFrames : int64
+    }
+
+}
+
+' ════════════════════════════════════════════════════════════
+' PREFERENCE SERVICE
+' ════════════════════════════════════════════════════════════
+package "Preference Service" #FFF0F0 {
+
+    class PreferenceService <<service>> {
+        -store : fyne.Preferences
+        --
+        +Load() : AppPreferences
+        +Save(p AppPreferences)
+        +Reset()
+    }
+
+    class AppPreferences <<data>> {
+        +SavePrefs : bool
+        +SavedPath : string
+        +Format : string
+        +Quality : string
+        +ThemeMode : string
+        +LogLimit : string
+        +CookiesPath : string
+        +MaxSpeed : string
+        +BatchMode : bool
+        +SaveLog : bool
+        +Notify : bool
+        +AutoRetry : bool
+        +EnablePostProcess : bool
+        +SmoothMotion : bool
+        +SmoothMotionMode : string
+        +SmoothFPS : float64
+        +Sharpen : bool
+        +SharpenAmount : float64
+        +NormalizeAudio : bool
+        +VividMode : bool
+        +Denoise : bool
+        +DenoiseMode : string
+        +HDRToSDR : bool
+        +Deband : bool
+        +AutoCrop : bool
+        +Stabilize : bool
+        +Deinterlace : bool
+        +NightMode : bool
+        +UpscaleVideo : bool
+        +UpscaleTarget : string
+    }
+
+}
+
+' ════════════════════════════════════════════════════════════
+' SUPPORT / PERSISTENCE TYPES
+' ════════════════════════════════════════════════════════════
+package "Support Types" #F5F5F5 {
+
+    class LogManager <<state>> {
+        -file : *os.File
+        -mutex : sync.Mutex
+        -errorMutex : sync.Mutex
+    }
+
+    class DownloadStats <<state>> {
+        -lastSize : string
+        -downloadedRaw : float64
+        -unit : string
+        -targetPct : float64
+    }
+
+    class DownloadHistoryEntry <<data>> {
+        +URL : string
+        +OriginalTitle : string
+        +FinalFilename : string
+        +SavedPath : string
+        +Format : string
+        +Quality : string
+        +DownloadedAt : string
+        +PostProcessed : bool
+    }
+
+    class AppConfig <<data>> {
+        +Format : string
+        +Quality : string
+        +Path : string
+        +MaxSpeed : string
+    }
+
+}
+
+' ════════════════════════════════════════════════════════════
+' THEMING
+' ════════════════════════════════════════════════════════════
+package "Theming" #FFFFF0 {
+
+    interface FyneTheme <<fyne.Theme>> {
+        +Color(name, variant) : color.Color
+        +Font(style) : fyne.Resource
+        +Icon(name) : fyne.Resource
+        +Size(name) : float32
+    }
+
+    class darkTheme <<theme>> {
+        +Color()
+        +Font()
+        +Icon()
+        +Size()
+    }
+
+    class lightTheme <<theme>> {
+        +Color()
+        +Font()
+        +Icon()
+        +Size()
+    }
+
+}
+
+' ════════════════════════════════════════════════════════════
+' EXTERNAL INTERFACE
+' ════════════════════════════════════════════════════════════
+interface FynePreferences <<fyne.Preferences>> {
+    +String(key) : string
+    +Bool(key) : bool
+    +Float(key) : float64
+    +SetString(key, val)
+    +RemoveValue(key)
+}
+
+' ════════════════════════════════════════════════════════════
+' RELATIONSHIPS
+' ════════════════════════════════════════════════════════════
+
+' DownloaderApp composition (owns these fields)
+DownloaderApp *--> UIWidgets       : ui
+DownloaderApp *--> UIManager       : uiManager
+DownloaderApp *--> PreferenceService : prefSvc
+DownloaderApp *--> LogManager      : log
+DownloaderApp *--> DownloadStats   : stats
+
+' DownloaderApp uses engines (created per session, not stored as fields)
+DownloaderApp ..> DownloadEngine   : creates per download
+DownloaderApp ..> PPEngine         : creates per post-process
+
+' DownloadEngine value flow
+DownloadEngine ..> DownloadRequest : BuildArgs input
+DownloadEngine ..> DownloadArgs    : BuildArgs output
+DownloadEngine ..> ProcessCallbacks : Execute bridge
+DownloadEngine ..> scanResult      : Execute output
+
+' PPEngine internal flow
+PPEngine ..> PPCallbacks    : ApplyFilters bridge
+PPEngine ..> PostProcessJob : builds & runs
+
+' PreferenceService
+PreferenceService --> FynePreferences : store
+PreferenceService ..> AppPreferences  : Load / Save
+
+' UIManager renders history
+UIManager ..> DownloadHistoryEntry : renders
+
+' Theming
+darkTheme  ..|> FyneTheme
+lightTheme ..|> FyneTheme
+
+' ════════════════════════════════════════════════════════════
+' ANNOTATIONS
+' ════════════════════════════════════════════════════════════
+
+note top of DownloadEngine
+  BuildArgs() is pure — no I/O.
+  Execute() runs the retry loop with
+  1 s / 5 s / 30 s back-off.
+  Both called from DownloaderApp.runYtDlp().
+end note
+
+note top of PPEngine
+  ApplyFilters() spawns a worker pool
+  bounded to runtime.NumCPU() goroutines.
+  Each worker calls runJob() for one file.
+  cropdetect runs a silent FFmpeg pass
+  before the main encode.
+end note
+
+note top of PreferenceService
+  All 30 pref key strings and default
+  values live as named constants here.
+  AppPreferences is a plain value struct
+  — no Fyne widget references.
+end note
+
+note top of UIManager
+  Owns all secondary window instances
+  (About, Help, History, Prefs, PP).
+  Enforces singleton: re-focuses
+  an open window instead of
+  opening a duplicate.
+end note
+
+note bottom of ProcessCallbacks
+  Callback bridge — lets DownloadEngine
+  report progress without importing Fyne.
+  Same pattern used by PPCallbacks.
+end note
+
+@enduml
