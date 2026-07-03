@@ -21,6 +21,8 @@ type DownloadHistoryEntry struct {
 	PostProcessed   bool   `json:"postProcessed"`
 }
 
+// historyFilePath returns the absolute path to the download history JSON file,
+// located in the same directory as the running executable.
 func historyFilePath() string {
 	exePath, err := os.Executable()
 	if err != nil {
@@ -29,6 +31,8 @@ func historyFilePath() string {
 	return filepath.Join(filepath.Dir(exePath), historyFileName)
 }
 
+// loadDownloadHistory reads all entries from the history file on disk and returns
+// them in chronological order. Returns nil with no error if the file does not exist.
 func loadDownloadHistory() ([]DownloadHistoryEntry, error) {
 	path := historyFilePath()
 	data, err := os.ReadFile(path)
@@ -48,6 +52,8 @@ func loadDownloadHistory() ([]DownloadHistoryEntry, error) {
 	return entries, nil
 }
 
+// appendDownloadHistory adds a single entry to the history file, stamping it
+// with the current time when DownloadedAt is empty.
 func appendDownloadHistory(entry DownloadHistoryEntry) error {
 	entries, err := loadDownloadHistory()
 	if err != nil {
@@ -65,10 +71,15 @@ func appendDownloadHistory(entry DownloadHistoryEntry) error {
 	return os.WriteFile(historyFilePath(), data, 0644)
 }
 
+// clearDownloadHistory overwrites the history file with an empty JSON array,
+// effectively removing all recorded entries.
 func clearDownloadHistory() error {
 	return os.WriteFile(historyFilePath(), []byte("[]"), 0644)
 }
 
+// buildDownloadHistoryEntries constructs one DownloadHistoryEntry per output
+// file in finalPaths. When finalPaths is empty a single placeholder entry is
+// returned so the download URL is still recorded in the history.
 func buildDownloadHistoryEntries(url string, finalPaths []string, savePath, format, quality string, postProcessed bool) []DownloadHistoryEntry {
 	if len(finalPaths) == 0 {
 		return []DownloadHistoryEntry{{
@@ -98,6 +109,8 @@ func buildDownloadHistoryEntries(url string, finalPaths []string, savePath, form
 	return entries
 }
 
+// inferOriginalTitle derives a human-readable title from a saved filename by
+// stripping the GoVid_ prefix, quality suffix, and file extension.
 func inferOriginalTitle(filename, quality string) string {
 	base := strings.TrimSuffix(filename, filepath.Ext(filename))
 	base = strings.TrimPrefix(base, "GoVid_")
