@@ -65,6 +65,10 @@ func appendDownloadHistory(entry DownloadHistoryEntry) error {
 	return os.WriteFile(historyFilePath(), data, 0644)
 }
 
+func clearDownloadHistory() error {
+	return os.WriteFile(historyFilePath(), []byte("[]"), 0644)
+}
+
 func buildDownloadHistoryEntries(url string, finalPaths []string, savePath, format, quality string, postProcessed bool) []DownloadHistoryEntry {
 	if len(finalPaths) == 0 {
 		return []DownloadHistoryEntry{{

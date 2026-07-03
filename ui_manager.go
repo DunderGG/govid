@@ -127,9 +127,30 @@ func (manager *UIManager) showHistory() {
 	scroll := container.NewScroll(text)
 	scroll.SetMinSize(fyne.NewSize(760, 420))
 
+	clearBtn := widget.NewButton("Clear History", func() {
+		dialog.ShowConfirm(
+			"Clear Download History",
+			"Are you sure you want to clear all download history? This cannot be undone.",
+			func(ok bool) {
+				if !ok {
+					return
+				}
+				if err := clearDownloadHistory(); err != nil {
+					dialog.ShowError(fmt.Errorf("failed to clear history: %v", err), manager.historyWindow)
+					return
+				}
+				text.SetText("")
+			},
+			manager.historyWindow,
+		)
+	})
+
+	bottomBar := container.NewHBox(layout.NewSpacer(), clearBtn)
+	content := container.NewBorder(nil, bottomBar, nil, nil, scroll)
+
 	manager.historyWindow = fyne.CurrentApp().NewWindow("Download History")
-	manager.historyWindow.SetContent(container.NewPadded(scroll))
-	manager.historyWindow.Resize(fyne.NewSize(800, 460))
+	manager.historyWindow.SetContent(container.NewPadded(content))
+	manager.historyWindow.Resize(fyne.NewSize(800, 500))
 	manager.historyWindow.SetOnClosed(func() { manager.historyWindow = nil })
 	manager.historyWindow.Show()
 }
