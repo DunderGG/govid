@@ -39,6 +39,10 @@ If you are building from source, you must have the following tools installed and
 
 1.  **[yt-dlp](https://github.com/yt-dlp/yt-dlp)**: The core engine for video downloading.
 2.  **[FFmpeg](https://ffmpeg.org/)**: Required for high-quality video/audio post-processing and conversion.
+3.  **A GCC C compiler**: GoVid uses [Fyne](https://fyne.io/), which requires CGO and a C compiler to build.
+    - **Windows**: Install [MSYS2](https://www.msys2.org/), then run `pacman -S mingw-w64-x86_64-gcc` in the MSYS2 shell and add `C:\msys64\mingw64\bin` to your system `PATH`.
+    - **Linux**: Install GCC via your package manager, e.g. `sudo apt install gcc` (Debian/Ubuntu) or `sudo dnf install gcc` (Fedora).
+    - **macOS**: Install the Xcode Command Line Tools via `xcode-select --install`.
 
 ### Installation
 

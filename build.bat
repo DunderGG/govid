@@ -4,6 +4,7 @@
 :: Prerequisites:
 ::   - Go 1.21+    https://go.dev/dl/
 ::   - go-winres   https://github.com/tc-hib/go-winres
+::   - GCC (MinGW-w64 via MSYS2)  https://www.msys2.org/
 ::
 :: Usage:
 ::   .\build.bat
@@ -16,6 +17,15 @@ setlocal
 where go >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo Error: Go is not installed or not in PATH. https://go.dev/dl/
+    exit /b 1
+)
+where gcc >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    echo Error: GCC is not installed or not in PATH.
+    echo GoVid uses the Fyne toolkit which requires CGO and a C compiler to build.
+    echo Install MSYS2 from https://www.msys2.org/, then run in the MSYS2 shell:
+    echo   pacman -S mingw-w64-x86_64-gcc
+    echo Finally, add C:\msys64\mingw64\bin to your system PATH and restart this terminal.
     exit /b 1
 )
 where go-winres >nul 2>&1
