@@ -38,5 +38,5 @@ go.work.sum
 *.ps1
 *.syso
 GoVid
-/release/*
+/release/*.exe
 download_history.json
