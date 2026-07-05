@@ -17,7 +17,7 @@ This version groups the audit items into priority buckets so you can tackle the 
 - [ ] Extract shared window-focus logic — Create one helper for the repeated focus-or-create pattern so every dialog and tool window behaves consistently.
 - [ ] Replace hard-coded post-processing thresholds with constants — Name the thresholds and cost values so the code self-documents what each value means and is easier to tune later.
 - [ ] Keep LogManager focused on one job — Separate file appending and log persistence from mutex and error-handling details if the type grows further.
-- [ ] Move history handling behind a service boundary — Keep storage and schema changes away from the UI so history can evolve without touching the main window code.
+- [x] Move history handling behind a service boundary — Keep storage and schema changes away from the UI so history can evolve without touching the main window code.
 - [ ] Keep log parsing tolerant — Treat yt-dlp output parsing as best-effort so small wording changes do not break downloads.
 
 ## Low Priority
@@ -71,6 +71,16 @@ This version groups the audit items into priority buckets so you can tackle the 
 3. **Move `createMainMenu` to UIManager** — menu item callbacks (`startDownload`, `runUpdateInUI`, `showPostProcessing`, etc.) become `UIManager` callback fields, wired at construction time. Depends on `DependencyService` for the updater action.
 
 4. **Move `createUI` to UIManager** — the largest step. The main window layout reads from `*UIWidgets` and calls back into almost every service. This should be last, after all other services exist, so callbacks are typed references rather than raw closures over `DownloaderApp`.
+
+5. **Remove direct service references from UIManager** — `UIManager` currently holds `historySvc *HistoryService` directly, creating dual ownership (both `DownloaderApp` and `UIManager` own the same instance). As each `show*` method migrates here, it will add more service fields, tightening coupling further. The clean solution is for `UIManager` to hold **no service references** — instead, inject callbacks at construction time (e.g. `OnLoadHistory func() ([]DownloadHistoryEntry, error)`, `OnClearHistory func() error`). `DownloaderApp` wires those callbacks to its services at startup, so `UIManager` stays decoupled from service types entirely. This step should be done once all `show*` methods have moved here, so the full callback surface is known before the constructor is redesigned.
+
+## HistoryService
+
+**Done:** `HistoryService` struct introduced in `history.go`. It owns the path to `download_history.json` and exposes three methods: `Load() ([]DownloadHistoryEntry, error)` (reads all entries, tolerant of missing file), `AppendAll(url, finalPaths, savePath, format, quality, postProcessed) error` (builds and persists one entry per output file in a single write), and `Clear() error` (resets to an empty array). The private `buildEntries` helper and `inferOriginalTitle` moved onto the service. All previous free functions (`historyFilePath`, `loadDownloadHistory`, `appendDownloadHistory`, `clearDownloadHistory`, `buildDownloadHistoryEntries`) have been removed. `DownloaderApp` holds `historySvc *HistoryService`; `UIManager` receives a reference at startup so `showHistory` and its Clear button never touch file paths directly. `download.go` now calls `app.historySvc.AppendAll(...)` instead of a for-loop over individual `appendDownloadHistory` calls.
+
+**No open next steps** — `HistoryService` is fully extracted. Future work would be covered by the medium-priority roadmap item "Move history handling behind a service boundary", which is now complete.
+
+> **Coupling note:** `UIManager` currently holds a direct `historySvc *HistoryService` reference, meaning both `DownloaderApp` and `UIManager` own the same instance. This is a temporary compromise. See UIManager step 5 above for the plan to replace all service fields on `UIManager` with injected callbacks.
 
 ## PreferenceService
 

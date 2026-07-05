@@ -28,12 +28,13 @@ import (
 // UIManager owns references to all (non-main, for now) windows and ensures
 // each is a singleton — at most one window instance open at a time.
 type UIManager struct {
-	mainWindow    fyne.Window // reference to the primary window for dialog parenting
+	mainWindow    fyne.Window     // reference to the primary window for dialog parenting
 	aboutWindow   fyne.Window
 	helpWindow    fyne.Window
 	historyWindow fyne.Window
-	prefsWindow   fyne.Window // owned here for singleton tracking; opened by DownloaderApp
-	ppWindow      fyne.Window // owned here for singleton tracking; opened by DownloaderApp
+	prefsWindow   fyne.Window     // owned here for singleton tracking; opened by DownloaderApp
+	ppWindow      fyne.Window     // owned here for singleton tracking; opened by DownloaderApp
+	historySvc    *HistoryService // history persistence; set by newDownloaderApp after construction
 }
 
 // NewUIManager returns a UIManager bound to the given primary window.
@@ -93,7 +94,7 @@ func (manager *UIManager) showHistory() {
 	}
 
 	// Load the download history from disk. If it fails, show an error dialog and abort.
-	entries, err := loadDownloadHistory()
+	entries, err := manager.historySvc.Load()
 	if err != nil {
 		dialog.ShowError(fmt.Errorf("failed to load download history: %v", err), manager.mainWindow)
 		return
@@ -135,7 +136,7 @@ func (manager *UIManager) showHistory() {
 				if !ok {
 					return
 				}
-				if err := clearDownloadHistory(); err != nil {
+				if err := manager.historySvc.Clear(); err != nil {
 					dialog.ShowError(fmt.Errorf("failed to clear history: %v", err), manager.historyWindow)
 					return
 				}

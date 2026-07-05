@@ -183,6 +183,33 @@ package "Post-Processing Engine" #F8F0FF {
 }
 
 ' ════════════════════════════════════════════════════════════
+' HISTORY SERVICE
+' ════════════════════════════════════════════════════════════
+package "History Service" #F0FFF4 {
+
+    class HistoryService <<service>> {
+        -filePath : string
+        --
+        +Load() : []DownloadHistoryEntry
+        +AppendAll(url, finalPaths, savePath,\n  format, quality, postProcessed)
+        +Clear()
+        -buildEntries(...) : []DownloadHistoryEntry
+    }
+
+    class DownloadHistoryEntry <<data>> {
+        +URL : string
+        +OriginalTitle : string
+        +FinalFilename : string
+        +SavedPath : string
+        +Format : string
+        +Quality : string
+        +DownloadedAt : string
+        +PostProcessed : bool
+    }
+
+}
+
+' ════════════════════════════════════════════════════════════
 ' PREFERENCE SERVICE
 ' ════════════════════════════════════════════════════════════
 package "Preference Service" #FFF0F0 {
@@ -248,17 +275,6 @@ package "Support Types" #F5F5F5 {
         -targetPct : float64
     }
 
-    class DownloadHistoryEntry <<data>> {
-        +URL : string
-        +OriginalTitle : string
-        +FinalFilename : string
-        +SavedPath : string
-        +Format : string
-        +Quality : string
-        +DownloadedAt : string
-        +PostProcessed : bool
-    }
-
     class AppConfig <<data>> {
         +Format : string
         +Quality : string
@@ -315,6 +331,7 @@ interface FynePreferences <<fyne.Preferences>> {
 DownloaderApp *--> UIWidgets       : ui
 DownloaderApp *--> UIManager       : uiManager
 DownloaderApp *--> PreferenceService : prefSvc
+DownloaderApp *--> HistoryService   : historySvc
 DownloaderApp *--> LogManager      : log
 DownloaderApp *--> DownloadStats   : stats
 
@@ -335,6 +352,10 @@ PPEngine ..> PostProcessJob : builds & runs
 ' PreferenceService
 PreferenceService --> FynePreferences : store
 PreferenceService ..> AppPreferences  : Load / Save
+
+' HistoryService
+HistoryService ..> DownloadHistoryEntry : Load / AppendAll
+UIManager --> HistoryService : historySvc
 
 ' UIManager renders history
 UIManager ..> DownloadHistoryEntry : renders

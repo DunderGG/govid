@@ -94,6 +94,10 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	prefs := app.prefSvc.Load()
 	app.applyPreferencesToWidgets(prefs)
 	logBufferLimit = parseLogLimit(prefs.LogLimit)
+
+	// Wire history service to both the app and the UIManager.
+	app.historySvc = NewHistoryService()
+	app.uiManager.historySvc = app.historySvc
 	return app
 }
 

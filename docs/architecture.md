@@ -39,6 +39,7 @@ govid/
 ├── download_engine.go      DownloadEngine — yt-dlp arg builder and retry executor
 ├── pp_engine.go            PPEngine — concurrent FFmpeg post-processing worker pool
 ├── preference_service.go   PreferenceService — all preference keys, defaults, Load/Save/Reset
+├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadHistoryEntry type
 ├── ui_manager.go           UIManager — owns secondary window lifecycle (About, Help, History, Prefs, PP)
 │
 ├── ── Orchestration ───────────────────────────────────────────────
@@ -49,7 +50,7 @@ govid/
 ├── ── UI ──────────────────────────────────────────────────────────
 ├── ui.go                   createUI, createMainMenu, showPreferences, showPostProcessing
 ├── helpers.go              Thread-safe UI updates, applyPreferencesToWidgets, savePreferences, resetPreferences, dependency checks
-├── history.go              DownloadHistoryEntry type; loadDownloadHistory / appendDownloadHistory / buildDownloadHistoryEntries
+├── history_service.go      HistoryService — see §4.8
 │
 ├── ── Assets / Platform ───────────────────────────────────────────
 ├── theme.go                darkTheme and lightTheme (implement fyne.Theme)
@@ -79,6 +80,7 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `ui *UIWidgets` | All Fyne widgets (see §4.2) |
 | `uiManager *UIManager` | Secondary window lifecycle (see §4.3) |
 | `prefSvc *PreferenceService` | Preference persistence (see §4.6) |
+| `historySvc *HistoryService` | Download history persistence (see §4.8) |
 | `log *LogManager` | Session and error log files |
 | `stats *DownloadStats` | Real-time download metrics for progress smoothing |
 | `cancelFn` | Cancels the active download context |
@@ -153,10 +155,18 @@ Holds the open session log file handle and two mutexes. The session log is `GoVi
 
 ---
 
-### 4.8 `DownloadHistoryEntry` + persistence  
-*Defined in:* `history.go`
+### 4.8 `HistoryService` — download history persistence
+*Defined in:* `history_service.go`
 
-JSON records written to `download_history.json` beside the executable. Each successful download appends one entry per output file. Fields include `url`, `originalTitle`, `finalFilename`, `savedPath`, `format`, `quality`, `downloadedAt`, and `postProcessed`. The History window (shown via `UIManager.showHistory()`) reads and renders all entries in reverse-chronological order.
+Owns the path to `download_history.json` (beside the executable) and exposes three methods:
+
+- **`Load() ([]DownloadHistoryEntry, error)`** — reads all entries in chronological order. Returns nil with no error when the file does not yet exist.
+- **`AppendAll(url, finalPaths, savePath, format, quality, postProcessed)`** — builds one `DownloadHistoryEntry` per path and writes the updated array in a single atomic write. When `finalPaths` is empty a placeholder entry is appended so the URL is still recorded.
+- **`Clear() error`** — overwrites the file with an empty JSON array.
+
+The private `buildEntries` helper and `inferOriginalTitle` live here; neither has a UI dependency. `DownloaderApp` holds `historySvc *HistoryService`; `UIManager` receives a reference at startup so `showHistory` never touches the file path directly.
+
+`DownloadHistoryEntry` is a plain JSON-serialisable value struct (url, originalTitle, finalFilename, savedPath, format, quality, downloadedAt, postProcessed).
 
 ---
 
@@ -180,7 +190,7 @@ User clicks Download
             │    ├─ cmd.StdoutPipe / StderrPipe
             │    └─ cb.WatchOutput → watchOutput() goroutines (parse % / size)
             ├─ finalizeDownloadedFiles()            glob → rename
-            └─ appendDownloadHistory()              JSON append
+            └─ historySvc.AppendAll()               JSON append
   └─ applyFFmpegFilters()     if post-processing enabled
        └─ PPEngine.ApplyFilters(ctx, files, vf, af, cb)
             └─ runJob() per file (worker pool)
@@ -222,7 +232,7 @@ User resets Prefs:
 | User preferences | Fyne app data (`com.govid.downloader`) | Fyne KV store | `PreferenceService` |
 | Session log | `<save dir>/GoVid_log_YYYY-MM-DD.txt` | Plain text | `LogManager` |
 | Error log | `<save dir>/GoVid_errors_YYYY-MM-DD.txt` | Plain text | `LogManager` |
-| Download history | `<exe dir>/download_history.json` | JSON array | `history.go` |
+| Download history | `<exe dir>/download_history.json` | JSON array | `HistoryService` |
 | Override config | `<cwd>/govid.json` | JSON object | `helpers.go` |
 
 ---
