@@ -524,6 +524,11 @@ func (app *DownloaderApp) createUI() {
 		fyne.CurrentApp().Preferences().SetBool(prefEnablePostProcess, checked)
 	}
 	ui.path.SetPlaceHolder("Download folder...")
+	ui.path.OnChanged = func(text string) {
+		if app.ui.savePrefs.Checked {
+			fyne.CurrentApp().Preferences().SetString(prefSavedPath, strings.TrimSpace(text))
+		}
+	}
 
 	// Load previously saved path from preferences.
 	prefs := app.prefSvc.Load()
