@@ -33,13 +33,14 @@ It provides a graphical interface, real-time progress feedback, optional FFmpeg 
 ```
 govid/
 ├── main.go                 Entry point; constructs DownloaderApp, wires close-intercept, calls ShowAndRun
-├── types.go                Central struct definitions (DownloaderApp, UIWidgets, LogManager, DownloadStats, AppConfig, PostProcessJob)
+├── types.go                Central struct definitions (DownloaderApp, UIWidgets, DownloadStats, AppConfig, PostProcessJob)
 │
 ├── ── Services / Engines ──────────────────────────────────────────
 ├── download_engine.go      DownloadEngine — yt-dlp arg builder and retry executor
 ├── pp_engine.go            PPEngine — concurrent FFmpeg post-processing worker pool
 ├── preference_service.go   PreferenceService — all preference keys, defaults, Load/Save/Reset
 ├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadHistoryEntry type
+├── log_service.go          LogService — session log open/close, error log routing, buffer-limit management
 ├── ui_manager.go           UIManager — owns secondary window lifecycle (About, Help, History, Prefs, PP)
 │
 ├── ── Orchestration ───────────────────────────────────────────────
@@ -81,7 +82,7 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `uiManager *UIManager` | Secondary window lifecycle (see §4.3) |
 | `prefSvc *PreferenceService` | Preference persistence (see §4.6) |
 | `historySvc *HistoryService` | Download history persistence (see §4.8) |
-| `log *LogManager` | Session and error log files |
+| `logSvc *LogService` | Session and error log files (see §4.7) |
 | `stats *DownloadStats` | Real-time download metrics for progress smoothing |
 | `cancelFn` | Cancels the active download context |
 | `stopPulse` | Channel closed to stop the status-dot animation goroutine |
@@ -148,10 +149,20 @@ All 30 Fyne preference storage keys are named constants here (`prefSavedPath`, `
 
 ---
 
-### 4.7 `LogManager` — file logging  
-*Defined in:* `types.go`; used by `helpers.go` and `download.go`
+### 4.7 `LogService` — file logging
+*Defined in:* `log_service.go`
 
-Holds the open session log file handle and two mutexes. The session log is `GoVid_log_YYYY-MM-DD.txt` in the save directory. Lines containing `ERROR` or `FAILED` are also mirrored to a separate `GoVid_errors_YYYY-MM-DD.txt` file via `appendErrorOutput()`.
+Owns the session log file handle, two mutexes, daily rotation policy, and the UI buffer-limit value. `DownloaderApp` holds `logSvc *LogService`.
+
+- **`OpenSessionLog(dir string) (string, error)`** — opens (or appends to) the daily `GoVid_log_YYYY-MM-DD.txt` in `dir`. Returns the resolved path.
+- **`CloseSessionLog()`** — writes a closing marker and closes the file.
+- **`WriteToFile(line string)`** — appends a timestamped line to the open session log.
+- **`WriteToErrorLog(line, dir string)`** — appends a timestamped line to the daily `GoVid_errors_YYYY-MM-DD.txt` in `dir`. Opens and closes the file on each call.
+- **`SetBufferLimit(n int)` / `BufferLimit() int`** — gets/sets the UI log line cap (replaces the former `logBufferLimit` global).
+
+Package-level helpers: `IsErrorLine(line string) bool` (matches ERROR/FAILED), `ParseBufferLimit(s string) int` (converts the preference string to an integer), `SessionLogPath(dir string)`, `ErrorLogPath(dir string)`.
+
+`appendOutput()` in `helpers.go` is the single call-site for all log writes; it calls `logSvc.WriteToFile` for session logging and `logSvc.WriteToErrorLog` for error mirroring.
 
 ---
 
@@ -230,8 +241,8 @@ User resets Prefs:
 | Store | Location | Format | Owner |
 |---|---|---|---|
 | User preferences | Fyne app data (`com.govid.downloader`) | Fyne KV store | `PreferenceService` |
-| Session log | `<save dir>/GoVid_log_YYYY-MM-DD.txt` | Plain text | `LogManager` |
-| Error log | `<save dir>/GoVid_errors_YYYY-MM-DD.txt` | Plain text | `LogManager` |
+| Session log | `<save dir>/GoVid_log_YYYY-MM-DD.txt` | Plain text | `LogService` |
+| Error log | `<save dir>/GoVid_errors_YYYY-MM-DD.txt` | Plain text | `LogService` |
 | Download history | `<exe dir>/download_history.json` | JSON array | `HistoryService` |
 | Override config | `<cwd>/govid.json` | JSON object | `helpers.go` |
 

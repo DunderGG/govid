@@ -30,10 +30,6 @@ const (
 )
 
 var (
-	// logBufferLimit is the maximum number of lines kept in the graphical log view.
-	// Older entries are trimmed from the top. Configurable via Preferences.
-	logBufferLimit = 200
-
 	// version is injected at release build time via:
 	//	-X main.version=1.0.0
 	// Falls back to "dev" for local builds.
@@ -85,15 +81,15 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			upscaleVideo:      widget.NewCheck("Upscale Video", nil),
 			upscaleTarget:     widget.NewSelect([]string{"2× (Double)", "1080p", "1440p", "4K (2160p)"}, nil),
 		},
-		stats: &DownloadStats{},
-		log:   &LogManager{},
+		stats:  &DownloadStats{},
+		logSvc: NewLogService(),
 	}
 
 	// Load saved preferences and apply them to all widgets.
 	app.prefSvc = NewPreferenceService(fyne.CurrentApp().Preferences())
 	prefs := app.prefSvc.Load()
 	app.applyPreferencesToWidgets(prefs)
-	logBufferLimit = parseLogLimit(prefs.LogLimit)
+	app.logSvc.SetBufferLimit(ParseBufferLimit(prefs.LogLimit))
 
 	// Wire history service to both the app and the UIManager.
 	app.historySvc = NewHistoryService()

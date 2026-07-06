@@ -82,6 +82,30 @@ This version groups the audit items into priority buckets so you can tackle the 
 
 > **Coupling note:** `UIManager` currently holds a direct `historySvc *HistoryService` reference, meaning both `DownloaderApp` and `UIManager` own the same instance. This is a temporary compromise. See UIManager step 5 above for the plan to replace all service fields on `UIManager` with injected callbacks.
 
+## LogService
+
+**Done:** `LogService` struct introduced in `log_service.go`. It owns the session log file handle, two mutexes, the daily rotation policy (daily `YYYY-MM-DD` filename scheme), and the UI buffer-limit value. `DownloaderApp` holds `logSvc *LogService` (previously `log *LogManager`).
+
+Extracted from `helpers.go` and `download.go`:
+- `OpenSessionLog(dir string) (string, error)` — replaces the inline `os.OpenFile` + `app.log.file = file` block in `startDownload`.
+- `CloseSessionLog()` — replaces the inline mutex + write + close + nil block in `startDownload`.
+- `WriteToFile(line string)` — replaces the `app.log.mutex.Lock` / `fmt.Fprintf` / `Unlock` block inside `appendOutput`.
+- `WriteToErrorLog(line, dir string)` — replaces `appendErrorOutput` + `dailyErrorLogPath` in `helpers.go`.
+- `SetBufferLimit(n int)` / `BufferLimit() int` — replace the `logBufferLimit` package-level global.
+- `IsErrorLine(line string) bool` — replaces `isErrorLogLine` (package-level helper, no instance needed).
+- `ParseBufferLimit(s string) int` — replaces `parseLogLimit` (package-level helper).
+- `SessionLogPath(dir string)` / `ErrorLogPath(dir string)` — replaces the `dateStamp` + `filepath.Join` inline logic in both `startDownload` and `dailyErrorLogPath`.
+
+`appendOutput()` and `logSessionConfiguration()` remain on `DownloaderApp` because they are tightly coupled to `UIWidgets` (they read widget state and mutate the log list). They now delegate all file I/O to `logSvc`.
+
+**Next steps:**
+
+1. **Cache the active session dir on `LogService`** — `OpenSessionLog(dir)` already knows the save directory at session start; storing it on the service would let `WriteToErrorLog` use the session dir automatically instead of requiring the caller to re-read `app.ui.path.Text` on every call. This also fixes a subtle correctness issue: `appendOutput` currently reads `app.ui.path.Text` from outside `fyne.Do`, meaning the widget could change mid-session and shift the error log to a different directory than the session log. Storing the dir at `OpenSessionLog` time would anchor both files to the same location for the lifetime of a session.
+
+2. **Extract `logSessionConfiguration` into a `SessionConfig` value struct** — `logSessionConfiguration` reads directly from ~15 `app.ui.*` fields (format, quality, trim, toggles, post-process settings). When `DownloadEngine.runYtDlp` eventually becomes `engine.Run(ctx, req, callbacks)`, its caller will pass config as data rather than reading widgets inline. At that point, introduce a `SessionConfig` plain struct (parallel to `AppPreferences`) and a `logSvc.WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))` method — completing the "structured log helper" described in the original roadmap item.
+
+3. **`appendOutput` UI part will need a callback when `UIManager` absorbs `createUI`** — the `fyne.Do` block in `appendOutput` directly mutates `app.ui.logList` and `app.ui.output`. When `UIManager` eventually takes ownership of widget lifecycle and rendering (UIManager step 4), the UI side of `appendOutput` will need to become a registered `OnLogLine func(line string, col color.Color)` callback — similar to how `PPCallbacks.OnLog` and `ProcessCallbacks.OnLog` already decouple the engines from the UI.
+
 ## PreferenceService
 
 **Done:** `PreferenceService` struct introduced in `preference_service.go`. It owns all preference key constants (`prefSavedPath`, `prefFormat`, etc.) and default value constants (`defaultThemeMode`, `defaultSmoothFPS`, etc.) that were previously scattered as inline string/numeric literals. `AppPreferences` is a plain value struct with no Fyne widget references — safe to construct and pass anywhere. `PreferenceService.Load()` reads the Fyne store and returns a fully-defaulted `AppPreferences`; `Save(AppPreferences)` writes it back with the savePrefs gate preserved; `Reset()` removes all managed keys in one call. `DownloaderApp.prefSvc` is initialised in `newDownloaderApp`. `applyPreferencesToWidgets(AppPreferences)` in `helpers.go` is the single place that translates a loaded struct into widget state. `savePreferences` now builds an `AppPreferences` from widget state and calls `prefSvc.Save`. `resetPreferences` calls `prefSvc.Reset()`. All raw `fyne.CurrentApp().Preferences()` reads have been removed from `ui.go` (`showPostProcessing`, `showPreferences`, `createUI`).

@@ -23,7 +23,7 @@ package "Application Core" #F0F4F8 {
         +window : fyne.Window
         +ui : *UIWidgets
         +stats : *DownloadStats
-        +log : *LogManager
+        +logSvc : *LogService
         +cancelFn : context.CancelFunc
         +stopPulse : chan struct{}
         +uiManager : *UIManager
@@ -258,15 +258,30 @@ package "Preference Service" #FFF0F0 {
 }
 
 ' ════════════════════════════════════════════════════════════
-' SUPPORT / PERSISTENCE TYPES
+' LOG SERVICE
 ' ════════════════════════════════════════════════════════════
-package "Support Types" #F5F5F5 {
+package "Log Service" #F0F8FF {
 
-    class LogManager <<state>> {
+    class LogService <<service>> {
         -file : *os.File
         -mutex : sync.Mutex
         -errorMutex : sync.Mutex
+        -bufferLimit : int
+        --
+        +OpenSessionLog(dir string) : (string, error)
+        +CloseSessionLog()
+        +WriteToFile(line string)
+        +WriteToErrorLog(line, dir string)
+        +IsActive() : bool
+        +SetBufferLimit(n int)
+        +BufferLimit() : int
     }
+
+}
+
+
+' ════════════════════════════════════════════════════════════
+package "Support Types" #F5F5F5 {
 
     class DownloadStats <<state>> {
         -lastSize : string
@@ -332,7 +347,7 @@ DownloaderApp *--> UIWidgets       : ui
 DownloaderApp *--> UIManager       : uiManager
 DownloaderApp *--> PreferenceService : prefSvc
 DownloaderApp *--> HistoryService   : historySvc
-DownloaderApp *--> LogManager      : log
+DownloaderApp *--> LogService     : logSvc
 DownloaderApp *--> DownloadStats   : stats
 
 ' DownloaderApp uses engines (created per session, not stored as fields)

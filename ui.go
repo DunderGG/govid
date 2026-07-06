@@ -393,7 +393,7 @@ func (app *DownloaderApp) showPreferences() {
 			{Text: "Cookies File", Widget: cookiesRow, HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
 		},
 		OnSubmit: func() {
-			logBufferLimit = parseLogLimit(ui.logLimit.Selected)
+			app.logSvc.SetBufferLimit(ParseBufferLimit(ui.logLimit.Selected))
 			app.savePreferences(ui.path.Text)
 
 			// Apply theme change and rebuild the UI so canvas.Rectangle colors

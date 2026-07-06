@@ -82,15 +82,7 @@ func (app *DownloaderApp) startDownload() {
 
 	// Initialize logging to file if the option is checked.
 	if app.ui.saveLog.Checked {
-		// Each day gets its own log file named "GoVid_log_YYYY-MM-DD.txt" in the save directory. 
-		dateStamp := time.Now().Format("2006-01-02")
-		logPath := filepath.Join(savePath, fmt.Sprintf("GoVid_log_%s.txt", dateStamp))
-		// If the file already exists, new logs are appended to it.
-		// If the file does not exist, it is created. 
-		// In both cases, the file is opened in write-only mode.
-		file, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err == nil {
-			app.log.file = file
+		if logPath, err := app.logSvc.OpenSessionLog(savePath); err == nil {
 			app.appendOutput(fmt.Sprintf("[SYSTEM] Logging to: %s", logPath), color.RGBA{R: 0, G: 255, B: 255, A: 255})
 			app.logSessionConfiguration(urls, savePath, trimStart, trimEnd)
 		} else {
@@ -236,13 +228,7 @@ func (app *DownloaderApp) startDownload() {
 		}
 
 		// Close the log file here, after post-processing, so FFmpeg output is captured.
-		app.log.mutex.Lock()
-		if app.log.file != nil {
-			fmt.Fprintf(app.log.file, "[%s] [SYSTEM] Log file closed.\n", time.Now().Format("15:04:05"))
-			app.log.file.Close()
-			app.log.file = nil
-		}
-		app.log.mutex.Unlock()
+		app.logSvc.CloseSessionLog()
 	}()
 }
 

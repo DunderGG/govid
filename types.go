@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
-	"sync"
 	"sync/atomic"
 
 	"fyne.io/fyne/v2"
@@ -64,12 +62,7 @@ type DownloadStats struct {
 	targetPct     float64 // The target percentage to aim for, for smoothing logic
 }
 
-// LogManager handles file-based logging operations.
-type LogManager struct {
-	file       *os.File   // The persistent log file on disk
-	mutex      sync.Mutex // Prevents data races when writing from multiple goroutines
-	errorMutex sync.Mutex // Serializes writes to the daily error log file
-}
+
 
 // DownloaderApp acts as a coordinator, holding pointers to the specialized
 // sub-structs and handling application lifecycle.
@@ -77,7 +70,7 @@ type DownloaderApp struct {
 	window     fyne.Window        // The primary application window
 	ui         *UIWidgets         // The graphical interface components
 	stats      *DownloadStats     // Statistics tracked during a session
-	log        *LogManager        // Logging and persistence manager
+	logSvc     *LogService         // Session log, error log, and buffer-limit management
 	cancelFn   context.CancelFunc // Function used to signal yt-dlp to stop
 	stopPulse  chan struct{}      // Closed to stop the status dot pulse goroutine
 	uiManager  *UIManager         // Owns secondary window state (About, Help, History, Prefs, PP)

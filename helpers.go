@@ -17,7 +17,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -114,8 +113,8 @@ func (app *DownloaderApp) updateStatus(msg string) {
 }
 
 // appendOutput adds a line of text to the graphical log view and, when log-to-file
-// is enabled, also writes it to the file on disk. It enforces the logBufferLimit
-// by trimming old entries from the top of the log list.
+// is enabled, also writes it to the session log on disk. Error-like lines are
+// additionally mirrored to the daily error log via LogService.
 func (app *DownloaderApp) appendOutput(line string, col color.Color) {
 	fyne.Do(func() {
 		label := canvas.NewText(line, col)
@@ -123,60 +122,28 @@ func (app *DownloaderApp) appendOutput(line string, col color.Color) {
 
 		app.ui.logList.Add(label)
 
-		if len(app.ui.logList.Objects) > logBufferLimit {
-			app.ui.logList.Objects = app.ui.logList.Objects[len(app.ui.logList.Objects)-logBufferLimit:]
+		if len(app.ui.logList.Objects) > app.logSvc.BufferLimit() {
+			app.ui.logList.Objects = app.ui.logList.Objects[len(app.ui.logList.Objects)-app.logSvc.BufferLimit():]
 		}
 
 		app.ui.logList.Refresh()
 		app.ui.output.ScrollToBottom()
 	})
 
-	app.log.mutex.Lock()
-	if app.log.file != nil {
-		fmt.Fprintf(app.log.file, "[%s] %s\n", time.Now().Format("15:04:05"), line)
-	}
-	app.log.mutex.Unlock()
+	app.logSvc.WriteToFile(line)
 
-	if isErrorLogLine(line) {
-		app.appendErrorOutput(line)
-	}
-}
-
-// appendErrorOutput writes error-like lines to a daily error log file.
-func (app *DownloaderApp) appendErrorOutput(line string) {
-	errorPath := app.dailyErrorLogPath()
-	app.log.errorMutex.Lock()
-	defer app.log.errorMutex.Unlock()
-
-	f, err := os.OpenFile(errorPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-
-	fmt.Fprintf(f, "[%s] %s\n", time.Now().Format("15:04:05"), line)
-}
-
-// dailyErrorLogPath returns today's error log file path in the current save folder.
-func (app *DownloaderApp) dailyErrorLogPath() string {
-	dir := strings.TrimSpace(app.ui.path.Text)
-	if dir == "" {
-		exePath, err := os.Executable()
-		if err == nil {
-			dir = filepath.Dir(exePath)
+	if IsErrorLine(line) {
+		dir := strings.TrimSpace(app.ui.path.Text)
+		if dir == "" {
+			if exePath, err := os.Executable(); err == nil {
+				dir = filepath.Dir(exePath)
+			}
 		}
+		if dir == "" {
+			dir = "."
+		}
+		app.logSvc.WriteToErrorLog(line, dir)
 	}
-	if dir == "" {
-		dir = "."
-	}
-	dateStamp := time.Now().Format("2006-01-02")
-	return filepath.Join(dir, fmt.Sprintf("GoVid_errors_%s.txt", dateStamp))
-}
-
-// isErrorLogLine returns true when a log line looks like an error worth mirroring.
-func isErrorLogLine(line string) bool {
-	upper := strings.ToUpper(line)
-	return strings.Contains(upper, "ERROR") || strings.Contains(upper, "FAILED")
 }
 
 // setStatusIndicator updates the status dot color to reflect the current
@@ -348,23 +315,12 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 // widgets to match after calling this.
 func (app *DownloaderApp) resetPreferences() {
 	app.prefSvc.Reset()
-	logBufferLimit = 200
+	app.logSvc.SetBufferLimit(200)
 	fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
 	app.createUI()
 }
 
-// parseLogLimit converts a log-limit preference string (e.g. "200", "Unlimited")
-// to an integer. Returns 200 for any unrecognised value.
-func parseLogLimit(logLimitString string) int {
-	if logLimitString == "Unlimited" {
-		return math.MaxInt32 // effectively unlimited
-	}
-	logLimitInt, err := strconv.Atoi(logLimitString)
-	if err != nil || logLimitInt <= 0 {
-		return 200
-	}
-	return logLimitInt
-}
+
 
 // openDownloadFolder launches the system file manager pointing at the current
 // save destination. The exact command differs per operating system.
