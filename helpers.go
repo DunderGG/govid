@@ -350,62 +350,22 @@ func (app *DownloaderApp) openDownloadFolder() {
 // ffmpeg — are available either in the 'bin' folder beside the executable or
 // in the system PATH. Warnings are printed to the log panel.
 func (app *DownloaderApp) checkDependencies() {
-	for _, tool := range []string{"yt-dlp", "ffmpeg"} {
-		localPath := app.getLocalBinPath(tool)
-		_, localErr := os.Stat(localPath)
-		_, pathErr := exec.LookPath(tool)
-		if localErr != nil && pathErr != nil {
-			app.appendOutput(
-				fmt.Sprintf("[WARNING] '%s' not found in PATH or ./bin/. Please install it.", tool),
-				color.RGBA{R: 255, G: 165, B: 0, A: 255},
-			)
-		}
-	}
+	app.depSvc.Check(func(msg string) {
+		app.appendOutput(msg, color.RGBA{R: 255, G: 165, B: 0, A: 255})
+	})
 }
 
-// runUpdateInUI runs 'yt-dlp -U' in a background goroutine while streaming
-// its output to the log panel, so the UI stays responsive throughout.
+// runUpdateInUI sets the initial UI state for an update and delegates
+// execution to DependencyService, which runs yt-dlp -U in a background
+// goroutine and reports progress via UpdateCallbacks.
 func (app *DownloaderApp) runUpdateInUI() {
 	app.appendOutput("[SYSTEM] Starting yt-dlp update...", color.RGBA{R: 0, G: 255, B: 255, A: 255})
 	app.setStatusIndicator("active")
 	app.updateStatus("Status: Updating yt-dlp...")
-
-	go func() {
-		ytDlpPath := app.getLocalBinPath("yt-dlp")
-		if _, err := os.Stat(ytDlpPath); err != nil {
-			ytDlpPath = "yt-dlp"
-		}
-		cmd := exec.Command(ytDlpPath, "-U")
-		hideWindow(cmd)
-		out, err := cmd.CombinedOutput()
-
-		fyne.Do(func() {
-			lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-			for _, line := range lines {
-				app.appendOutput(line, theme.ForegroundColor())
-			}
-			if err != nil {
-				app.appendOutput(fmt.Sprintf("[ERROR] Update failed: %v", err), color.RGBA{R: 255, G: 0, B: 0, A: 255})
-				app.setStatusIndicator("failed")
-				app.updateStatus("Status: Update failed.")
-			} else {
-				app.appendOutput("[SYSTEM] yt-dlp is up to date.", color.RGBA{R: 0, G: 200, B: 0, A: 255})
-				app.setStatusIndicator("success")
-				app.updateStatus("Status: yt-dlp updated.")
-			}
-		})
-	}()
-}
-
-// updateYtDlp is a standalone (non-method) function for the --update CLI flag.
-// It runs 'yt-dlp -U' and prints the combined output directly to stdout.
-func updateYtDlp() {
-	fmt.Println("Updating yt-dlp...")
-	cmd := exec.Command("yt-dlp", "-U")
-	hideWindow(cmd)
-	out, err := cmd.CombinedOutput()
-	fmt.Print(string(out))
-	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-	}
+	app.depSvc.RunUpdate(UpdateCallbacks{
+		OnLog:     app.appendOutput,
+		OnStatus:  app.updateStatus,
+		OnSuccess: func() { app.setStatusIndicator("success") },
+		OnFailure: func() { app.setStatusIndicator("failed") },
+	})
 }

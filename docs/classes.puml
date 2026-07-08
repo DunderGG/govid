@@ -24,6 +24,7 @@ package "Application Core" #F0F4F8 {
         +ui : *UIWidgets
         +stats : *DownloadStats
         +logSvc : *LogService
+        +depSvc : *DependencyService
         +cancelFn : context.CancelFunc
         +stopPulse : chan struct{}
         +uiManager : *UIManager
@@ -258,6 +259,29 @@ package "Preference Service" #FFF0F0 {
 }
 
 ' ════════════════════════════════════════════════════════════
+' DEPENDENCY SERVICE
+' ════════════════════════════════════════════════════════════
+package "Dependency Service" #FFFFF0 {
+
+    class DependencyService <<service>> {
+        -binDir : string
+        --
+        +LocalPath(toolName string) : string
+        +Resolve(toolName string) : string
+        +Check(onWarning func(string))
+        +RunUpdate(cb UpdateCallbacks)
+    }
+
+    class UpdateCallbacks <<bridge>> {
+        +OnLog : func(line string, col color.Color)
+        +OnStatus : func(msg string)
+        +OnSuccess : func()
+        +OnFailure : func()
+    }
+
+}
+
+' ════════════════════════════════════════════════════════════
 ' LOG SERVICE
 ' ════════════════════════════════════════════════════════════
 package "Log Service" #F0F8FF {
@@ -342,12 +366,15 @@ interface FynePreferences <<fyne.Preferences>> {
 ' RELATIONSHIPS
 ' ════════════════════════════════════════════════════════════
 
+DependencyService ..> UpdateCallbacks : RunUpdate bridge
+
 ' DownloaderApp composition (owns these fields)
 DownloaderApp *--> UIWidgets       : ui
 DownloaderApp *--> UIManager       : uiManager
 DownloaderApp *--> PreferenceService : prefSvc
 DownloaderApp *--> HistoryService   : historySvc
 DownloaderApp *--> LogService     : logSvc
+DownloaderApp *--> DependencyService : depSvc
 DownloaderApp *--> DownloadStats   : stats
 
 ' DownloaderApp uses engines (created per session, not stored as fields)

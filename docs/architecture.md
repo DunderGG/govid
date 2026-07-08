@@ -41,6 +41,7 @@ govid/
 ├── preference_service.go   PreferenceService — all preference keys, defaults, Load/Save/Reset
 ├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadHistoryEntry type
 ├── log_service.go          LogService — session log open/close, error log routing, buffer-limit management
+├── dependency_service.go   DependencyService — binary path resolution, dependency checks, yt-dlp updater
 ├── ui_manager.go           UIManager — owns secondary window lifecycle (About, Help, History, Prefs, PP)
 │
 ├── ── Orchestration ───────────────────────────────────────────────
@@ -50,7 +51,7 @@ govid/
 │
 ├── ── UI ──────────────────────────────────────────────────────────
 ├── ui.go                   createUI, createMainMenu, showPreferences, showPostProcessing
-├── helpers.go              Thread-safe UI updates, applyPreferencesToWidgets, savePreferences, resetPreferences, dependency checks
+├── helpers.go              Thread-safe UI updates, applyPreferencesToWidgets, savePreferences, resetPreferences, thin wrappers for checkDependencies/runUpdateInUI
 ├── history_service.go      HistoryService — see §4.8
 │
 ├── ── Assets / Platform ───────────────────────────────────────────
@@ -83,6 +84,7 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `prefSvc *PreferenceService` | Preference persistence (see §4.6) |
 | `historySvc *HistoryService` | Download history persistence (see §4.8) |
 | `logSvc *LogService` | Session and error log files (see §4.7) |
+| `depSvc *DependencyService` | Binary path resolution, dependency checks, updater (see §4.9) |
 | `stats *DownloadStats` | Real-time download metrics for progress smoothing |
 | `cancelFn` | Cancels the active download context |
 | `stopPulse` | Channel closed to stop the status-dot animation goroutine |
@@ -181,7 +183,23 @@ The private `buildEntries` helper and `inferOriginalTitle` live here; neither ha
 
 ---
 
-### 4.9 `darkTheme` / `lightTheme`  
+### 4.9 `DependencyService` — binary discovery and updater
+*Defined in:* `dependency_service.go`
+
+Owns the `binDir` path (resolved once at construction from the executable location) and exposes:
+
+- **`LocalPath(toolName string) string`** — returns the path to `toolName` inside `binDir`, appending `.exe` on Windows.
+- **`Resolve(toolName string) string`** — returns the bundled path when it exists on disk, otherwise the bare name for system PATH lookup. Called by `runYtDlp` and `applyFFmpegFilters` when constructing `DownloadEngine` and `PPEngine`.
+- **`Check(onWarning func(msg string))`** — verifies `yt-dlp` and `ffmpeg` are reachable; calls `onWarning` for each missing tool. Called at startup via the `checkDependencies` wrapper in `helpers.go`.
+- **`RunUpdate(cb UpdateCallbacks)`** — runs `yt-dlp -U` in a background goroutine and reports lines/success/failure through `UpdateCallbacks`. Called via the `runUpdateInUI` wrapper in `helpers.go`.
+
+`UpdateCallbacks` is a bridge struct (`OnLog`, `OnStatus`, `OnSuccess`, `OnFailure`) with no Fyne dependency, following the same pattern as `PPCallbacks` and `ProcessCallbacks`.
+
+The package-level `UpdateYtDlpCLI()` function is used by the `--update` CLI flag in `main()` and runs the update synchronously with output to stdout.
+
+---
+
+### 4.10 `darkTheme` / `lightTheme`  
 *Defined in:* `theme.go`
 
 Both implement `fyne.Theme`. `darkTheme` is the default; `lightTheme` is applied when the user selects "Light" in Preferences. The active theme is stored as a preference and applied at startup before the window is created.
@@ -256,7 +274,7 @@ User resets Prefs:
 | `ffmpeg` | `PPEngine.runJob()`, `PPEngine.detectCropFilter()` | Post-processing encode / cropdetect |
 | `ffprobe` | `postprocess.go` probe functions | Frame count and duration queries for progress estimation |
 
-Tools are resolved with `resolvedBinPath(toolName)`: prefers `./bin/<tool>[.exe]` beside the executable, falls back to `$PATH`. If neither is found, `checkDependencies()` prints a warning to the log at startup.
+Tools are resolved with `depSvc.Resolve(toolName)`: prefers `./bin/<tool>[.exe]` beside the executable, falls back to `$PATH`. If neither is found, `depSvc.Check()` (called via `checkDependencies()` at startup) prints a warning to the log.
 
 ---
 

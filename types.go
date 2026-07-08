@@ -70,12 +70,13 @@ type DownloaderApp struct {
 	window     fyne.Window        // The primary application window
 	ui         *UIWidgets         // The graphical interface components
 	stats      *DownloadStats     // Statistics tracked during a session
-	logSvc     *LogService         // Session log, error log, and buffer-limit management
+	logSvc     *LogService        // Session log, error log, and buffer-limit management
 	cancelFn   context.CancelFunc // Function used to signal yt-dlp to stop
-	stopPulse  chan struct{}      // Closed to stop the status dot pulse goroutine
+	stopPulse  chan struct{}       // Closed to stop the status dot pulse goroutine
 	uiManager  *UIManager         // Owns secondary window state (About, Help, History, Prefs, PP)
 	prefSvc    *PreferenceService // Centralised preference loading and persistence
 	historySvc *HistoryService    // Download history persistence
+	depSvc     *DependencyService // Binary path resolution, dependency checks, and yt-dlp updater
 
 	// Track processing failures across concurrent workers so we can adjust the
 	// Retry button text at the end of the batch.

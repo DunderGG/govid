@@ -83,6 +83,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 		},
 		stats:  &DownloadStats{},
 		logSvc: NewLogService(),
+		depSvc: NewDependencyService(),
 	}
 
 	// Load saved preferences and apply them to all widgets.
@@ -105,7 +106,7 @@ func main() {
 	flag.Parse()
 
 	if *updateFlag {
-		updateYtDlp()
+		UpdateYtDlpCLI()
 		os.Exit(0)
 	}
 

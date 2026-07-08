@@ -114,7 +114,7 @@ func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []stri
 // applyFFmpegFilters creates a PPEngine from resolved binary paths and delegates
 // to PPEngine.ApplyFilters, wiring the app's log/status/failure callbacks.
 func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfFilters, afFilters []string) {
-	engine := NewPPEngine(app.resolvedBinPath("ffmpeg"), app.resolvedBinPath("ffprobe"))
+	engine := NewPPEngine(app.depSvc.Resolve("ffmpeg"), app.depSvc.Resolve("ffprobe"))
 	engine.ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks{
 		OnLog:     app.appendOutput,
 		OnStatus:  app.updateStatus,
@@ -165,8 +165,8 @@ func uniquePath(path string) string {
 	ext := filepath.Ext(path)
 	base := strings.TrimSuffix(path, ext)
 
-	// Loop until we find a filename that doesn't exist. 
-	// Theoretically this could run indefinitely if there are always conflicting files, 
+	// Loop until we find a filename that doesn't exist.
+	// Theoretically this could run indefinitely if there are always conflicting files,
 	// but in practice it's unlikely anyone will have dozens of duplicates in the same folder.
 	for i := 1; ; i++ {
 		candidate := fmt.Sprintf("%s %d%s", base, i, ext)
@@ -246,12 +246,18 @@ func formatFFmpegProgress(line string, totalFrames int64) string {
 			parts = append(parts, "frame "+frameStr)
 		}
 	}
-	if val := get("fps"); val != "" && val != "0" { parts = append(parts, val+" fps") }
+	if val := get("fps"); val != "" && val != "0" {
+		parts = append(parts, val+" fps")
+	}
 	// Show elapsed time only when we have no percentage (keeps the bar compact).
 	if totalFrames == 0 {
-		if val := get("time"); val != "" { parts = append(parts, "time "+val) }
+		if val := get("time"); val != "" {
+			parts = append(parts, "time "+val)
+		}
 	}
-	if val := get("speed"); val != "" { parts = append(parts, "speed "+val) }
+	if val := get("speed"); val != "" {
+		parts = append(parts, "speed "+val)
+	}
 	if len(parts) == 0 {
 		return line
 	}
@@ -486,7 +492,9 @@ func (app *DownloaderApp) computeProcessingLoad() (int, string) {
 			cost += 20
 		}
 	}
-	if ui.hdrToSdr.Checked     { cost += 25 }
+	if ui.hdrToSdr.Checked {
+		cost += 25
+	}
 	if ui.upscaleVideo.Checked {
 		switch ui.upscaleTarget.Selected {
 		case "4K (2160p)":
@@ -495,14 +503,30 @@ func (app *DownloaderApp) computeProcessingLoad() (int, string) {
 			cost += 20
 		}
 	}
-	if ui.stabilize.Checked    { cost += 20 }
-	if ui.autoCrop.Checked     { cost += 15 }
-	if ui.deinterlace.Checked  { cost += 12 }
-	if ui.sharpen.Checked      { cost += 10 }
-	if ui.deband.Checked       { cost += 8  }
-	if ui.vividMode.Checked    { cost += 5  }
-	if ui.normalizeAudio.Checked { cost += 5 }
-	if ui.nightMode.Checked      { cost += 5 }
+	if ui.stabilize.Checked {
+		cost += 20
+	}
+	if ui.autoCrop.Checked {
+		cost += 15
+	}
+	if ui.deinterlace.Checked {
+		cost += 12
+	}
+	if ui.sharpen.Checked {
+		cost += 10
+	}
+	if ui.deband.Checked {
+		cost += 8
+	}
+	if ui.vividMode.Checked {
+		cost += 5
+	}
+	if ui.normalizeAudio.Checked {
+		cost += 5
+	}
+	if ui.nightMode.Checked {
+		cost += 5
+	}
 
 	switch {
 	case cost == 0:

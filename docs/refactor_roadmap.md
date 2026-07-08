@@ -2,6 +2,25 @@
 
 This version groups the audit items into priority buckets so you can tackle the biggest maintainability wins first. See the audit for details. [audit_review.md](audit_review.md)
 
+---
+
+## Component Status
+
+Breaking down the `DownloaderApp` "God Object" into specialized components:
+
+- [ ] **DownloadEngine** — yt-dlp execution, retries, cancellation, and progress parsing.
+- [ ] **PPEngine** — FFmpeg filter composition, crop detection, worker pool orchestration, and post-process execution.
+- [ ] **UIManager** — secondary window lifecycle (About, Help, History, Prefs, PP).
+- [ ] **PreferenceService** — preference load/save/reset logic and defaults.
+- [ ] **HistoryService** — download history persistence, schema evolution, and lookup helpers.
+- [ ] **LogService** — session log/error log routing, rotation policy, and structured log helpers.
+- [ ] **DependencyService** — binary discovery, dependency checks, and updater command execution.
+- [ ] **Update documentation** — architecture.md, classes.puml, and sequence diagrams fully reflect the extracted architecture.
+
+See the sections below for per-component details and open next steps.
+
+---
+
 ## High Priority
 
 - [ ] Refactor ui.go into smaller helpers — Split the large window construction into helpers for menus, dialogs, history, and preferences so the file is easier to scan and change.
@@ -105,6 +124,27 @@ Extracted from `helpers.go` and `download.go`:
 2. **Extract `logSessionConfiguration` into a `SessionConfig` value struct** — `logSessionConfiguration` reads directly from ~15 `app.ui.*` fields (format, quality, trim, toggles, post-process settings). When `DownloadEngine.runYtDlp` eventually becomes `engine.Run(ctx, req, callbacks)`, its caller will pass config as data rather than reading widgets inline. At that point, introduce a `SessionConfig` plain struct (parallel to `AppPreferences`) and a `logSvc.WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))` method — completing the "structured log helper" described in the original roadmap item.
 
 3. **`appendOutput` UI part will need a callback when `UIManager` absorbs `createUI`** — the `fyne.Do` block in `appendOutput` directly mutates `app.ui.logList` and `app.ui.output`. When `UIManager` eventually takes ownership of widget lifecycle and rendering (UIManager step 4), the UI side of `appendOutput` will need to become a registered `OnLogLine func(line string, col color.Color)` callback — similar to how `PPCallbacks.OnLog` and `ProcessCallbacks.OnLog` already decouple the engines from the UI.
+
+## DependencyService
+
+**Done:** `DependencyService` struct introduced in `dependency_service.go`. It owns `binDir` (resolved once at construction from the executable location) and exposes four members:
+
+- `LocalPath(toolName string) string` — constructs the path inside `binDir`, appending `.exe` on Windows. Extracted from `getLocalBinPath` in `download.go`.
+- `Resolve(toolName string) string` — returns the bundled path when it exists, otherwise the bare name for PATH lookup. Extracted from `resolvedBinPath` in `download.go`.
+- `Check(onWarning func(string))` — verifies `yt-dlp` and `ffmpeg` are reachable and calls `onWarning` for each missing tool. Extracted from the body of `checkDependencies` in `helpers.go`.
+- `RunUpdate(cb UpdateCallbacks)` — runs `yt-dlp -U` in a background goroutine. Extracted from the goroutine body of `runUpdateInUI` in `helpers.go`.
+
+`UpdateCallbacks` is a bridge struct (`OnLog`, `OnStatus`, `OnSuccess`, `OnFailure`) with no Fyne dependency, following the same pattern as `PPCallbacks` and `ProcessCallbacks`.
+
+The package-level `UpdateYtDlpCLI()` replaces the old `updateYtDlp()` free function used by the `--update` CLI flag.
+
+`getLocalBinPath` and `resolvedBinPath` have been removed from `download.go` along with their `os`, `filepath`, and `runtime` imports. All callers (`runYtDlp`, `applyFFmpegFilters`) now use `app.depSvc.Resolve(...)`. Thin wrappers `checkDependencies()` and `runUpdateInUI()` remain on `DownloaderApp` in `helpers.go` to minimise call-site changes.
+
+**Next steps:**
+
+1. **Move `checkDependencies` and `runUpdateInUI` wrappers to `UIManager`** — both are currently thin one-call methods on `DownloaderApp`. Once `createMainMenu` migrates to `UIManager`, the update menu item callback and the startup dependency check can wire directly to `depSvc`, removing the wrappers entirely. `UIManager` would hold `depSvc *DependencyService` the same way it currently holds `historySvc`.
+
+2. **Expose a `Version(toolName string) (string, error)` method** — needed when the "yt-dlp Auto-Update" roadmap feature is implemented (showing the installed version alongside the latest available). The method would run `yt-dlp --version` and return the trimmed output.
 
 ## PreferenceService
 

@@ -13,10 +13,7 @@ import (
 	"context"
 	"fmt"
 	"image/color"
-	"os"
-	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"time"
 
@@ -248,8 +245,8 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	}
 
 	engine := NewDownloadEngine(
-		app.resolvedBinPath("yt-dlp"),
-		app.resolvedBinPath("ffmpeg"),
+		app.depSvc.Resolve("yt-dlp"),
+		app.depSvc.Resolve("ffmpeg"),
 	)
 
 	built := engine.BuildArgs(DownloadRequest{
@@ -438,26 +435,3 @@ func (app *DownloaderApp) logSessionConfiguration(urls []string, savePath, trimS
 	app.appendOutput("[SYSTEM] =================================", color.RGBA{R: 0, G: 255, B: 255, A: 255})
 }
 
-// getLocalBinPath returns the absolute path to a tool in the 'bin' folder
-// next to the current GoVid executable, falling back to the bare tool name
-// for system PATH lookups when the local file is not found.
-func (app *DownloaderApp) getLocalBinPath(toolName string) string {
-	exePath, err := os.Executable()
-	if err != nil {
-		return toolName
-	}
-	if runtime.GOOS == "windows" && !strings.HasSuffix(toolName, ".exe") {
-		toolName += ".exe"
-	}
-	return filepath.Join(filepath.Dir(exePath), "bin", toolName)
-}
-
-// resolvedBinPath returns the path to use for the given tool: the bundled
-// binary if it exists on disk, otherwise the bare tool name for PATH lookup.
-func (app *DownloaderApp) resolvedBinPath(toolName string) string {
-	path := app.getLocalBinPath(toolName)
-	if _, err := os.Stat(path); err == nil {
-		return path
-	}
-	return toolName
-}

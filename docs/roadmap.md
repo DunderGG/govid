@@ -358,15 +358,7 @@ This document outlines planned features, improvements, and known limitations for
 ### Structural Refactoring
 > Decouple core logic from the main UI controller.
 
-- [ ] Break down the "God Object" `DownloaderApp` into specialized components. More details in the [refactoring roadmap](refactor_roadmap.md)
-	- [ ] **DownloadEngine**: Extract yt-dlp execution, retries, cancellation, and progress parsing.
-	- [ ] **PPEngine**: Extract FFmpeg filter composition, crop detection, worker pool orchestration, and post-process execution.
-	- [ ] **UIManager**: Own widget lifecycle, window state, menu wiring, and UI-only rendering concerns.
-	- [ ] **PreferenceService**: Centralize preference load/save/reset logic and defaults.
-	- [ ] **HistoryService**: Centralize download history persistence, schema evolution, and lookup helpers.
-	- [ ] **LogService**: Centralize session log/error log routing, rotation policy, and structured log helpers.
-	- [ ] **DependencyService**: Isolate binary discovery, dependency checks, and updater command execution.
-- [ ] Update documentation. At this point we should have a defined architecture with all the "classes"
+See the [refactoring roadmap](refactor_roadmap.md) for component-level status and detailed next steps.
 
 ### Log Management
 > Improve technical troubleshooting.
