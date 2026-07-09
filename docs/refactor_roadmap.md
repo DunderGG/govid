@@ -41,7 +41,7 @@ See the sections below for per-component details and open next steps.
 
 ## Low Priority
 
-- [ ] Organize helpers.go by purpose — Split helpers into groups like parsing, filesystem, UI, and formatting so the file does not become a dumping ground.
+- [x] Organize helpers.go by purpose — Split helpers into groups like parsing, filesystem, UI, and formatting so the file does not become a dumping ground. *(Six named sections added: Config file, Thread-safe UI updates, Progress bar, Preference management, Filesystem, Dependency / update wrappers.)*
 - [ ] Make helper functions narrowly named and testable — Use descriptive helper names and prefer deterministic helpers for time, byte, and formatting logic so they are easy to test.
 - [ ] Keep theme code isolated and reusable — Keep theme colors and helpers separate from UI construction, and use named constants or helpers for repeated colors.
 - [ ] Isolate icon and embedded asset code — Keep generated or embedded asset files separate from application logic so they stay predictable and easier to update.

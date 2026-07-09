@@ -1,11 +1,10 @@
 // helpers.go — Utility functions that support the rest of the application.
 //
-// Responsibilities:
-//   - Status bar, log output, and progress bar updates (thread-safe).
-//   - Saving and loading user preferences via the Fyne preferences API.
-//   - Opening the download folder in the OS file manager.
-//   - Checking for required external dependencies (yt-dlp, ffmpeg).
-//   - Triggering yt-dlp self-updates.
+// Sections:
+//   - File I/O: load and apply govid.json overrides; open save folder in file manager.
+//   - UI updates: status label, log output, status dot animation, progress bar.
+//   - Preference management: widget ↔ AppPreferences translation and reset.
+//   - External tools: thin delegates to DependencyService.
 package main
 
 import (
@@ -25,6 +24,8 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 )
+
+// ── File I/O ─────────────────────────────────────────────────────────────────
 
 // loadConfigFromFile reads settings from govid.json and returns an AppConfig.
 // Unlike C++, it is safe to return a local pointer, it does not go "out of scope".
@@ -104,6 +105,31 @@ func (app *DownloaderApp) applyConfig(config *AppConfig) error {
 	return nil
 }
 
+// openDownloadFolder launches the system file manager pointing at the current
+// save destination. The exact command differs per operating system.
+func (app *DownloaderApp) openDownloadFolder() {
+	savePath := strings.TrimSpace(app.ui.path.Text)
+	if savePath == "" {
+		dialog.ShowError(fmt.Errorf("no save path set"), app.window)
+		return
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", savePath)
+	case "windows":
+		cmd = exec.Command("explorer", savePath)
+	default:
+		cmd = exec.Command("xdg-open", savePath)
+	}
+
+	if err := cmd.Start(); err != nil {
+		dialog.ShowError(fmt.Errorf("could not open folder: %v", err), app.window)
+	}
+}
+
+// ── UI updates ───────────────────────────────────────────────────────────────
 
 // updateStatus sets the short status label text thread-safely.
 func (app *DownloaderApp) updateStatus(msg string) {
@@ -239,6 +265,8 @@ func (app *DownloaderApp) setProgressNow(pct float64) {
 	app.stats.targetPct = pct
 }
 
+// ── Preference management ────────────────────────────────────────────────────
+
 // applyPreferencesToWidgets writes the values from an AppPreferences struct
 // into the corresponding UI widgets. Called at startup and after a reset.
 func (app *DownloaderApp) applyPreferencesToWidgets(p AppPreferences) {
@@ -320,31 +348,7 @@ func (app *DownloaderApp) resetPreferences() {
 	app.createUI()
 }
 
-
-
-// openDownloadFolder launches the system file manager pointing at the current
-// save destination. The exact command differs per operating system.
-func (app *DownloaderApp) openDownloadFolder() {
-	savePath := strings.TrimSpace(app.ui.path.Text)
-	if savePath == "" {
-		dialog.ShowError(fmt.Errorf("no save path set"), app.window)
-		return
-	}
-
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", savePath)
-	case "windows":
-		cmd = exec.Command("explorer", savePath)
-	default:
-		cmd = exec.Command("xdg-open", savePath)
-	}
-
-	if err := cmd.Start(); err != nil {
-		dialog.ShowError(fmt.Errorf("could not open folder: %v", err), app.window)
-	}
-}
+// ── External tools ───────────────────────────────────────────────────────────
 
 // checkDependencies verifies that the required external tools — yt-dlp and
 // ffmpeg — are available either in the 'bin' folder beside the executable or
