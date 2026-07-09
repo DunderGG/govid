@@ -23,20 +23,20 @@ See the sections below for per-component details and open next steps.
 
 ## High Priority
 
-- [ ] Refactor ui.go into smaller helpers — Split the large window construction into helpers for menus, dialogs, history, and preferences so the file is easier to scan and change.
-- [ ] Split download.go into phases — Separate yt-dlp argument building, process startup, output parsing, and retry handling into smaller functions. 
-- [ ] Break postprocess.go into smaller pipelines — Move FFmpeg option building, UI state handling, and feature-specific logic into smaller functions or separate files.
-- [ ] Use context.Context consistently for cancellation — Pass context through the download pipeline so stopping a job does not leave background work running.
-- [ ] Group UIWidgets into smaller structs — Break the large UIWidgets type into smaller feature-specific structs like download controls and preferences controls.
-- [ ] Keep main.go thin — Use main.go as a bootstrapper only, and move app-specific setup into smaller constructors or services.
+- [ ] Refactor ui.go into smaller helpers — Split the large window construction into helpers for menus, dialogs, history, and preferences so the file is easier to scan and change. *(ui.go is 709 lines; `showAbout`, `showHistory`, `showConfigHelp` have moved to UIManager but `createUI`, `createMainMenu`, `showPreferences`, `showPostProcessing` remain. Blocked until more services are extracted.)*
+- [ ] Split download.go into phases — Separate yt-dlp argument building, process startup, output parsing, and retry handling into smaller functions. *(`BuildArgs` and the retry loop are in `DownloadEngine`. Remaining: move `watchOutput`/`parseProgress`/`finalizeDownloadedFiles` then `runYtDlp` — see DownloadEngine next steps below.)*
+- [ ] Break postprocess.go into smaller pipelines — Move FFmpeg option building, UI state handling, and feature-specific logic into smaller functions or separate files. *(`PPEngine` owns filter execution. Remaining: move probe functions, `buildFFmpegArgs`/`patchThreadCount`, and decouple `buildPostProcessFilters` from widgets — see PPEngine next steps below.)*
+- [x] Use context.Context consistently for cancellation — Pass context through the download pipeline so stopping a job does not leave background work running. *(Context flows correctly through `startDownload` → `runYtDlp` → `DownloadEngine.Execute` → `PPEngine.ApplyFilters`. Resolved as a side-effect of the service extractions.)*
+- [ ] Group UIWidgets into smaller structs — Break the large UIWidgets type into smaller feature-specific structs like download controls and preferences controls. *(Still one flat 40-field struct. Best tackled alongside the ui.go refactor.)*
+- [ ] Keep main.go thin — Use main.go as a bootstrapper only, and move app-specific setup into smaller constructors or services. *(`main.go` is 159 lines; `newDownloaderApp` still initialises every widget inline. Acceptable for now.)*
 
 ## Medium Priority
 
-- [x] Centralize preference loading — Move preference reads and default values into a small settings-loading layer so UI code stays focused on layout and event wiring.
+- [x] Centralize preference loading — Move preference reads and default values into a small settings-loading layer so UI code stays focused on layout and event wiring. *(`PreferenceService` done.)*
 - [ ] Extract shared window-focus logic — Create one helper for the repeated focus-or-create pattern so every dialog and tool window behaves consistently.
 - [ ] Replace hard-coded post-processing thresholds with constants — Name the thresholds and cost values so the code self-documents what each value means and is easier to tune later.
-- [ ] Keep LogManager focused on one job — Separate file appending and log persistence from mutex and error-handling details if the type grows further.
-- [x] Move history handling behind a service boundary — Keep storage and schema changes away from the UI so history can evolve without touching the main window code.
+- [x] Keep LogManager focused on one job — Separate file appending and log persistence from mutex and error-handling details if the type grows further. *(`LogService` extracted; `LogManager` removed.)*
+- [x] Move history handling behind a service boundary — Keep storage and schema changes away from the UI so history can evolve without touching the main window code. *(`HistoryService` done.)*
 - [ ] Keep log parsing tolerant — Treat yt-dlp output parsing as best-effort so small wording changes do not break downloads.
 
 ## Low Priority
