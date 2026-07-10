@@ -27,23 +27,42 @@ import (
 
 // ── File I/O ─────────────────────────────────────────────────────────────────
 
-// loadConfigFromFile reads settings from govid.json and returns an AppConfig.
-// Unlike C++, it is safe to return a local pointer, it does not go "out of scope".
-// The Go compiler performs Escape Analysis.
-// If the compiler sees that a local variable's address is being returned or shared outside the function,
-// it "escapes" the stack and is automatically allocated on the heap instead.
-// The Go garbage collector then tracks that memory and
-// only frees it when it is no longer being used anywhere in the program.
-func (app *DownloaderApp) loadConfigFromFile() (*AppConfig, error) {
-	data, err := os.ReadFile("govid.json")
-	if err != nil {
-		return nil, err
-	}
+// configFileName is the optional JSON override file read by "Load from Config".
+const configFileName = "govid.json"
+
+// parseAppConfig unmarshals raw JSON bytes into an AppConfig.
+//
+// Unlike C++, it is safe to return a pointer to a local variable here.
+// The Go compiler performs escape analysis — when it detects that
+// a local variable's address outlives the function (e.g. because it is returned),
+// the variable is automatically allocated on the heap instead of the stack. The
+// garbage collector then owns that memory and frees it once nothing holds a
+// reference to it. You never call delete or free.
+func parseAppConfig(data []byte) (*AppConfig, error) {
 	var config AppConfig
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, err
 	}
 	return &config, nil
+}
+
+// loadConfigFile reads the file at path and returns the parsed AppConfig.
+func loadConfigFile(path string) (*AppConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return parseAppConfig(data)
+}
+
+// isValidOption reports whether value is present in the options slice.
+func isValidOption(value string, options []string) bool {
+	for _, opt := range options {
+		if opt == value {
+			return true
+		}
+	}
+	return false
 }
 
 // applyConfig updates the UI and preferences with values from an AppConfig.
@@ -52,14 +71,7 @@ func (app *DownloaderApp) applyConfig(config *AppConfig) error {
 	var errs []string
 
 	if config.Format != "" {
-		valid := false
-		for _, opt := range app.ui.format.Options {
-			if opt == config.Format {
-				valid = true
-				break
-			}
-		}
-		if valid {
+		if isValidOption(config.Format, app.ui.format.Options) {
 			app.ui.format.SetSelected(config.Format)
 		} else {
 			errs = append(errs, fmt.Sprintf("invalid format: %s", config.Format))
@@ -67,14 +79,7 @@ func (app *DownloaderApp) applyConfig(config *AppConfig) error {
 	}
 
 	if config.Quality != "" {
-		valid := false
-		for _, opt := range app.ui.quality.Options {
-			if opt == config.Quality {
-				valid = true
-				break
-			}
-		}
-		if valid {
+		if isValidOption(config.Quality, app.ui.quality.Options) {
 			app.ui.quality.SetSelected(config.Quality)
 		} else {
 			errs = append(errs, fmt.Sprintf("invalid quality: %s", config.Quality))
@@ -82,7 +87,9 @@ func (app *DownloaderApp) applyConfig(config *AppConfig) error {
 	}
 
 	if config.Path != "" {
-		// Basic check if path exists and is a directory
+		// os.Stat returns file metadata; we use it to confirm the path exists and
+		// is a directory before accepting it. In Go, multiple return values are
+		// idiomatic — functions that can fail return (result, error).
 		info, err := os.Stat(config.Path)
 		if err == nil && info.IsDir() {
 			app.ui.path.SetText(config.Path)
@@ -92,11 +99,12 @@ func (app *DownloaderApp) applyConfig(config *AppConfig) error {
 	}
 
 	if config.MaxSpeed != "" {
-		// Simplified validation for speed limit (allows blank, or numeric+suffix)
+		// Speed limit is a free-form string (e.g. "5M", "500K") passed directly
+		// to yt-dlp via --limit-rate, so we accept any non-empty value here.
 		app.ui.maxSpeed.SetText(config.MaxSpeed)
 	}
 
-	// Persist the changes
+	// Persist the loaded values so they survive the next app restart.
 	app.savePreferences(app.ui.path.Text)
 
 	if len(errs) > 0 {

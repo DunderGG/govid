@@ -424,7 +424,7 @@ func (app *DownloaderApp) showPreferences() {
 	resetBtn.Importance = widget.DangerImportance
 
 	loadConfigBtn := widget.NewButtonWithIcon("Load from Config (govid.json)", theme.SettingsIcon(), func() {
-		config, err := app.loadConfigFromFile()
+		config, err := loadConfigFile(configFileName)
 		if err != nil {
 			dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), app.uiManager.prefsWindow)
 			return
