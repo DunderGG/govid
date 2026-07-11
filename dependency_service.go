@@ -99,13 +99,13 @@ func (svc *DependencyService) RunUpdate(cb UpdateCallbacks) {
 
 		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 			if cb.OnLog != nil {
-				cb.OnLog(line, color.RGBA{R: 220, G: 220, B: 220, A: 255})
+				cb.OnLog(line, colOutputLine)
 			}
 		}
 
 		if err != nil {
 			if cb.OnLog != nil {
-				cb.OnLog(fmt.Sprintf("[ERROR] Update failed: %v", err), color.RGBA{R: 255, G: 0, B: 0, A: 255})
+				cb.OnLog(fmt.Sprintf("[ERROR] Update failed: %v", err), colError)
 			}
 			if cb.OnStatus != nil {
 				cb.OnStatus("Status: Update failed.")
@@ -115,7 +115,7 @@ func (svc *DependencyService) RunUpdate(cb UpdateCallbacks) {
 			}
 		} else {
 			if cb.OnLog != nil {
-				cb.OnLog("[SYSTEM] yt-dlp is up to date.", color.RGBA{R: 0, G: 200, B: 0, A: 255})
+				cb.OnLog("[SYSTEM] yt-dlp is up to date.", colSuccess)
 			}
 			if cb.OnStatus != nil {
 				cb.OnStatus("Status: yt-dlp updated.")

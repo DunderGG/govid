@@ -233,20 +233,20 @@ func (app *DownloaderApp) setStatusIndicator(state string) {
 						t += 0.1
 						alpha := uint8(128 + 127*math.Sin(t))
 						fyne.Do(func() {
-							app.ui.statusDot.FillColor = color.RGBA{R: 180, G: 80, B: 255, A: alpha}
+							app.ui.statusDot.FillColor = color.RGBA{R: colDotProcessing.R, G: colDotProcessing.G, B: colDotProcessing.B, A: alpha}
 							app.ui.statusDot.Refresh()
 						})
 					}
 				}
 			}()
 		case "success":
-			app.ui.statusDot.FillColor = color.RGBA{R: 0, G: 200, B: 80, A: 255}
+			app.ui.statusDot.FillColor = colDotSuccess
 		case "failed":
-			app.ui.statusDot.FillColor = color.RGBA{R: 220, G: 50, B: 50, A: 255}
+			app.ui.statusDot.FillColor = colDotFailed
 		case "canceled":
-			app.ui.statusDot.FillColor = color.RGBA{R: 255, G: 140, B: 0, A: 255}
+			app.ui.statusDot.FillColor = colDotCanceled
 		default: // "idle"
-			app.ui.statusDot.FillColor = color.RGBA{R: 100, G: 100, B: 115, A: 255}
+			app.ui.statusDot.FillColor = colDotIdle
 		}
 		app.ui.statusDot.Refresh()
 	})
@@ -363,7 +363,7 @@ func (app *DownloaderApp) resetPreferences() {
 // in the system PATH. Warnings are printed to the log panel.
 func (app *DownloaderApp) checkDependencies() {
 	app.depSvc.Check(func(msg string) {
-		app.appendOutput(msg, color.RGBA{R: 255, G: 165, B: 0, A: 255})
+		app.appendOutput(msg, colWarning)
 	})
 }
 
@@ -371,7 +371,7 @@ func (app *DownloaderApp) checkDependencies() {
 // execution to DependencyService, which runs yt-dlp -U in a background
 // goroutine and reports progress via UpdateCallbacks.
 func (app *DownloaderApp) runUpdateInUI() {
-	app.appendOutput("[SYSTEM] Starting yt-dlp update...", color.RGBA{R: 0, G: 255, B: 255, A: 255})
+	app.appendOutput("[SYSTEM] Starting yt-dlp update...", colSystem)
 	app.setStatusIndicator("active")
 	app.updateStatus("Status: Updating yt-dlp...")
 	app.depSvc.RunUpdate(UpdateCallbacks{

@@ -46,8 +46,8 @@ var transientErrPatterns = []string{
 // It blocks until both streams reach EOF.
 func (app *DownloaderApp) watchOutput(stdout, stderr io.Reader) scanResult {
 	var (
-		result scanResult
-		waitGroup     sync.WaitGroup
+		result    scanResult
+		waitGroup sync.WaitGroup
 	)
 
 	waitGroup.Add(1)
@@ -66,7 +66,7 @@ func (app *DownloaderApp) watchOutput(stdout, stderr io.Reader) scanResult {
 			app.appendOutput(line, theme.ForegroundColor())
 		}
 		if err := scanner.Err(); err != nil {
-			app.appendOutput(fmt.Sprintf("[SYSTEM] stdout read error: %v", err), color.RGBA{R: 255, G: 165, B: 0, A: 255})
+			app.appendOutput(fmt.Sprintf("[SYSTEM] stdout read error: %v", err), colWarning)
 		}
 	}()
 
@@ -92,18 +92,18 @@ func (app *DownloaderApp) watchOutput(stdout, stderr io.Reader) scanResult {
 			var logColor color.Color
 			switch {
 			case strings.Contains(line, "ERROR:"):
-				logColor = color.RGBA{R: 255, G: 0, B: 0, A: 255}
+				logColor = colError
 			case strings.Contains(line, "WARNING:"):
-				logColor = color.RGBA{R: 255, G: 165, B: 0, A: 255}
+				logColor = colWarning
 			case strings.Contains(line, "[debug]"):
-				logColor = color.RGBA{R: 180, G: 180, B: 180, A: 255}
+				logColor = colDebug
 			default:
 				logColor = theme.ForegroundColor()
 			}
 			app.appendOutput(line, logColor)
 		}
 		if err := scanner.Err(); err != nil {
-			app.appendOutput(fmt.Sprintf("[SYSTEM] stderr read error: %v", err), color.RGBA{R: 255, G: 165, B: 0, A: 255})
+			app.appendOutput(fmt.Sprintf("[SYSTEM] stderr read error: %v", err), colWarning)
 		}
 	}()
 

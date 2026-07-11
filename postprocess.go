@@ -11,7 +11,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"image/color"
 	"math"
 	"os"
 	"os/exec"
@@ -140,13 +139,13 @@ func (app *DownloaderApp) finalizeDownloadedFiles(savePath, downloadID string) [
 		if finalPath != cleanPath {
 			app.appendOutput(
 				fmt.Sprintf("[SYSTEM] File already exists — saving as: %s", filepath.Base(finalPath)),
-				color.RGBA{R: 0, G: 255, B: 255, A: 255},
+				colSystem,
 			)
 		}
 		if err := os.Rename(tmpPath, finalPath); err != nil {
 			app.appendOutput(
 				fmt.Sprintf("[SYSTEM] Failed to rename file: %v", err),
-				color.RGBA{R: 255, G: 80, B: 80, A: 255},
+				colErrorSoft,
 			)
 		}
 		finalPaths = append(finalPaths, finalPath)

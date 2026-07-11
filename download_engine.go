@@ -52,10 +52,10 @@ type DownloadRequest struct {
 // DownloadArgs is the resolved output of buildYtDlpArgs. It carries the
 // argument slice plus metadata the caller needs to log and identify files.
 type DownloadArgs struct {
-	Args            []string
-	Extension       string // e.g. "mp4", "mkv", "mp3"
-	DownloadID      string // unique token embedded in the temp filename
-	HasTrim         bool
+	Args             []string
+	Extension        string // e.g. "mp4", "mkv", "mp3"
+	DownloadID       string // unique token embedded in the temp filename
+	HasTrim          bool
 	TrimDisplayStart string // human-readable trim start ("start" if omitted)
 	TrimDisplayEnd   string // human-readable trim end ("end" if omitted)
 }
@@ -207,7 +207,7 @@ func (engine *DownloadEngine) Execute(ctx context.Context, args []string, autoRe
 			delay := retryDelays[attempt-1]
 			cb.OnLog(
 				fmt.Sprintf("[SYSTEM] Transient error detected — retrying in %v (attempt %d/3)...", delay, attempt+1),
-				color.RGBA{R: 255, G: 165, B: 0, A: 255},
+				colWarning,
 			)
 			select {
 			case <-ctx.Done():

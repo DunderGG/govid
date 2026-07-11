@@ -12,7 +12,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"image/color"
 	"regexp"
 	"strings"
 	"time"
@@ -80,10 +79,10 @@ func (app *DownloaderApp) startDownload() {
 	// Initialize logging to file if the option is checked.
 	if app.ui.saveLog.Checked {
 		if logPath, err := app.logSvc.OpenSessionLog(savePath); err == nil {
-			app.appendOutput(fmt.Sprintf("[SYSTEM] Logging to: %s", logPath), color.RGBA{R: 0, G: 255, B: 255, A: 255})
+			app.appendOutput(fmt.Sprintf("[SYSTEM] Logging to: %s", logPath), colSystem)
 			app.logSessionConfiguration(urls, savePath, trimStart, trimEnd)
 		} else {
-			app.appendOutput(fmt.Sprintf("[ERROR] Failed to create log file: %v", err), color.RGBA{R: 255, G: 0, B: 0, A: 255})
+			app.appendOutput(fmt.Sprintf("[ERROR] Failed to create log file: %v", err), colError)
 		}
 	}
 
@@ -126,7 +125,7 @@ func (app *DownloaderApp) startDownload() {
 	}()
 
 	if len(urls) > 1 {
-		app.appendOutput(fmt.Sprintf("[SYSTEM] Batch mode: %d URLs queued.", len(urls)), color.RGBA{R: 0, G: 200, B: 200, A: 255})
+		app.appendOutput(fmt.Sprintf("[SYSTEM] Batch mode: %d URLs queued.", len(urls)), colInfo)
 	}
 
 	go func() {
@@ -169,7 +168,7 @@ func (app *DownloaderApp) startDownload() {
 			}
 
 			if len(urls) > 1 {
-				app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", index+1, len(urls)), color.RGBA{R: 0, G: 200, B: 200, A: 255})
+				app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", index+1, len(urls)), colInfo)
 			}
 			if index > 0 {
 				// Reset progress UI between URLs.
@@ -200,7 +199,7 @@ func (app *DownloaderApp) startDownload() {
 			if queueCtx.Err() == context.Canceled {
 				app.updateStatus("Status: Canceled.")
 				app.setStatusIndicator("canceled")
-				app.appendOutput("Post-processing canceled by user.", color.RGBA{R: 255, G: 165, B: 0, A: 255})
+				app.appendOutput("Post-processing canceled by user.", colWarning)
 			} else {
 				app.updateStatus("Status: Done.")
 				app.setStatusIndicator("success")
@@ -269,7 +268,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	if built.HasTrim {
 		app.appendOutput(
 			fmt.Sprintf("[SYSTEM] Trimming: %s → %s", built.TrimDisplayStart, built.TrimDisplayEnd),
-			color.RGBA{R: 0, G: 255, B: 255, A: 255},
+			colSystem,
 		)
 	}
 
@@ -295,7 +294,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		if historyErr := app.historySvc.AppendAll(rec); historyErr != nil {
 			app.appendOutput(
 				fmt.Sprintf("[SYSTEM] Warning: failed to record history: %v", historyErr),
-				color.RGBA{R: 255, G: 160, B: 0, A: 255},
+				colWarning,
 			)
 		}
 	}
@@ -319,12 +318,12 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		app.ui.cancelBtn.Disable()
 		if cmdErr != nil {
 			if ctx.Err() == context.Canceled {
-				app.appendOutput("────────────────────────────────────────", color.RGBA{R: 255, G: 165, B: 255, A: 255})
-				app.appendOutput("DOWNLOAD ABORTED", color.RGBA{R: 255, G: 165, B: 0, A: 255})
-				app.appendOutput(fmt.Sprintf("   ├─ Runtime:    %s", durationFormatted), color.RGBA{R: 255, G: 165, B: 0, A: 255})
-				app.appendOutput(fmt.Sprintf("   ├─ Avg Speed:  %s", avgSpeed), color.RGBA{R: 255, G: 165, B: 0, A: 255})
-				app.appendOutput(fmt.Sprintf("   └─ Downloaded: %s", app.stats.lastSize), color.RGBA{R: 255, G: 165, B: 0, A: 255})
-				app.appendOutput("────────────────────────────────────────", color.RGBA{R: 255, G: 165, B: 255, A: 255})
+				app.appendOutput("────────────────────────────────────────", colAbortedBorder)
+				app.appendOutput("DOWNLOAD ABORTED", colWarning)
+				app.appendOutput(fmt.Sprintf("   ├─ Runtime:    %s", durationFormatted), colWarning)
+				app.appendOutput(fmt.Sprintf("   ├─ Avg Speed:  %s", avgSpeed), colWarning)
+				app.appendOutput(fmt.Sprintf("   └─ Downloaded: %s", app.stats.lastSize), colWarning)
+				app.appendOutput("────────────────────────────────────────", colAbortedBorder)
 				app.updateStatus("Status: Canceled.")
 				app.setStatusIndicator("canceled")
 			} else {
@@ -339,37 +338,37 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 				}
 			}
 		} else {
-		// Build a human-readable format line, e.g. "WEBM+M4A → MP4 (remuxed)".
-		outExt := strings.ToUpper(extension)
-		formatLine := outExt
-		if len(result.sourceExts) > 0 {
-			seen := map[string]bool{}
-			var unique []string
-			for _, e := range result.sourceExts {
-				exts := strings.ToUpper(e)
-				if !seen[exts] {
-					seen[exts] = true
-					unique = append(unique, exts)
+			// Build a human-readable format line, e.g. "WEBM+M4A → MP4 (remuxed)".
+			outExt := strings.ToUpper(extension)
+			formatLine := outExt
+			if len(result.sourceExts) > 0 {
+				seen := map[string]bool{}
+				var unique []string
+				for _, e := range result.sourceExts {
+					exts := strings.ToUpper(e)
+					if !seen[exts] {
+						seen[exts] = true
+						unique = append(unique, exts)
+					}
+				}
+				srcStr := strings.Join(unique, "+")
+				switch {
+				case result.wasConverted:
+					formatLine = fmt.Sprintf("%s → %s (converted)", srcStr, outExt)
+				case srcStr != outExt:
+					formatLine = fmt.Sprintf("%s → %s (remuxed)", srcStr, outExt)
+				default:
+					formatLine = fmt.Sprintf("%s (original)", outExt)
 				}
 			}
-			srcStr := strings.Join(unique, "+")
-			switch {
-			case result.wasConverted:
-				formatLine = fmt.Sprintf("%s → %s (converted)", srcStr, outExt)
-			case srcStr != outExt:
-				formatLine = fmt.Sprintf("%s → %s (remuxed)", srcStr, outExt)
-			default:
-				formatLine = fmt.Sprintf("%s (original)", outExt)
-			}
-		}
 
-		app.appendOutput("────────────────────────────────────────", color.RGBA{R: 0, G: 255, B: 0, A: 255})
-		app.appendOutput("DOWNLOAD COMPLETE", color.RGBA{R: 0, G: 200, B: 0, A: 255})
-		app.appendOutput(fmt.Sprintf("   ├─ Duration:   %s", durationFormatted), color.RGBA{R: 0, G: 200, B: 0, A: 255})
-		app.appendOutput(fmt.Sprintf("   ├─ Avg Speed:  %s", avgSpeed), color.RGBA{R: 0, G: 200, B: 0, A: 255})
-		app.appendOutput(fmt.Sprintf("   ├─ Downloaded: %s", app.stats.lastSize), color.RGBA{R: 0, G: 200, B: 0, A: 255})
-		app.appendOutput(fmt.Sprintf("   └─ Format:     %s", formatLine), color.RGBA{R: 0, G: 200, B: 0, A: 255})
-			app.appendOutput("────────────────────────────────────────", color.RGBA{R: 0, G: 255, B: 0, A: 255})
+			app.appendOutput("────────────────────────────────────────", colSuccessBorder)
+			app.appendOutput("DOWNLOAD COMPLETE", colSuccess)
+			app.appendOutput(fmt.Sprintf("   ├─ Duration:   %s", durationFormatted), colSuccess)
+			app.appendOutput(fmt.Sprintf("   ├─ Avg Speed:  %s", avgSpeed), colSuccess)
+			app.appendOutput(fmt.Sprintf("   ├─ Downloaded: %s", app.stats.lastSize), colSuccess)
+			app.appendOutput(fmt.Sprintf("   └─ Format:     %s", formatLine), colSuccess)
+			app.appendOutput("────────────────────────────────────────", colSuccessBorder)
 			app.updateStatus("Status: Success!")
 			app.setProgressNow(1)
 			app.setStatusIndicator("success")
@@ -377,7 +376,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 
 		close(uiDone)
 	})
-	// Wait for the UI updates to commit before returning, 
+	// Wait for the UI updates to commit before returning,
 	// ensuring the final status is visible before any post-processing starts.
 	<-uiDone
 	return finalPaths
@@ -415,23 +414,22 @@ func (app *DownloaderApp) logSessionConfiguration(urls []string, savePath, trimS
 		rawURLField = "(empty)"
 	}
 
-	app.appendOutput("[SYSTEM] ===== Session Configuration =====", color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Save path: %s", savePath), color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Mode: batch=%t, url_count=%d", app.ui.batchMode.Checked, len(urls)), color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Format/quality: %s / %s", app.ui.format.Selected, app.ui.quality.Selected), color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Trim: start=%q, end=%q", trimStart, trimEnd), color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Max speed: %s", maxSpeed), color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Cookies file: %s", cookiesPath), color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Runtime toggles: saveLog=%t, notify=%t, autoRetry=%t, postProcess=%t", app.ui.saveLog.Checked, app.ui.notify.Checked, app.ui.autoRetry.Checked, app.ui.enablePostProcess.Checked), color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Preferences: savePrefs=%t, logLimit=%s, theme=%s", app.ui.savePrefs.Checked, app.ui.logLimit.Selected, app.ui.themeMode.Selected), color.RGBA{R: 0, G: 255, B: 255, A: 255})
+	app.appendOutput("[SYSTEM] ===== Session Configuration =====", colSystem)
+	app.appendOutput(fmt.Sprintf("[SYSTEM] Save path: %s", savePath), colSystem)
+	app.appendOutput(fmt.Sprintf("[SYSTEM] Mode: batch=%t, url_count=%d", app.ui.batchMode.Checked, len(urls)), colSystem)
+	app.appendOutput(fmt.Sprintf("[SYSTEM] Format/quality: %s / %s", app.ui.format.Selected, app.ui.quality.Selected), colSystem)
+	app.appendOutput(fmt.Sprintf("[SYSTEM] Trim: start=%q, end=%q", trimStart, trimEnd), colSystem)
+	app.appendOutput(fmt.Sprintf("[SYSTEM] Max speed: %s", maxSpeed), colSystem)
+	app.appendOutput(fmt.Sprintf("[SYSTEM] Cookies file: %s", cookiesPath), colSystem)
+	app.appendOutput(fmt.Sprintf("[SYSTEM] Runtime toggles: saveLog=%t, notify=%t, autoRetry=%t, postProcess=%t", app.ui.saveLog.Checked, app.ui.notify.Checked, app.ui.autoRetry.Checked, app.ui.enablePostProcess.Checked), colSystem)
+	app.appendOutput(fmt.Sprintf("[SYSTEM] Preferences: savePrefs=%t, logLimit=%s, theme=%s", app.ui.savePrefs.Checked, app.ui.logLimit.Selected, app.ui.themeMode.Selected), colSystem)
 
-	app.appendOutput(fmt.Sprintf("[SYSTEM] URL field (raw): %q", rawURLField), color.RGBA{R: 0, G: 255, B: 255, A: 255})
+	app.appendOutput(fmt.Sprintf("[SYSTEM] URL field (raw): %q", rawURLField), colSystem)
 	for i, url := range urls {
-		app.appendOutput(fmt.Sprintf("[SYSTEM] URL[%d]: %s", i+1, url), color.RGBA{R: 0, G: 255, B: 255, A: 255})
+		app.appendOutput(fmt.Sprintf("[SYSTEM] URL[%d]: %s", i+1, url), colSystem)
 	}
 
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Post-process toggles: smoothMotion=%t, sharpen=%t, normalizeAudio=%t, vividMode=%t, denoise=%t, hdrToSdr=%t, deband=%t, autoCrop=%t, stabilize=%t, deinterlace=%t, nightMode=%t, upscaleVideo=%t", app.ui.smoothMotion.Checked, app.ui.sharpen.Checked, app.ui.normalizeAudio.Checked, app.ui.vividMode.Checked, app.ui.denoise.Checked, app.ui.hdrToSdr.Checked, app.ui.deband.Checked, app.ui.autoCrop.Checked, app.ui.stabilize.Checked, app.ui.deinterlace.Checked, app.ui.nightMode.Checked, app.ui.upscaleVideo.Checked), color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Post-process values: smoothMotionMode=%s, smoothFPS=%.0f, sharpenAmount=%.1f, denoiseMode=%s, upscaleTarget=%s", app.ui.smoothMotionMode.Selected, app.ui.smoothMotionFPS.Value, app.ui.sharpenAmount.Value, app.ui.denoiseMode.Selected, app.ui.upscaleTarget.Selected), color.RGBA{R: 0, G: 255, B: 255, A: 255})
-	app.appendOutput("[SYSTEM] =================================", color.RGBA{R: 0, G: 255, B: 255, A: 255})
+	app.appendOutput(fmt.Sprintf("[SYSTEM] Post-process toggles: smoothMotion=%t, sharpen=%t, normalizeAudio=%t, vividMode=%t, denoise=%t, hdrToSdr=%t, deband=%t, autoCrop=%t, stabilize=%t, deinterlace=%t, nightMode=%t, upscaleVideo=%t", app.ui.smoothMotion.Checked, app.ui.sharpen.Checked, app.ui.normalizeAudio.Checked, app.ui.vividMode.Checked, app.ui.denoise.Checked, app.ui.hdrToSdr.Checked, app.ui.deband.Checked, app.ui.autoCrop.Checked, app.ui.stabilize.Checked, app.ui.deinterlace.Checked, app.ui.nightMode.Checked, app.ui.upscaleVideo.Checked), colSystem)
+	app.appendOutput(fmt.Sprintf("[SYSTEM] Post-process values: smoothMotionMode=%s, smoothFPS=%.0f, sharpenAmount=%.1f, denoiseMode=%s, upscaleTarget=%s", app.ui.smoothMotionMode.Selected, app.ui.smoothMotionFPS.Value, app.ui.sharpenAmount.Value, app.ui.denoiseMode.Selected, app.ui.upscaleTarget.Selected), colSystem)
+	app.appendOutput("[SYSTEM] =================================", colSystem)
 }
-

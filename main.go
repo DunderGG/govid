@@ -10,7 +10,6 @@ package main
 
 import (
 	"flag"
-	"image/color"
 	"os"
 
 	"fyne.io/fyne/v2"
@@ -52,7 +51,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			enablePostProcess: widget.NewCheck("Post-Processing", nil),
 			downloadBtn:       widget.NewButtonWithIcon("Download Now!", nil, nil),
 			cancelBtn:         widget.NewButton("", nil),
-			statusDot:         canvas.NewCircle(color.RGBA{R: 100, G: 100, B: 115, A: 255}),
+			statusDot:         canvas.NewCircle(colDotIdle),
 			progress:          widget.NewProgressBar(),
 			status:            widget.NewLabel("Status: Idle"),
 			trimStart:         widget.NewEntry(),

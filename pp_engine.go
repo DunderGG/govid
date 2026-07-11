@@ -63,7 +63,7 @@ func (engine *PPEngine) detectCropFilter(ctx context.Context, inputPath string, 
 	if err != nil {
 		cb.OnLog(
 			fmt.Sprintf("[SYSTEM] Auto-Crop: cropdetect failed, skipping (%v)", err),
-			color.RGBA{R: 255, G: 160, B: 0, A: 255},
+			colWarning,
 		)
 		return ""
 	}
@@ -80,9 +80,9 @@ func (engine *PPEngine) detectCropFilter(ctx context.Context, inputPath string, 
 	}
 
 	if lastCrop == "" {
-		cb.OnLog("[SYSTEM] Auto-Crop: no black bars detected, skipping.", color.RGBA{R: 0, G: 255, B: 255, A: 255})
+		cb.OnLog("[SYSTEM] Auto-Crop: no black bars detected, skipping.", colSystem)
 	} else {
-		cb.OnLog(fmt.Sprintf("[SYSTEM] Auto-Crop: detected %s", lastCrop), color.RGBA{R: 0, G: 255, B: 255, A: 255})
+		cb.OnLog(fmt.Sprintf("[SYSTEM] Auto-Crop: detected %s", lastCrop), colSystem)
 	}
 	return lastCrop
 }
@@ -125,14 +125,14 @@ func (engine *PPEngine) resolveAutoCrop(ctx context.Context, inputPath string, f
 func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCallbacks) {
 	cb.OnLog(
 		fmt.Sprintf("[SYSTEM] Post-processing: %s", filepath.Base(job.inputPath)),
-		color.RGBA{R: 0, G: 255, B: 255, A: 255},
+		colSystem,
 	)
 
 	// Warn when re-encoding WebM: VP9 is significantly slower than H.264.
 	if strings.ToLower(filepath.Ext(job.inputPath)) == ".webm" && strings.Contains(job.encodeMode, "libvpx-vp9") {
 		cb.OnLog(
 			"[SYSTEM] ⚠ WebM re-encodes use VP9 which is much slower than H.264. Consider downloading as MKV for faster post-processing.",
-			color.RGBA{R: 255, G: 200, B: 0, A: 255},
+			colCaution,
 		)
 	}
 
@@ -150,19 +150,19 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	if pipeErr != nil {
 		// Fallback: run without streaming.
 		out, err := cmd.CombinedOutput()
-		
+
 		// If FFmpeg fails, log the error and the captured output.
 		if err != nil {
-			cb.OnLog(fmt.Sprintf("[ERROR] Post-processing failed: %v", err), color.RGBA{R: 255, A: 255})
+			cb.OnLog(fmt.Sprintf("[ERROR] Post-processing failed: %v", err), colError)
 			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 				if line != "" {
-					cb.OnLog(line, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+					cb.OnLog(line, colDebug)
 				}
 			}
 			if removeErr := os.Remove(job.tmpOutput); removeErr != nil {
 				cb.OnLog(
 					fmt.Sprintf("[SYSTEM] Warning: could not remove temp file: %v", removeErr),
-					color.RGBA{R: 255, G: 160, B: 0, A: 255},
+					colWarning,
 				)
 			}
 			return
@@ -172,7 +172,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		if renameErr := os.Rename(job.tmpOutput, job.finalPath); renameErr != nil {
 			cb.OnLog(
 				fmt.Sprintf("[SYSTEM] Failed to rename output file: %v", renameErr),
-				color.RGBA{R: 255, G: 80, B: 80, A: 255},
+				colErrorSoft,
 			)
 			cb.OnFailure()
 		}
@@ -180,7 +180,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	}
 
 	if err := cmd.Start(); err != nil {
-		cb.OnLog(fmt.Sprintf("[ERROR] Could not start FFmpeg: %v", err), color.RGBA{R: 255, A: 255})
+		cb.OnLog(fmt.Sprintf("[ERROR] Could not start FFmpeg: %v", err), colError)
 		return
 	}
 
@@ -197,11 +197,11 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 			cb.OnStatus("Post-Processing: " + formatFFmpegProgress(line, job.totalFrames))
 		} else {
 			errLines = append(errLines, line)
-			cb.OnLog(line, color.RGBA{R: 160, G: 160, B: 160, A: 255})
+			cb.OnLog(line, colVerbose)
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		cb.OnLog(fmt.Sprintf("[SYSTEM] FFmpeg output read error: %v", err), color.RGBA{R: 255, G: 165, B: 0, A: 255})
+		cb.OnLog(fmt.Sprintf("[SYSTEM] FFmpeg output read error: %v", err), colWarning)
 	}
 
 	err := cmd.Wait()
@@ -211,12 +211,12 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		cb.OnFailure()
 		cb.OnLog(
 			fmt.Sprintf("[ERROR] Post-processing failed: %v", err),
-			color.RGBA{R: 255, G: 0, B: 0, A: 255},
+			colError,
 		)
 		if removeErr := os.Remove(job.tmpOutput); removeErr != nil {
 			cb.OnLog(
 				fmt.Sprintf("[SYSTEM] Warning: could not remove temp file: %v", removeErr),
-				color.RGBA{R: 255, G: 160, B: 0, A: 255},
+				colWarning,
 			)
 		}
 		return
@@ -232,7 +232,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	if err := os.Rename(job.tmpOutput, job.finalPath); err != nil {
 		cb.OnLog(
 			fmt.Sprintf("[SYSTEM] Failed to rename output file: %v", err),
-			color.RGBA{R: 255, G: 80, B: 80, A: 255},
+			colErrorSoft,
 		)
 		cb.OnFailure()
 		return
@@ -240,7 +240,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 
 	sizeDelta := ""
 	if sizeBefore > 0 && sizeAfter > 0 {
-		deltaPct := (float64(sizeAfter)-float64(sizeBefore))/float64(sizeBefore)*100
+		deltaPct := (float64(sizeAfter) - float64(sizeBefore)) / float64(sizeBefore) * 100
 		sign := "+"
 		if deltaPct < 0 {
 			sign = ""
@@ -257,15 +257,15 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		filterNames = append(filterNames, filterShortName(afFilter))
 	}
 
-	successColor := color.RGBA{R: 0, G: 200, B: 0, A: 255}
-	cb.OnLog("────────────────────────────────────────", color.RGBA{R: 0, G: 160, B: 0, A: 255})
+	successColor := colSuccess
+	cb.OnLog("────────────────────────────────────────", colPPBorder)
 	cb.OnLog(fmt.Sprintf("POST-PROCESSING COMPLETE: %s", filepath.Base(job.finalPath)), successColor)
 	cb.OnLog(fmt.Sprintf("   ├─ Duration:   %s", formatDuration(duration)), successColor)
 	cb.OnLog(fmt.Sprintf("   ├─ Size Delta: %s", sizeDelta), successColor)
 	cb.OnLog(fmt.Sprintf("   ├─ Encoder:    %s", job.encodeMode), successColor)
 	cb.OnLog(fmt.Sprintf("   ├─ Threads:    %d", job.threads), successColor)
 	cb.OnLog(fmt.Sprintf("   └─ Filters:    %s", strings.Join(filterNames, ", ")), successColor)
-	cb.OnLog("────────────────────────────────────────", color.RGBA{R: 0, G: 160, B: 0, A: 255})
+	cb.OnLog("────────────────────────────────────────", colPPBorder)
 }
 
 // ApplyFilters runs a concurrent worker pool to post-process each of the given
@@ -331,7 +331,7 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 	}
 	cb.OnLog(
 		fmt.Sprintf("[SYSTEM] Starting post-processing (%s)", strings.Join(filterSummary, " | ")),
-		color.RGBA{R: 0, G: 255, B: 255, A: 255},
+		colSystem,
 	)
 
 	// Cap workers at the number of logical CPU cores and at the number of jobs.

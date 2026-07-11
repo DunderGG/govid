@@ -124,16 +124,10 @@ func (app *DownloaderApp) showPostProcessing() {
 	}
 
 	// Live processing-load indicator — 5 colored blocks, each lighting up at a
-	// cost threshold. The thresholds are arbitrary and based on testing with a variety of videos and filter combinations, 
+	// cost threshold. The thresholds are arbitrary and based on testing with a variety of videos and filter combinations,
 	// but they should give a rough relative indication of how intensive the current settings are.
-	blockEmpty := color.RGBA{R: 55, G: 55, B: 65, A: 255}
-	blockColors := []color.RGBA{
-		{R: 0, G: 210, B: 90, A: 255},  // green
-		{R: 140, G: 210, B: 0, A: 255}, // yellow-green
-		{R: 230, G: 185, B: 0, A: 255}, // yellow
-		{R: 230, G: 100, B: 0, A: 255}, // orange
-		{R: 220, G: 45, B: 45, A: 255}, // red
-	}
+	blockEmpty := colLoadEmpty
+	blockColors := colLoadPalette
 	blockThresholds := []int{15, 35, 65, 100, 130}
 
 	blocks := make([]*canvas.Rectangle, 5)
@@ -237,14 +231,14 @@ func (app *DownloaderApp) showPostProcessing() {
 	ui.upscaleTarget.OnChanged = func(_ string) { refreshLoad() }
 
 	// Simple toggles — just refresh the load indicator.
-	ui.vividMode.OnChanged    = func(_ bool) { refreshLoad() }
-	ui.deband.OnChanged       = func(_ bool) { refreshLoad() }
-	ui.hdrToSdr.OnChanged     = func(_ bool) { refreshLoad() }
-	ui.deinterlace.OnChanged  = func(_ bool) { refreshLoad() }
-	ui.stabilize.OnChanged    = func(_ bool) { refreshLoad() }
-	ui.autoCrop.OnChanged     = func(_ bool) { refreshLoad() }
+	ui.vividMode.OnChanged = func(_ bool) { refreshLoad() }
+	ui.deband.OnChanged = func(_ bool) { refreshLoad() }
+	ui.hdrToSdr.OnChanged = func(_ bool) { refreshLoad() }
+	ui.deinterlace.OnChanged = func(_ bool) { refreshLoad() }
+	ui.stabilize.OnChanged = func(_ bool) { refreshLoad() }
+	ui.autoCrop.OnChanged = func(_ bool) { refreshLoad() }
 	ui.normalizeAudio.OnChanged = func(_ bool) { refreshLoad() }
-	ui.nightMode.OnChanged    = func(_ bool) { refreshLoad() }
+	ui.nightMode.OnChanged = func(_ bool) { refreshLoad() }
 
 	refreshLoad() // seed with the current state
 
@@ -593,7 +587,7 @@ func (app *DownloaderApp) createUI() {
 	ui.cancelBtn.OnTapped = func() {
 		if app.cancelFn != nil {
 			app.cancelFn()
-			app.appendOutput("Download canceled by user.", color.RGBA{R: 255, G: 165, B: 0, A: 255})
+			app.appendOutput("Download canceled by user.", colWarning)
 		}
 	}
 

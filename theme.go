@@ -25,6 +25,48 @@ var _ fyne.Theme = (*darkTheme)(nil)
 // Matched to the steel-cyan of the GoVid app icon background.
 var accentCyan = color.RGBA{R: 28, G: 155, B: 190, A: 255} // #1C9BBE
 
+// ── Log / status colour palette ───────────────────────────────────────────────
+// Named colours used for log-line colouring and the status dot indicator.
+// All inline color.RGBA literals for log messages and UI state reference one
+// of these instead of repeating magic numbers across files.
+var (
+	// Log line colours
+	colSystem        = color.RGBA{R: 0, G: 255, B: 255, A: 255}   // [SYSTEM] info lines
+	colInfo          = color.RGBA{R: 0, G: 200, B: 200, A: 255}   // secondary info (batch, URL separator)
+	colError         = color.RGBA{R: 255, G: 0, B: 0, A: 255}     // [ERROR] lines
+	colWarning       = color.RGBA{R: 255, G: 165, B: 0, A: 255}   // [WARNING] / canceled
+	colSuccess       = color.RGBA{R: 0, G: 200, B: 0, A: 255}     // success text
+	colSuccessBorder = color.RGBA{R: 0, G: 255, B: 0, A: 255}     // success divider lines (────)
+	colDebug         = color.RGBA{R: 180, G: 180, B: 180, A: 255} // [debug] / verbose output
+
+	// Status dot colours
+	colDotIdle       = color.RGBA{R: 100, G: 100, B: 115, A: 255} // idle / not running
+	colDotSuccess    = color.RGBA{R: 0, G: 200, B: 80, A: 255}    // completed successfully
+	colDotFailed     = color.RGBA{R: 220, G: 50, B: 50, A: 255}   // failed
+	colDotCanceled   = color.RGBA{R: 255, G: 140, B: 0, A: 255}   // canceled by user
+	colDotProcessing = color.RGBA{R: 180, G: 80, B: 255, A: 255}  // post-processing pulse base (alpha varies)
+)
+
+// ── Extended colour palette ───────────────────────────────────────────────────
+var (
+	colOutputLine    = color.RGBA{R: 220, G: 220, B: 220, A: 255} // raw tool output (e.g. yt-dlp update lines)
+	colVerbose       = color.RGBA{R: 160, G: 160, B: 160, A: 255} // verbose / FFmpeg stderr stream output
+	colCaution       = color.RGBA{R: 255, G: 200, B: 0, A: 255}   // soft-yellow caution (e.g. slow VP9 encoder)
+	colErrorSoft     = color.RGBA{R: 255, G: 80, B: 80, A: 255}   // non-fatal error (e.g. file rename failure)
+	colPPBorder      = color.RGBA{R: 0, G: 160, B: 0, A: 255}     // post-processing success divider (────)
+	colAbortedBorder = color.RGBA{R: 255, G: 165, B: 255, A: 255} // ABORTED section divider (pink/magenta)
+
+	// Processing-load indicator — unlit block and five increasing load levels.
+	colLoadEmpty   = color.RGBA{R: 55, G: 55, B: 65, A: 255}
+	colLoadPalette = []color.RGBA{
+		{R: 0, G: 210, B: 90, A: 255},  // green       (lightest)
+		{R: 140, G: 210, B: 0, A: 255}, // yellow-green
+		{R: 230, G: 185, B: 0, A: 255}, // yellow
+		{R: 230, G: 100, B: 0, A: 255}, // orange
+		{R: 220, G: 45, B: 45, A: 255}, // red          (heaviest)
+	}
+)
+
 func (t *darkTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
 	// We always render in dark mode regardless of the OS system variant.
 	// The variant argument is intentionally ignored here.
