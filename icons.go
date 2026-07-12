@@ -28,9 +28,10 @@ const (
 )
 
 // Fill colours for the two theme variants.
+// svgFillLight is the hex form of accentCyan defined in theme.go; keep them in sync.
 const (
 	svgFillDark  = "#E6E6F0"
-	svgFillLight = "#1C9BBE"
+	svgFillLight = "#1C9BBE" // = accentCyan
 )
 
 // SVG path data for each icon (24×24 Material-style).
@@ -75,7 +76,7 @@ func svgWithColor(name, pathData, fill string) *fyne.StaticResource {
 // themedIcon returns the correct dark or light icon variant for the active theme.
 func themedIcon(name IconName) fyne.Resource {
 	icon := icons[name]
-	if fyne.CurrentApp().Preferences().StringWithFallback("themeMode", "Dark") == "Light" {
+	if fyne.CurrentApp().Preferences().StringWithFallback(prefThemeMode, defaultThemeMode) == "Light" {
 		return icon.light
 	}
 	return icon.dark
