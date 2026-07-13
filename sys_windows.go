@@ -16,3 +16,8 @@ func hideWindow(cmd *exec.Cmd) {
 	// CREATE_NO_WINDOW = 0x08000000
 	cmd.SysProcAttr.CreationFlags = 0x08000000
 }
+
+// openFolderCommand returns an exec.Cmd that opens path in Windows Explorer.
+func openFolderCommand(path string) *exec.Cmd {
+	return exec.Command("explorer", path)
+}

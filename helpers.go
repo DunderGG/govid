@@ -13,9 +13,7 @@ import (
 	"image/color"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -114,25 +112,14 @@ func (app *DownloaderApp) applyConfig(config *AppConfig) error {
 }
 
 // openDownloadFolder launches the system file manager pointing at the current
-// save destination. The exact command differs per operating system.
+// save destination. The platform-specific command is provided by openFolderCommand.
 func (app *DownloaderApp) openDownloadFolder() {
 	savePath := strings.TrimSpace(app.ui.path.Text)
 	if savePath == "" {
 		dialog.ShowError(fmt.Errorf("no save path set"), app.window)
 		return
 	}
-
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", savePath)
-	case "windows":
-		cmd = exec.Command("explorer", savePath)
-	default:
-		cmd = exec.Command("xdg-open", savePath)
-	}
-
-	if err := cmd.Start(); err != nil {
+	if err := openFolderCommand(savePath).Start(); err != nil {
 		dialog.ShowError(fmt.Errorf("could not open folder: %v", err), app.window)
 	}
 }
