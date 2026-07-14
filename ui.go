@@ -10,7 +10,6 @@ package main
 import (
 	"fmt"
 	"image/color"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -70,8 +69,7 @@ func (app *DownloaderApp) showHistory() {
 
 // showPostProcessing opens a window for specialized hardware/software filters.
 func (app *DownloaderApp) showPostProcessing() {
-	if app.uiManager.ppWindow != nil {
-		app.uiManager.ppWindow.RequestFocus()
+	if focusOrCreate(&app.uiManager.ppWindow) {
 		return
 	}
 
@@ -327,16 +325,13 @@ func (app *DownloaderApp) showPostProcessing() {
 	app.uiManager.ppWindow.SetContent(container.NewPadded(content))
 	app.uiManager.ppWindow.Resize(fyne.NewSize(680, 580))
 	app.uiManager.ppWindow.SetFixedSize(false)
-	app.uiManager.ppWindow.SetOnClosed(func() {
-		app.uiManager.ppWindow = nil
-	})
+	app.uiManager.ppWindow.SetOnClosed(onWindowClosed(&app.uiManager.ppWindow))
 	app.uiManager.ppWindow.Show()
 }
 
 // showPreferences opens a window for general application settings.
 func (app *DownloaderApp) showPreferences() {
-	if app.uiManager.prefsWindow != nil {
-		app.uiManager.prefsWindow.RequestFocus()
+	if focusOrCreate(&app.uiManager.prefsWindow) {
 		return
 	}
 
@@ -438,9 +433,7 @@ func (app *DownloaderApp) showPreferences() {
 		container.NewGridWithColumns(2, loadConfigBtn, resetBtn),
 	)))
 	app.uiManager.prefsWindow.Resize(fyne.NewSize(500, 360))
-	app.uiManager.prefsWindow.SetOnClosed(func() {
-		app.uiManager.prefsWindow = nil
-	})
+	app.uiManager.prefsWindow.SetOnClosed(onWindowClosed(&app.uiManager.prefsWindow))
 	app.uiManager.prefsWindow.Show()
 }
 
@@ -460,12 +453,6 @@ func (app *DownloaderApp) getPostProcessingButton() *widget.Button {
 // showAbout delegates to UIManager which owns the window state.
 func (app *DownloaderApp) showAbout() {
 	app.uiManager.showAbout()
-}
-
-// parseURL is a small helper to safely parse a URL string for use in hyperlinks.
-func parseURL(rawURL string) *url.URL {
-	parsed, _ := url.Parse(rawURL)
-	return parsed
 }
 
 // createUI constructs the graphical user interface by organizing widgets into

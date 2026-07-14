@@ -13,6 +13,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -28,7 +29,7 @@ import (
 // UIManager owns references to all (non-main, for now) windows and ensures
 // each is a singleton — at most one window instance open at a time.
 type UIManager struct {
-	mainWindow    fyne.Window     // reference to the primary window for dialog parenting
+	mainWindow    fyne.Window // reference to the primary window for dialog parenting
 	aboutWindow   fyne.Window
 	helpWindow    fyne.Window
 	historyWindow fyne.Window
@@ -42,11 +43,36 @@ func NewUIManager(mainWindow fyne.Window) *UIManager {
 	return &UIManager{mainWindow: mainWindow}
 }
 
+// ── Singleton window helpers ──────────────────────────────────────────────────
+
+// focusOrCreate returns true when window is already open, focusing it so the
+// caller can return immediately without building a new window. Usage:
+//
+//	if focusOrCreate(&manager.aboutWindow) { return }
+func focusOrCreate(window *fyne.Window) bool {
+	if *window != nil {
+		(*window).RequestFocus()
+		return true
+	}
+	return false
+}
+
+// onWindowClosed returns a closure that nils the window field when the window
+// is closed. Assign it directly to SetOnClosed:
+//
+//	w.SetOnClosed(onWindowClosed(&manager.aboutWindow))
+func onWindowClosed(window *fyne.Window) func() {
+	return func() { *window = nil }
+}
+// parseURL is a small helper to safely parse a URL string for use in hyperlinks.
+func parseURL(rawURL string) *url.URL {
+	parsed, _ := url.Parse(rawURL)
+	return parsed
+}
 // showAbout opens a small window with information about the creator and the app.
 // It is a singleton: if already open, the existing window is focused instead.
 func (manager *UIManager) showAbout() {
-	if manager.aboutWindow != nil {
-		manager.aboutWindow.RequestFocus()
+	if focusOrCreate(&manager.aboutWindow) {
 		return
 	}
 
@@ -81,15 +107,14 @@ func (manager *UIManager) showAbout() {
 	manager.aboutWindow.SetContent(container.NewPadded(content))
 	manager.aboutWindow.Resize(fyne.NewSize(360, 280))
 	manager.aboutWindow.SetFixedSize(true)
-	manager.aboutWindow.SetOnClosed(func() { manager.aboutWindow = nil })
+	manager.aboutWindow.SetOnClosed(onWindowClosed(&manager.aboutWindow))
 	manager.aboutWindow.Show()
 }
 
 // showHistory opens a window listing previously downloaded URLs from disk.
 // It is a singleton: if already open, the existing window is focused instead.
 func (manager *UIManager) showHistory() {
-	if manager.historyWindow != nil {
-		manager.historyWindow.RequestFocus()
+	if focusOrCreate(&manager.historyWindow) {
 		return
 	}
 
@@ -152,15 +177,14 @@ func (manager *UIManager) showHistory() {
 	manager.historyWindow = fyne.CurrentApp().NewWindow("Download History")
 	manager.historyWindow.SetContent(container.NewPadded(content))
 	manager.historyWindow.Resize(fyne.NewSize(800, 500))
-	manager.historyWindow.SetOnClosed(func() { manager.historyWindow = nil })
+	manager.historyWindow.SetOnClosed(onWindowClosed(&manager.historyWindow))
 	manager.historyWindow.Show()
 }
 
 // showConfigHelp opens a scrollable window explaining all configuration options.
 // It is a singleton: if already open, the existing window is focused instead.
 func (manager *UIManager) showConfigHelp() {
-	if manager.helpWindow != nil {
-		manager.helpWindow.RequestFocus()
+	if focusOrCreate(&manager.helpWindow) {
 		return
 	}
 
@@ -215,6 +239,6 @@ func (manager *UIManager) showConfigHelp() {
 	manager.helpWindow = fyne.CurrentApp().NewWindow("GoVid Guide")
 	manager.helpWindow.SetContent(container.NewPadded(scroll))
 	manager.helpWindow.Resize(fyne.NewSize(550, 500))
-	manager.helpWindow.SetOnClosed(func() { manager.helpWindow = nil })
+	manager.helpWindow.SetOnClosed(onWindowClosed(&manager.helpWindow))
 	manager.helpWindow.Show()
 }

@@ -193,6 +193,7 @@ This document outlines planned features, improvements, and known limitations for
 
 ### UX Improvements
 - [x] Prevent duplicate application windows (Preferences, About, Help, Post-Processing).
+- [ ] Add hotkeys for the UI, like escape to close windows or ctrl-o to open folder. 
 
 ### Automatic "Best-Fit" Quality
 > Smart handling of missing quality tiers.
@@ -233,7 +234,7 @@ This document outlines planned features, improvements, and known limitations for
 > Any general improvements we can think of
 - [X] Make sure only one Preferences window can be opened.
 - [ ] The code for the guide window needs improving. Get rid of extremely long text strings.
-- [ ] Errors from ffmpeg sometimes gets buried in the verbose logs. Maybe Errors should be logged to separate file?
+- [X] Errors from ffmpeg sometimes gets buried in the verbose logs. Maybe Errors should be logged to separate file?
 
 ---
 
