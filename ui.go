@@ -126,6 +126,8 @@ func (app *DownloaderApp) showPostProcessing() {
 	// but they should give a rough relative indication of how intensive the current settings are.
 	blockEmpty := colLoadEmpty
 	blockColors := colLoadPalette
+	// Cost thresholds that light up each successive block. These are spaced
+	// to give a useful visual spread across the loadThreshold* scale in postprocess.go.
 	blockThresholds := []int{15, 35, 65, 100, 130}
 
 	blocks := make([]*canvas.Rectangle, 5)

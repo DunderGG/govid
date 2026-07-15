@@ -20,6 +20,40 @@ import (
 	"time"
 )
 
+// ── Processing-load cost constants ───────────────────────────────────────────
+// Each constant is the cost contribution of one active filter to the overall
+// load score returned by computeProcessingLoad. Higher = more CPU-intensive.
+// Tuned by feel based on observed encode times; adjust here to recalibrate.
+const (
+	costSmoothMotionFast     = 30
+	costSmoothMotionBalanced = 55
+	costSmoothMotionPrecise  = 70
+	costDenoiseNLMeans       = 40
+	costDenoiseHQDN3D        = 20
+	costHDRToSDR             = 25
+	costUpscale4K            = 35
+	costUpscaleDefault       = 20
+	costStabilize            = 20
+	costAutoCrop             = 15
+	costDeinterlace          = 12
+	costSharpen              = 10
+	costDeband               = 8
+	costVividMode            = 5
+	costNormalizeAudio       = 5
+	costNightMode            = 5
+)
+
+// ── Processing-load description thresholds ───────────────────────────────────
+// Boundaries used by computeProcessingLoad to map a raw cost score to a
+// human-readable label. The visual block indicator in ui.go uses its own
+// (slightly different) thresholds aligned to the five block positions.
+const (
+	loadThresholdLight     = 20
+	loadThresholdModerate  = 50
+	loadThresholdHeavy     = 80
+	loadThresholdVeryHeavy = 120
+)
+
 // buildPostProcessFilters reads the post-processing checkbox state from the UI
 // and returns the video filter (vfFilters) and audio filter (afFilters) slices
 // to be passed to applyFFmpegFilters.
@@ -476,67 +510,67 @@ func (app *DownloaderApp) computeProcessingLoad() (int, string) {
 	if ui.smoothMotion.Checked {
 		switch ui.smoothMotionMode.Selected {
 		case "Fast":
-			cost += 30
+			cost += costSmoothMotionFast
 		case "Balanced":
-			cost += 55
+			cost += costSmoothMotionBalanced
 		default: // "Precise (slow)"
-			cost += 70
+			cost += costSmoothMotionPrecise
 		}
 	}
 	if ui.denoise.Checked {
 		switch ui.denoiseMode.Selected {
 		case "NLMeans (HQ, slow)":
-			cost += 40
+			cost += costDenoiseNLMeans
 		default: // hqdn3d (Balanced)
-			cost += 20
+			cost += costDenoiseHQDN3D
 		}
 	}
 	if ui.hdrToSdr.Checked {
-		cost += 25
+		cost += costHDRToSDR
 	}
 	if ui.upscaleVideo.Checked {
 		switch ui.upscaleTarget.Selected {
 		case "4K (2160p)":
-			cost += 35
+			cost += costUpscale4K
 		default:
-			cost += 20
+			cost += costUpscaleDefault
 		}
 	}
 	if ui.stabilize.Checked {
-		cost += 20
+		cost += costStabilize
 	}
 	if ui.autoCrop.Checked {
-		cost += 15
+		cost += costAutoCrop
 	}
 	if ui.deinterlace.Checked {
-		cost += 12
+		cost += costDeinterlace
 	}
 	if ui.sharpen.Checked {
-		cost += 10
+		cost += costSharpen
 	}
 	if ui.deband.Checked {
-		cost += 8
+		cost += costDeband
 	}
 	if ui.vividMode.Checked {
-		cost += 5
+		cost += costVividMode
 	}
 	if ui.normalizeAudio.Checked {
-		cost += 5
+		cost += costNormalizeAudio
 	}
 	if ui.nightMode.Checked {
-		cost += 5
+		cost += costNightMode
 	}
 
 	switch {
 	case cost == 0:
 		return 0, "No post-processing active"
-	case cost < 20:
+	case cost < loadThresholdLight:
 		return cost, "Light — minimal overhead"
-	case cost < 50:
+	case cost < loadThresholdModerate:
 		return cost, "Moderate — noticeable extra time"
-	case cost < 80:
+	case cost < loadThresholdHeavy:
 		return cost, "Heavy — significant re-encode time"
-	case cost < 120:
+	case cost < loadThresholdVeryHeavy:
 		return cost, "Very Heavy — expect long processing"
 	default:
 		return cost, "Intensive — expect very long processing"
