@@ -28,7 +28,7 @@ See the sections below for per-component details and open next steps.
 - [ ] Break postprocess.go into smaller pipelines — Move FFmpeg option building, UI state handling, and feature-specific logic into smaller functions or separate files. *(`PPEngine` owns filter execution. Remaining: move probe functions, `buildFFmpegArgs`/`patchThreadCount`, and decouple `buildPostProcessFilters` from widgets — see PPEngine next steps below.)*
 - [x] Use context.Context consistently for cancellation — Pass context through the download pipeline so stopping a job does not leave background work running. *(Context flows correctly through `startDownload` → `runYtDlp` → `DownloadEngine.Execute` → `PPEngine.ApplyFilters`. Resolved as a side-effect of the service extractions.)*
 - [ ] Group UIWidgets into smaller structs — Break the large UIWidgets type into smaller feature-specific structs like download controls and preferences controls. *(Still one flat 40-field struct. Best tackled alongside the ui.go refactor.)*
-- [ ] Keep main.go thin — Use main.go as a bootstrapper only, and move app-specific setup into smaller constructors or services. *(`main.go` is 159 lines; `newDownloaderApp` still initialises every widget inline. Acceptable for now.)*
+- [x] Keep main.go thin — Use main.go as a bootstrapper only, and move app-specific setup into smaller constructors or services. *(`main()` is already a clean bootstrapper. `newDownloaderApp()` still initialises every widget inline (~50 lines), but this resolves naturally as a side-effect of "Group UIWidgets into smaller structs" — once that work produces typed sub-constructors, the initialization collapses to a single `NewUIWidgets()` call. No standalone action needed now.)*
 
 ## Medium Priority
 
@@ -157,3 +157,17 @@ The package-level `UpdateYtDlpCLI()` replaces the old `updateYtDlp()` free funct
 2. **Move `loadConfigFromFile` / `applyConfig` to `PreferenceService`** — these read `govid.json` and merge its values into preferences. They are currently methods on `DownloaderApp` but have no UI dependency; a `LoadFromFile(path string) (*AppConfig, error)` method and a `MergeConfig(cfg *AppConfig, ui *UIWidgets)` helper would remove the last preference-adjacent code from `DownloaderApp`.
 
 3. **Remove the three inline `fyne.CurrentApp().Preferences().SetBool(...)` onChanged handlers** — `notify`, `autoRetry`, and `enablePostProcess` still write directly to the Fyne store on change. Replace each with a call to `app.savePreferences(app.ui.path.Text)` so every write goes through the service.
+
+## main.go
+
+- [ ] Potential race/coupling around cancellation function access
+   - In main.go:144, the close handler reads and invokes downloader.cancelFn directly, while that field is reassigned during downloads in download.go:95, download.go:167, and download.go:193. This can become a concurrency hazard and also leaks internal state outside DownloaderApp.
+   - Refactor: expose a method like RequestCancel() on DownloaderApp that safely checks/invokes the cancel func behind synchronization (or an atomic/mutex-protected accessor).
+
+- [ ] Non-idiomatic os.Exit(0) in main normal flow
+   - In main.go:109, using os.Exit(0) after -update is functional, but in Go it’s generally cleaner to return from main unless you specifically need a non-zero process exit or to bypass defers.
+   - Refactor: replace with return for more idiomatic control flow and easier future maintenance.
+
+- Open question
+
+   - [ ] If you expect concurrent cancellation from multiple UI paths (close intercept + cancel button), do we want strict single-cancel semantics? If yes, a sync.Once around cancel invocation may be worthwhile.
