@@ -10,6 +10,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	"fyne.io/fyne/v2"
@@ -105,8 +106,11 @@ func main() {
 	flag.Parse()
 
 	if *updateFlag {
-		UpdateYtDlpCLI()
-		os.Exit(0)
+		if err := UpdateYtDlpCLI(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(int(exitCodeFromError(err)))
+		}
+		return
 	}
 
 	mainApp := app.NewWithID("com.govid.downloader")

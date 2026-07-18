@@ -95,6 +95,8 @@ func (svc *DependencyService) RunUpdate(cb UpdateCallbacks) {
 		ytDlpPath := svc.Resolve("yt-dlp")
 		cmd := exec.Command(ytDlpPath, "-U")
 		hideWindow(cmd)
+
+		// If the subprocess exits non-zero, CombinedOutput() returns an error that is typically *exec.ExitError.
 		out, err := cmd.CombinedOutput()
 
 		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -130,13 +132,14 @@ func (svc *DependencyService) RunUpdate(cb UpdateCallbacks) {
 // UpdateYtDlpCLI runs 'yt-dlp -U' synchronously and prints its output to
 // stdout. Used for the --update CLI flag; does not require a running Fyne
 // application.
-func UpdateYtDlpCLI() {
+func UpdateYtDlpCLI() error {
 	fmt.Println("Updating yt-dlp...")
 	cmd := exec.Command("yt-dlp", "-U")
 	hideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	fmt.Print(string(out))
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		return fmt.Errorf("yt-dlp update failed: %w", err)
 	}
+	return nil
 }

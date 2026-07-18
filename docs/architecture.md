@@ -240,7 +240,70 @@ User resets Prefs:
 
 ---
 
-## 6. Concurrency model
+## 6. Error tracing
+
+GoVid uses a standard error-tracing chain that preserves both human-readable
+context and machine-readable error types.
+
+### 6.1 Pattern
+
+1. **Origin:** a low-level call returns a concrete error type (for example,
+   an `*exec.ExitError` from a failed subprocess).
+2. **Wrap with context:** the caller adds message context using `%w`:
+   `fmt.Errorf("meaningful context: %w", err)`.
+3. **Propagate upward:** intermediate layers return the wrapped error unchanged
+   (or re-wrap with more context), without converting it to a string.
+4. **Classify at boundary:** at the process/UI boundary, use `errors.AsType`
+   (or `errors.As`) to recover the concrete error type and map it to policy
+   (exit code, user-facing status, retry choice, telemetry category, etc.).
+
+### 6.2 Why `%w` matters
+
+`%w` preserves the unwrap chain. This allows upper layers to recover specific
+types even after multiple wraps. Using `%v` instead would lose the type chain
+and prevent typed matching later.
+
+### 6.3 Generic template
+
+```go
+func doThing() error {
+	if err := lowLevelCall(); err != nil {
+		return fmt.Errorf("doThing failed: %w", err)
+	}
+	return nil
+}
+
+func classify(err error) Category {
+	if typedErr, ok := errors.AsType[*SomeConcreteError](err); ok {
+		_ = typedErr // inspect fields/methods as needed
+		return CategorySpecific
+	}
+	return CategoryGeneric
+}
+```
+
+### 6.4 Guidance for new code
+
+- Wrap errors at layer boundaries with enough context to explain "what failed"
+  at that layer.
+- Prefer returning `error` up the call stack; avoid terminating (`os.Exit`) in
+  deep helpers/services.
+- Centralize final classification/mapping at boundaries (`main`, CLI command
+  handlers, top-level UI orchestrators).
+- Keep fallback behavior explicit when no specific type matches.
+
+### 6.5 Implementation Details
+
+- Process exit code constants are defined in `types.go` (`type ExitCode` and
+  `Exit*` constants).
+- The error-to-exit-code mapping helper is defined in `helpers.go`
+  (`exitCodeFromError(err error) ExitCode`).
+- An implementation example can be found at the start of `main()`, where it is 
+  used when calling `UpdateYtDlpCLI()`.
+
+---
+
+## 7. Concurrency model
 
 | Goroutine | Started by | Cancelled by |
 |---|---|---|
@@ -254,7 +317,7 @@ User resets Prefs:
 
 ---
 
-## 7. Persistence layer
+## 8. Persistence layer
 
 | Store | Location | Format | Owner |
 |---|---|---|---|
@@ -266,7 +329,7 @@ User resets Prefs:
 
 ---
 
-## 8. External tools
+## 9. External tools
 
 | Tool | Invoked by | Purpose |
 |---|---|---|
@@ -278,12 +341,12 @@ Tools are resolved with `depSvc.Resolve(toolName)`: prefers `./bin/<tool>[.exe]`
 
 ---
 
-## 9. Updating this document
+## 10. Updating this document
 
 After each refactoring step:
 
 1. **`docs/classes.puml`** — add or update the class that changed; update its relationships and fields.
-2. **`docs/architecture.md`** (this file) — update the relevant section in §4; add a row to §7 if a new persistence store is introduced; update §5 if data flows change.
+2. **`docs/architecture.md`** (this file) — update the relevant section in §4; add a row to §8 if a new persistence store is introduced; update §5 if data flows change.
 3. **`docs/refactor_roadmap.md`** — mark completed items and add next-step notes for the new component.
 4. **`docs/sequence-full.puml`** — update if the startup or download sequence changes.
 

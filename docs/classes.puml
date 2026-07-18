@@ -307,6 +307,12 @@ package "Log Service" #F0F8FF {
 ' ════════════════════════════════════════════════════════════
 package "Support Types" #F5F5F5 {
 
+    class ExitCode <<enum>> {
+        +ExitOK = 0
+        +ExitUnexpected = 1
+        +ExitUpdateFailed = 10
+    }
+
     class DownloadStats <<state>> {
         -lastSize : string
         -downloadedRaw : float64

@@ -9,10 +9,12 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image/color"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -22,6 +24,17 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 )
+
+// ── General ──────────────────────────────────────────────────────────────────
+
+// exitCodeFromError maps an error to a process exit code.
+// It preserves the original process exit code for exec failures when available.
+func exitCodeFromError(err error) ExitCode {
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		return ExitCode(exitErr.ExitCode())
+	}
+	return ExitUpdateFailed
+}
 
 // ── File I/O ─────────────────────────────────────────────────────────────────
 
