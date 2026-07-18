@@ -37,7 +37,7 @@ var (
 
 // newDownloaderApp constructs and fully initialises a DownloaderApp.
 func newDownloaderApp(window fyne.Window) *DownloaderApp {
-	app := &DownloaderApp{
+	dlApp := &DownloaderApp{
 		window:    window,
 		uiManager: NewUIManager(window),
 		ui: &UIWidgets{
@@ -86,15 +86,15 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	}
 
 	// Load saved preferences and apply them to all widgets.
-	app.prefSvc = NewPreferenceService(fyne.CurrentApp().Preferences())
-	prefs := app.prefSvc.Load()
-	app.applyPreferencesToWidgets(prefs)
-	app.logSvc.SetBufferLimit(ParseBufferLimit(prefs.LogLimit))
+	dlApp.prefSvc = NewPreferenceService(fyne.CurrentApp().Preferences())
+	prefs := dlApp.prefSvc.Load()
+	dlApp.applyPreferencesToWidgets(prefs)
+	dlApp.logSvc.SetBufferLimit(ParseBufferLimit(prefs.LogLimit))
 
 	// Wire history service to both the app and the UIManager.
-	app.historySvc = NewHistoryService()
-	app.uiManager.historySvc = app.historySvc
-	return app
+	dlApp.historySvc = NewHistoryService()
+	dlApp.uiManager.historySvc = dlApp.historySvc
+	return dlApp
 }
 
 // main is the entry point of the application. It initializes the Fyne app,
@@ -109,50 +109,50 @@ func main() {
 		os.Exit(0)
 	}
 
-	myApp := app.NewWithID("com.govid.downloader")
+	mainApp := app.NewWithID("com.govid.downloader")
 
 	// Apply the user's preferred theme or the custom GoVid theme.
-	themePref := myApp.Preferences().StringWithFallback(prefThemeMode, defaultThemeMode)
+	themePref := mainApp.Preferences().StringWithFallback(prefThemeMode, defaultThemeMode)
 	switch themePref {
 	case "Light":
-		myApp.Settings().SetTheme(&lightTheme{})
+		mainApp.Settings().SetTheme(&lightTheme{})
 	default:
 		// Force the custom theme to use Dark variant for its base
-		myApp.Settings().SetTheme(&darkTheme{})
+		mainApp.Settings().SetTheme(&darkTheme{})
 	}
 
 	// Set the custom brand icon using the bundled resource.
-	myApp.SetIcon(resourceAppiconPng)
+	mainApp.SetIcon(resourceAppiconPng)
 
-	myWindow := myApp.NewWindow("GoVid")
-	myWindow.Resize(fyne.NewSize(windowWidth, windowHeight))
-	myWindow.SetIcon(resourceAppiconPng)
+	mainWindow := mainApp.NewWindow("GoVid")
+	mainWindow.Resize(fyne.NewSize(windowWidth, windowHeight))
+	mainWindow.SetIcon(resourceAppiconPng)
 
-	downloader := newDownloaderApp(myWindow)
-	downloader.createMainMenu()
-	downloader.createUI()
-	downloader.checkDependencies()
+	dlApp := newDownloaderApp(mainWindow)
+	dlApp.createMainMenu()
+	dlApp.createUI()
+	dlApp.checkDependencies()
 
 	// Show a confirmation dialog if a download or post-processing job is active.
-	myWindow.SetCloseIntercept(func() {
-		if downloader.isRunning.Load() {
+	mainWindow.SetCloseIntercept(func() {
+		if dlApp.isRunning.Load() {
 			dialog.ShowConfirm(
 				"Job in Progress",
 				"A download or post-processing job is currently running.\nAre you sure you want to quit?",
 				func(confirmed bool) {
 					if confirmed {
-						if downloader.cancelFn != nil {
-							downloader.cancelFn()
+						if dlApp.cancelFn != nil {
+							dlApp.cancelFn()
 						}
-						myApp.Quit()
+						mainApp.Quit()
 					}
 				},
-				myWindow,
+				mainWindow,
 			)
 			return
 		}
-		myApp.Quit()
+		mainApp.Quit()
 	})
 
-	myWindow.ShowAndRun()
+	mainWindow.ShowAndRun()
 }
