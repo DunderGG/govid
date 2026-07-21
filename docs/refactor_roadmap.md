@@ -4,20 +4,56 @@ This version groups the audit items into priority buckets so you can tackle the 
 
 ---
 
-## Component Status
+## Refactoring Sequence
 
-Breaking down the `DownloaderApp` "God Object" into specialized components:
+The per-component sections below list individual next steps. This chapter collects them into a recommended execution order based on their dependencies.
 
-- [ ] **DownloadEngine** — yt-dlp execution, retries, cancellation, and progress parsing.
-- [ ] **PPEngine** — FFmpeg filter composition, crop detection, worker pool orchestration, and post-process execution.
-- [ ] **UIManager** — secondary window lifecycle (About, Help, History, Prefs, PP).
-- [ ] **PreferenceService** — preference load/save/reset logic and defaults.
-- [ ] **HistoryService** — download history persistence, schema evolution, and lookup helpers.
-- [ ] **LogService** — session log/error log routing, rotation policy, and structured log helpers.
-- [ ] **DependencyService** — binary discovery, dependency checks, and updater command execution.
-- [ ] **Update documentation** — architecture.md, classes.puml, and sequence diagrams fully reflect the extracted architecture.
+### Phase 1 — Independent improvements (no blocking dependencies)
 
-See the sections below for per-component details and open next steps.
+These steps touch isolated areas with no cross-component dependencies and can be done in any order or in parallel.
+
+- **PPEngine steps 2 & 3** — Move probe functions (`probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, `parseRationalFPS`) and `buildFFmpegArgs`/`patchThreadCount` onto `PPEngine`. Pure helpers, no UI dependency.
+- **PreferenceService step 2** — Move `loadConfigFromFile` / `applyConfig` onto `PreferenceService` as `LoadFromFile` and `MergeConfig`. No UI dependency.
+- **PreferenceService step 3** — Replace the three inline `fyne.CurrentApp().Preferences().SetBool(...)` `onChanged` handlers with `savePreferences` calls.
+- **LogService step 1** — Cache the active session directory on `LogService` at `OpenSessionLog` time so `WriteToErrorLog` no longer requires the caller to re-read `app.ui.path.Text` mid-session.
+- **main.go cleanup** — Replace `os.Exit(0)` with `return` for idiomatic control flow; expose a `RequestCancel()` method on `DownloaderApp` to encapsulate safe cancellation behind a single entry point.
+
+### Phase 2 — Complete DownloadEngine (sequential)
+
+Each step depends on the previous one.
+
+1. **DownloadEngine step 1** — Add `OnProgress(pct float64, size string)` to `ProcessCallbacks`; move `watchOutput` and `parseProgress` out of `DownloaderApp` so the engine owns its own output scanning.
+2. **DownloadEngine step 2** — Move `finalizeDownloadedFiles` to `DownloadEngine` as a `FinalizeFiles(savePath, downloadID string, onLog func(...)) []string` method.
+3. **DownloadEngine step 3** — Collapse `runYtDlp` into `engine.Run(ctx, req, callbacks)` — a pure composition of `BuildArgs` + `Execute` + `FinalizeFiles` with no remaining UI state reads.
+4. **DownloadEngine step 4** — Reduce the argument count of `Execute()`.
+
+### Phase 3 — Complete PPEngine (can overlap with Phase 2)
+
+Phase 3 is independent of Phase 2 and can proceed in parallel.
+
+1. **PPEngine step 1** — Introduce a `PostProcessSettings` value struct; make `buildPostProcessFilters` accept it instead of reading `*UIWidgets` directly. The caller populates the struct from widget state before calling in.
+2. **PPEngine steps 4 & 5** — Refactor / document `runJob`; break compound expressions (e.g. the nested `computeOutputFrameCount` call) into separate named variables.
+
+### Phase 4 — LogService follow-on (after Phase 2 step 3)
+
+- **LogService step 2** — Introduce a `SessionConfig` plain struct and a `logSvc.WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))` method. Requires `engine.Run` to exist first so the caller has typed config data rather than reading widgets inline.
+
+### Phase 5 — UIManager migration (after Phases 2, 3, and 4)
+
+All steps depend on the preceding phases. Execute in order; each step shrinks the callback surface for the next.
+
+1. **UIManager step 1** — Move `showPreferences` to `UIManager` (requires `PreferenceService`).
+2. **UIManager step 2** — Move `showPostProcessing` to `UIManager` (requires `PreferenceService` + `PPEngine`).
+3. **UIManager step 3** — Move `createMainMenu` to `UIManager`; inline `DependencyService` step 1 to remove the `checkDependencies` / `runUpdateInUI` wrappers from `DownloaderApp`.
+4. **UIManager step 4** — Move `createUI` to `UIManager`. Largest single step; do last.
+5. **UIManager step 5** — Replace all direct service fields on `UIManager` with injected callbacks; redesign the `UIManager` constructor so it holds no service-type references.
+
+### Phase 6 — Final cleanup (after Phase 5)
+
+- **High Priority: Group UIWidgets** — Break the 40-field flat struct into feature-specific sub-structs now that `createUI` lives in `UIManager`.
+- **High Priority: Refactor ui.go** — Split the remaining window construction into focused helpers for menus, dialogs, and layout.
+- **LogService step 3** — Replace the direct widget mutation in `appendOutput` with an `OnLogLine func(line string, col color.Color)` callback, now that `UIManager` owns widget lifecycle.
+- **Update documentation** — Refresh `architecture.md`, `classes.puml`, and the sequence diagrams to reflect the fully extracted architecture.
 
 ---
 
@@ -46,6 +82,24 @@ See the sections below for per-component details and open next steps.
 - [x] Keep theme code isolated and reusable — Keep theme colors and helpers separate from UI construction, and use named constants or helpers for repeated colors. *(Added 12 named colour vars to theme.go (`colSystem`, `colInfo`, `colError`, `colWarning`, `colSuccess`, `colSuccessBorder`, `colDebug`, `colDotIdle`, `colDotSuccess`, `colDotFailed`, `colDotCanceled`, `colDotProcessing`); replaced ~70 inline `color.RGBA{...}` literals across 8 files; normalised the stray `{255,160,0}` to `colWarning`; removed unused `image/color` import from main.go.)*
 - [x] Isolate icon and embedded asset code — Keep generated or embedded asset files separate from application logic so they stay predictable and easier to update. *(`icons.go` and `embedded_icon.go` were already well-isolated. Fixed the raw `"themeMode"` string in `themedIcon()` to use the `prefThemeMode` constant; added a comment linking `svgFillLight` to `accentCyan` in `theme.go` to prevent them drifting.)*
 - [x] Preserve platform-specific wrappers — Keep Windows and non-Windows process handling in dedicated build-tag files so the rest of the app can stay cross-platform and simple. *(Extracted `openFolderCommand(path string) *exec.Cmd` into `sys_windows.go` (Explorer) and `sys_others.go` (open/xdg-open); `openDownloadFolder` in helpers.go is now a 3-line wrapper; `runtime` and `os/exec` imports removed from helpers.go. The `.exe` suffix check in `dependency_service.go` and the default-format UI logic in `ui.go` were left inline — both are policy/string logic, not process handling.)*
+
+---
+
+## Component Status
+
+Breaking down the `DownloaderApp` "God Object" into specialized components:
+
+- [ ] **DownloadEngine** — yt-dlp execution, retries, cancellation, and progress parsing.
+- [ ] **PPEngine** — FFmpeg filter composition, crop detection, worker pool orchestration, and post-process execution.
+- [ ] **UIManager** — secondary window lifecycle (About, Help, History, Prefs, PP).
+- [ ] **PreferenceService** — preference load/save/reset logic and defaults.
+- [ ] **HistoryService** — download history persistence, schema evolution, and lookup helpers.
+- [ ] **LogService** — session log/error log routing, rotation policy, and structured log helpers.
+- [ ] **DependencyService** — binary discovery, dependency checks, and updater command execution.
+- [ ] **Update documentation** — architecture.md, classes.puml, and sequence diagrams fully reflect the extracted architecture.
+
+See the sections below for per-component details and open next steps.
+
 
 ## DownloadEngine
 
