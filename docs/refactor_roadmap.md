@@ -12,7 +12,7 @@ The per-component sections below list individual next steps. This chapter collec
 
 These steps touch isolated areas with no cross-component dependencies and can be done in any order or in parallel.
 
-- **PPEngine steps 2 & 3** — Move probe functions (`probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, `parseRationalFPS`) and `buildFFmpegArgs`/`patchThreadCount` onto `PPEngine`. Pure helpers, no UI dependency.
+- ~~**PPEngine steps 2 & 3**~~ — *Done. Probe functions and argument builders moved to `pp_engine.go` as private `PPEngine` methods; the explicit `ffprobePath` parameter replaced by `engine.FFprobePath`.*
 - **PreferenceService step 2** — Move `loadConfigFromFile` / `applyConfig` onto `PreferenceService` as `LoadFromFile` and `MergeConfig`. No UI dependency.
 - **PreferenceService step 3** — Replace the three inline `fyne.CurrentApp().Preferences().SetBool(...)` `onChanged` handlers with `savePreferences` calls.
 - **LogService step 1** — Cache the active session directory on `LogService` at `OpenSessionLog` time so `WriteToErrorLog` no longer requires the caller to re-read `app.ui.path.Text` mid-session.
@@ -61,7 +61,7 @@ All steps depend on the preceding phases. Execute in order; each step shrinks th
 
 - [ ] Refactor ui.go into smaller helpers — Split the large window construction into helpers for menus, dialogs, history, and preferences so the file is easier to scan and change. *(ui.go is 709 lines; `showAbout`, `showHistory`, `showConfigHelp` have moved to UIManager but `createUI`, `createMainMenu`, `showPreferences`, `showPostProcessing` remain. Blocked until more services are extracted.)*
 - [ ] Split download.go into phases — Separate yt-dlp argument building, process startup, output parsing, and retry handling into smaller functions. *(`BuildArgs` and the retry loop are in `DownloadEngine`. Remaining: move `watchOutput`/`parseProgress`/`finalizeDownloadedFiles` then `runYtDlp` — see DownloadEngine next steps below.)*
-- [ ] Break postprocess.go into smaller pipelines — Move FFmpeg option building, UI state handling, and feature-specific logic into smaller functions or separate files. *(`PPEngine` owns filter execution. Remaining: move probe functions, `buildFFmpegArgs`/`patchThreadCount`, and decouple `buildPostProcessFilters` from widgets — see PPEngine next steps below.)*
+- [ ] Break postprocess.go into smaller pipelines — Move FFmpeg option building, UI state handling, and feature-specific logic into smaller functions or separate files. *(`PPEngine` owns filter execution. Probe functions and `buildFFmpegArgs`/`patchThreadCount` moved to `pp_engine.go` ✓. Remaining: decouple `buildPostProcessFilters` from widgets — see PPEngine next steps below.)*
 - [x] Use context.Context consistently for cancellation — Pass context through the download pipeline so stopping a job does not leave background work running. *(Context flows correctly through `startDownload` → `runYtDlp` → `DownloadEngine.Execute` → `PPEngine.ApplyFilters`. Resolved as a side-effect of the service extractions.)*
 - [ ] Group UIWidgets into smaller structs — Break the large UIWidgets type into smaller feature-specific structs like download controls and preferences controls. *(Still one flat 40-field struct. Best tackled alongside the ui.go refactor.)*
 - [x] Keep main.go thin — Use main.go as a bootstrapper only, and move app-specific setup into smaller constructors or services. *(`main()` is already a clean bootstrapper. `newDownloaderApp()` still initialises every widget inline (~50 lines), but this resolves naturally as a side-effect of "Group UIWidgets into smaller structs" — once that work produces typed sub-constructors, the initialization collapses to a single `NewUIWidgets()` call. No standalone action needed now.)*
@@ -117,15 +117,15 @@ See the sections below for per-component details and open next steps.
 
 ## PPEngine
 
-**Done:** `PPEngine` struct introduced in `pp_engine.go`. It owns the ffmpeg and ffprobe binary paths and exposes `ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks)`. `PPCallbacks` bridges log, status, and failure events to the UI. Private methods `detectCropFilter`, `resolveAutoCrop`, and `runJob` are fully engine-owned. `postprocess.go` is now a thin layer containing `buildPostProcessFilters` (reads UI state) and a 5-line `applyFFmpegFilters` wrapper.
+**Done:** `PPEngine` struct introduced in `pp_engine.go`. It owns the ffmpeg and ffprobe binary paths and exposes `ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks)`. `PPCallbacks` bridges log, status, and failure events to the UI. Private methods `detectCropFilter`, `resolveAutoCrop`, and `runJob` are fully engine-owned. Probe helpers (`probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, `parseRationalFPS`) and argument builders (`buildFFmpegArgs`, `patchThreadCount`) moved from `postprocess.go` to `pp_engine.go` as private methods, dropping their explicit `ffprobePath` parameters. `postprocess.go` is now a thin layer containing `buildPostProcessFilters` (reads UI state), `applyFFmpegFilters` (5-line wrapper), and shared format/scan helpers (`formatFFmpegProgress`, `formatBytes`, `formatDuration`, `filterShortName`, `scanCRLF`) used by `runJob`.
 
 **Next steps:**
 
 1. **Move `buildPostProcessFilters` out of `DownloaderApp`** — it currently reads checkbox and slider values directly from `*UIWidgets`. The clean solution is a `PostProcessSettings` value struct (all plain fields) that `buildPostProcessFilters` accepts as input instead of reading `app.ui.*`. The caller (UIManager or DownloaderApp) populates it from widget state and passes it to a free function or a `PPEngine` method.
 
-2. **Move probe functions to `PPEngine`** — `probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, and `parseRationalFPS` are free functions in `postprocess.go` only because `PPEngine` did not exist when they were written. They have no UI dependency and belong as private methods on `PPEngine`.
+2. ~~**Move probe functions to `PPEngine`**~~ — *Done. `probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, and `parseRationalFPS` are now private methods on `PPEngine` in `pp_engine.go`. The explicit `ffprobePath` parameter was replaced by `engine.FFprobePath` throughout.*
 
-3. **Move `buildFFmpegArgs` and `patchThreadCount` to `PPEngine`** — same reasoning as the probe functions; both are pure helpers used exclusively by `PPEngine.runJob` and `PPEngine.ApplyFilters`.
+3. ~~**Move `buildFFmpegArgs` and `patchThreadCount` to `PPEngine`**~~ — *Done. Both are now private methods on `PPEngine` in `pp_engine.go`. Call sites in `ApplyFilters` updated to use the `engine.` receiver.*
 
 4. **Refactor `runJob()`** — Or document it better. The multiple renaming and error handling is quite confusing.
 

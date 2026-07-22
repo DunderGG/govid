@@ -134,6 +134,8 @@ Internal flow per file:
 1. `resolveAutoCrop` — replaces the `__autocrop__` sentinel by running a 60-second `cropdetect` pass via `detectCropFilter`.
 2. `runJob` — runs the main FFmpeg encode. Streams stderr in real-time. On success, renames the `_pp` temp file over the original. On failure, deletes the temp file.
 
+Private probe methods (`probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, `parseRationalFPS`) use `engine.FFprobePath` to measure frame counts and durations for progress reporting. Private argument builders (`buildFFmpegArgs`, `patchThreadCount`) assemble and patch the FFmpeg command-line for each job.
+
 `DownloaderApp.applyFFmpegFilters()` in `postprocess.go` is the thin wrapper that constructs `PPEngine` and wires `PPCallbacks` back to UI helpers.
 
 ---

@@ -166,8 +166,8 @@ alt hasPostProcess && len(allFinalPaths) > 0 && not cancelled
             App -> App  : resolveAutoCrop()\n  — if __autocrop__ sentinel present:
             App -> FF   : cropdetect pass (first 60 s)
             FF  --> App : crop=W:H:X:Y  (or "" if no bars)
-            App -> App  : buildFFmpegArgs(input, tmpOutput, vfFilters, afFilters)\n  — libx264 CRF 18 / libvpx-vp9 CRF 31 / stream-copy
-            App -> App  : patchThreadCount(args, threadsPerJob)
+            App -> App  : engine.buildFFmpegArgs(input, tmpOutput, vfFilters, afFilters)\n  — libx264 CRF 18 / libvpx-vp9 CRF 31 / stream-copy
+            App -> App  : engine.patchThreadCount(args, threadsPerJob)
             App -> OS   : exec FFmpeg process
             OS  -> FF   : spawn process
 

@@ -5,7 +5,8 @@
 //   - Renaming temp files to their clean, conflict-free final names.
 //   - Thin applyFFmpegFilters wrapper: collects binary paths and wires
 //     PPCallbacks before delegating to PPEngine.ApplyFilters.
-//   - Utility and probe functions used by PPEngine (same package).
+//   - Shared helpers called by pp_engine.go (same package): formatFFmpegProgress,
+//     formatBytes, formatDuration, filterShortName, scanCRLF.
 package main
 
 import (
@@ -13,7 +14,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -142,7 +142,8 @@ func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []stri
 	return
 }
 
-// detectCropFilter, resolveAutoCrop, and runFFmpegJob are methods on PPEngine in pp_engine.go.
+// All PPEngine methods and helpers (detectCropFilter, resolveAutoCrop, runJob,
+// buildFFmpegArgs, patchThreadCount, and the probe functions) live in pp_engine.go.
 
 // applyFFmpegFilters creates a PPEngine from resolved binary paths and delegates
 // to PPEngine.ApplyFilters, wiring the app's log/status/failure callbacks.
@@ -209,48 +210,6 @@ func uniquePath(path string) string {
 	}
 }
 
-// buildFFmpegArgs constructs the FFmpeg argument list for a single post-processing
-// job. The -threads placeholder is set to "0" and patched to the real count later.
-func buildFFmpegArgs(inputPath, tmpOutput string, vfFilters, afFilters []string) []string {
-	// Note: -stats_period was added in FFmpeg 4.4; omitting it keeps progress
-	// reporting working on older builds (FFmpeg defaults to 0.5 s anyway).
-	args := []string{"-y", "-threads", "0", "-i", inputPath}
-	if len(vfFilters) > 0 {
-		args = append(args, "-vf", strings.Join(vfFilters, ","))
-		// Choose encoder based on output container.
-		// libx264 cannot be muxed into WebM; use libvpx-vp9 instead.
-		// VP9 CRF 31 with -b:v 0 (constant-quality mode) is roughly equivalent
-		// in perceived quality to H.264 CRF 18.
-		if strings.ToLower(filepath.Ext(tmpOutput)) == ".webm" {
-			args = append(args, "-c:v", "libvpx-vp9", "-crf", "31", "-b:v", "0", "-deadline", "good", "-cpu-used", "2")
-		} else {
-			// CRF 18 is visually near-lossless for H.264. The slower preset
-			// squeezes more quality out at the same CRF.
-			args = append(args, "-c:v", "libx264", "-crf", "18", "-preset", "slower")
-		}
-	} else {
-		args = append(args, "-c:v", "copy")
-	}
-	if len(afFilters) > 0 {
-		args = append(args, "-af", strings.Join(afFilters, ","))
-	} else {
-		args = append(args, "-c:a", "copy")
-	}
-	return append(args, tmpOutput)
-}
-
-// patchThreadCount replaces the value immediately after the "-threads" flag in
-// an FFmpeg argument slice with the given count string.
-func patchThreadCount(args []string, count string) []string {
-	for argIdx, arg := range args {
-		if arg == "-threads" && argIdx+1 < len(args) {
-			args[argIdx+1] = count
-			return args
-		}
-	}
-	return args
-}
-
 // formatFFmpegProgress parses a FFmpeg stats line ("frame=X fps=X ... time=HH:MM:SS speed=Xx")
 // and returns a compact human-readable string for the status bar.
 // When totalFrames > 0 the current frame is converted to a percentage.
@@ -295,119 +254,6 @@ func formatFFmpegProgress(line string, totalFrames int64) string {
 		return line
 	}
 	return strings.Join(parts, " | ")
-}
-
-// probeFrameCount uses ffprobe to count the exact number of video packets in
-// the file index. For MP4 this reads the moov atom (instant); for MKV/WebM it
-// reads the cue points. Neither approach decodes any video data.
-// Both nb_frames metadata and avg_frame_rate×duration are unreliable for VFR
-// content — muxers often write nb_frames from declared fps×duration rather
-// than actual packet count, causing estimates to be 2–3× too high.
-func probeFrameCount(ctx context.Context, ffprobePath, inputPath string) int64 {
-	cmd := exec.CommandContext(ctx, ffprobePath,
-		"-v", "error",
-		"-select_streams", "v:0",
-		"-count_packets",
-		"-show_entries", "stream=nb_read_packets",
-		"-of", "csv=p=0",
-		inputPath,
-	)
-	hideWindow(cmd)
-	out, err := cmd.Output()
-	if err == nil && len(out) > 0 {
-		if n, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64); err == nil && n > 0 {
-			return n
-		}
-	}
-	// Fallback: duration × avg_frame_rate (less reliable but always available).
-	cmd2 := exec.CommandContext(ctx, ffprobePath,
-		"-v", "error",
-		"-select_streams", "v:0",
-		"-show_entries", "stream=duration,avg_frame_rate",
-		"-of", "csv=p=0",
-		inputPath,
-	)
-	hideWindow(cmd2)
-	out2, err := cmd2.Output()
-	if err != nil {
-		return 0
-	}
-	fields := strings.SplitN(strings.TrimSpace(string(out2)), ",", 2)
-	if len(fields) == 2 {
-		dur, dErr := strconv.ParseFloat(strings.TrimSpace(fields[0]), 64)
-		fps := parseRationalFPS(strings.TrimSpace(fields[1]))
-		if dErr == nil && dur > 0 && fps > 0 {
-			return int64(math.Round(dur * fps))
-		}
-	}
-	return 0
-}
-
-// computeOutputFrameCount adjusts the probed input frame count to account for
-// filters that change the output frame rate or total frame count.
-//   - minterpolate=fps=N: outputs at a fixed target fps → duration × N
-//   - bwdif: send_field mode (default) outputs one frame per field → inputFrames × 2
-func computeOutputFrameCount(ctx context.Context, ffprobePath, inputPath string, inputFrames int64, vfFilters []string) int64 {
-	// minterpolate takes priority — its target fps determines the final count.
-	for _, f := range vfFilters {
-		if strings.HasPrefix(f, "minterpolate=fps=") {
-			rest := strings.TrimPrefix(f, "minterpolate=fps=")
-			if i := strings.IndexAny(rest, ":,"); i != -1 {
-				rest = rest[:i]
-			}
-			if targetFps, err := strconv.ParseFloat(rest, 64); err == nil && targetFps > 0 {
-				if dur := probeDuration(ctx, ffprobePath, inputPath); dur > 0 {
-					return int64(math.Round(dur * targetFps))
-				}
-			}
-			return inputFrames
-		}
-	}
-	// bwdif send_field (default) outputs one frame per interlaced field.
-	for _, f := range vfFilters {
-		if f == "bwdif" {
-			return inputFrames * 2
-		}
-	}
-	return inputFrames
-}
-
-// probeDuration returns the container duration of the file in seconds.
-func probeDuration(ctx context.Context, ffprobePath, inputPath string) float64 {
-	cmd := exec.CommandContext(ctx, ffprobePath,
-		"-v", "error",
-		"-show_entries", "format=duration",
-		"-of", "csv=p=0",
-		inputPath,
-	)
-	hideWindow(cmd)
-	out, err := cmd.Output()
-	if err != nil {
-		return 0
-	}
-	dur, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
-	if err != nil || dur <= 0 {
-		return 0
-	}
-	return dur
-}
-
-// parseRationalFPS parses a "num/den" rational string (e.g. "30/1", "30000/1001")
-// as returned by ffprobe and returns the floating-point FPS value.
-func parseRationalFPS(s string) float64 {
-	parts := strings.SplitN(s, "/", 2)
-	if len(parts) != 2 {
-		if f, err := strconv.ParseFloat(s, 64); err == nil {
-			return f
-		}
-		return 0
-	}
-	num, err1 := strconv.ParseFloat(parts[0], 64)
-	den, err2 := strconv.ParseFloat(parts[1], 64)
-	if err1 != nil || err2 != nil || den == 0 {
-		return 0
-	}
-	return num / den
 }
 
 // scanCRLF is a bufio.SplitFunc that splits on either \r or \n, handling the

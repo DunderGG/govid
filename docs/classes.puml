@@ -161,6 +161,12 @@ package "Post-Processing Engine" #F8F0FF {
         -detectCropFilter(ctx, input, cb) : string
         -resolveAutoCrop(ctx, input, filters, cb) : []string
         -runJob(ctx, job, cb)
+        -probeFrameCount(ctx, input) : int64
+        -probeDuration(ctx, input) : float64
+        -computeOutputFrameCount(ctx, input,\n  frames, filters) : int64
+        -parseRationalFPS(s) : float64
+        -buildFFmpegArgs(input, tmpOutput,\n  vf, af) : []string
+        -patchThreadCount(args, count) : []string
     }
 
     class PPCallbacks <<bridge>> {
