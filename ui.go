@@ -415,14 +415,18 @@ func (app *DownloaderApp) showPreferences() {
 	resetBtn.Importance = widget.DangerImportance
 
 	loadConfigBtn := widget.NewButtonWithIcon("Load from Config (govid.json)", theme.SettingsIcon(), func() {
-		config, err := loadConfigFile(configFileName)
+		config, err := app.prefSvc.LoadFromFile(configFileName)
 		if err != nil {
 			dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), app.uiManager.prefsWindow)
 			return
 		}
-		err = app.applyConfig(config)
-		if err != nil {
-			dialog.ShowCustom("Config Loaded with Warnings", "OK", widget.NewLabel(err.Error()), app.uiManager.prefsWindow)
+		merged, errs := app.prefSvc.MergeConfig(config, app.prefSvc.Load(), app.ui.format.Options, app.ui.quality.Options)
+		app.applyPreferencesToWidgets(merged)
+		app.prefSvc.Save(merged)
+		if len(errs) > 0 {
+			dialog.ShowCustom("Config Loaded with Warnings", "OK",
+				widget.NewLabel(fmt.Sprintf("some settings were skipped:\n- %s", strings.Join(errs, "\n- "))),
+				app.uiManager.prefsWindow)
 		} else {
 			dialog.ShowInformation("Config Loaded", "Preferences updated from govid.json", app.uiManager.prefsWindow)
 		}

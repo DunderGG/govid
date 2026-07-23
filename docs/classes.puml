@@ -227,6 +227,8 @@ package "Preference Service" #FFF0F0 {
         +Load() : AppPreferences
         +Save(p AppPreferences)
         +Reset()
+        +LoadFromFile(path) : *AppConfig
+        +MergeConfig(cfg, base, formats,\n  qualities) : (AppPreferences, []string)
     }
 
     class AppPreferences <<data>> {

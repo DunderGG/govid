@@ -5,10 +5,17 @@
 //     making the full set of configurable options visible in one place.
 //   - PreferenceService: reads from and writes to the Fyne Preferences store,
 //     applying fallbacks where appropriate. Has no dependency on any UI widget.
+//   - LoadFromFile / MergeConfig: load and merge a govid.json config override
+//     into AppPreferences without touching any widget.
 //   - Named constants for every preference key and default value.
 package main
 
-import "fyne.io/fyne/v2"
+import (
+	"fmt"
+	"os"
+
+	"fyne.io/fyne/v2"
+)
 
 // ── Preference key constants ─────────────────────────────────────────────────
 // Single source of truth for the storage keys used throughout the application.
@@ -202,4 +209,56 @@ func (prefSvc *PreferenceService) Reset() {
 	} {
 		prefSvc.store.RemoveValue(key)
 	}
+}
+
+// ── Config file ──────────────────────────────────────────────────────────────
+
+// LoadFromFile reads and parses a govid.json config override file at the given
+// path. Returns (*AppConfig, nil) on success or (nil, err) if the file cannot
+// be read or contains invalid JSON.
+func (svc *PreferenceService) LoadFromFile(path string) (*AppConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return parseAppConfig(data)
+}
+
+// MergeConfig applies the non-empty fields of cfg onto base, validating format
+// and quality against the supplied option slices and confirming that path
+// exists as a directory on disk. It returns the merged AppPreferences and a
+// slice of human-readable validation messages for any fields that were skipped.
+func (svc *PreferenceService) MergeConfig(cfg *AppConfig, base AppPreferences, validFormats, validQualities []string) (AppPreferences, []string) {
+	var errs []string
+
+	if cfg.Format != "" {
+		if isValidOption(cfg.Format, validFormats) {
+			base.Format = cfg.Format
+		} else {
+			errs = append(errs, fmt.Sprintf("invalid format: %s", cfg.Format))
+		}
+	}
+
+	if cfg.Quality != "" {
+		if isValidOption(cfg.Quality, validQualities) {
+			base.Quality = cfg.Quality
+		} else {
+			errs = append(errs, fmt.Sprintf("invalid quality: %s", cfg.Quality))
+		}
+	}
+
+	if cfg.Path != "" {
+		info, err := os.Stat(cfg.Path)
+		if err == nil && info.IsDir() {
+			base.SavedPath = cfg.Path
+		} else {
+			errs = append(errs, fmt.Sprintf("invalid path: %s", cfg.Path))
+		}
+	}
+
+	if cfg.MaxSpeed != "" {
+		base.MaxSpeed = cfg.MaxSpeed
+	}
+
+	return base, errs
 }

@@ -1,7 +1,8 @@
 // helpers.go — Utility functions that support the rest of the application.
 //
 // Sections:
-//   - File I/O: load and apply govid.json overrides; open save folder in file manager.
+//   - File I/O: parse govid.json into AppConfig (parseAppConfig); open save folder.
+//     Config loading and merging has moved to PreferenceService (LoadFromFile, MergeConfig).
 //   - UI updates: status label, log output, status dot animation, progress bar.
 //   - Preference management: widget ↔ AppPreferences translation and reset.
 //   - External tools: thin delegates to DependencyService.
@@ -57,15 +58,6 @@ func parseAppConfig(data []byte) (*AppConfig, error) {
 	return &config, nil
 }
 
-// loadConfigFile reads the file at path and returns the parsed AppConfig.
-func loadConfigFile(path string) (*AppConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	return parseAppConfig(data)
-}
-
 // isValidOption reports whether value is present in the options slice.
 func isValidOption(value string, options []string) bool {
 	for _, opt := range options {
@@ -74,54 +66,6 @@ func isValidOption(value string, options []string) bool {
 		}
 	}
 	return false
-}
-
-// applyConfig updates the UI and preferences with values from an AppConfig.
-// It returns an error if any of the provided values are not valid.
-func (app *DownloaderApp) applyConfig(config *AppConfig) error {
-	var errs []string
-
-	if config.Format != "" {
-		if isValidOption(config.Format, app.ui.format.Options) {
-			app.ui.format.SetSelected(config.Format)
-		} else {
-			errs = append(errs, fmt.Sprintf("invalid format: %s", config.Format))
-		}
-	}
-
-	if config.Quality != "" {
-		if isValidOption(config.Quality, app.ui.quality.Options) {
-			app.ui.quality.SetSelected(config.Quality)
-		} else {
-			errs = append(errs, fmt.Sprintf("invalid quality: %s", config.Quality))
-		}
-	}
-
-	if config.Path != "" {
-		// os.Stat returns file metadata; we use it to confirm the path exists and
-		// is a directory before accepting it. In Go, multiple return values are
-		// idiomatic — functions that can fail return (result, error).
-		info, err := os.Stat(config.Path)
-		if err == nil && info.IsDir() {
-			app.ui.path.SetText(config.Path)
-		} else {
-			errs = append(errs, fmt.Sprintf("invalid path: %s", config.Path))
-		}
-	}
-
-	if config.MaxSpeed != "" {
-		// Speed limit is a free-form string (e.g. "5M", "500K") passed directly
-		// to yt-dlp via --limit-rate, so we accept any non-empty value here.
-		app.ui.maxSpeed.SetText(config.MaxSpeed)
-	}
-
-	// Persist the loaded values so they survive the next app restart.
-	app.savePreferences(app.ui.path.Text)
-
-	if len(errs) > 0 {
-		return fmt.Errorf("some settings were skipped:\n- %s", strings.Join(errs, "\n- "))
-	}
-	return nil
 }
 
 // openDownloadFolder launches the system file manager pointing at the current
@@ -279,6 +223,15 @@ func (app *DownloaderApp) setProgressNow(pct float64) {
 // into the corresponding UI widgets. Called at startup and after a reset.
 func (app *DownloaderApp) applyPreferencesToWidgets(p AppPreferences) {
 	ui := app.ui
+	if p.Format != "" {
+		ui.format.SetSelected(p.Format)
+	}
+	if p.Quality != "" {
+		ui.quality.SetSelected(p.Quality)
+	}
+	if p.SavedPath != "" {
+		ui.path.SetText(p.SavedPath)
+	}
 	ui.themeMode.SetSelected(p.ThemeMode)
 	ui.savePrefs.SetChecked(p.SavePrefs)
 	ui.smoothMotion.SetChecked(p.SmoothMotion)
