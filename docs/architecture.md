@@ -38,7 +38,8 @@ govid/
 ├── ── Services / Engines ──────────────────────────────────────────
 ├── download_engine.go      DownloadEngine — yt-dlp arg builder and retry executor
 ├── pp_engine.go            PPEngine — concurrent FFmpeg post-processing worker pool
-├── preference_service.go   PreferenceService — all preference keys, defaults, Load/Save/Reset
+├── preference_service.go   PreferenceService — preference keys, defaults, Load/Save/Reset, LoadFromFile, MergeConfig;
+│                           savePreferences, parseAppConfig, isValidOption co-located
 ├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadHistoryEntry type
 ├── log_service.go          LogService — session log open/close, error log routing, buffer-limit management
 ├── dependency_service.go   DependencyService — binary path resolution, dependency checks, yt-dlp updater
@@ -51,7 +52,7 @@ govid/
 │
 ├── ── UI ──────────────────────────────────────────────────────────
 ├── ui.go                   createUI, createMainMenu, showPreferences, showPostProcessing
-├── helpers.go              Thread-safe UI updates, applyPreferencesToWidgets, savePreferences, resetPreferences, thin wrappers for checkDependencies/runUpdateInUI
+├── helpers.go              Thread-safe UI updates, applyPreferencesToWidgets, resetPreferences, rebuildUI, thin wrappers for checkDependencies/runUpdateInUI
 ├── history_service.go      HistoryService — see §4.8
 │
 ├── ── Assets / Platform ───────────────────────────────────────────
@@ -148,10 +149,10 @@ All 30 Fyne preference storage keys are named constants here (`prefSavedPath`, `
 - **`Load() AppPreferences`** — reads the Fyne store and returns a fully-defaulted plain struct. Called once at startup and again each time a secondary window refreshes its controls.
 - **`Save(AppPreferences)`** — writes the struct back. Honours the `savePrefs` gate: if the user has disabled persistence, only the toggle itself is written.
 - **`Reset()`** — removes all managed keys so the next `Load` returns defaults.
-- **`LoadFromFile(path string) (*AppConfig, error)`** — reads and parses a `govid.json` override file. Delegates JSON parsing to the package-level `parseAppConfig` helper in `helpers.go`.
+- **`LoadFromFile(path string) (*AppConfig, error)`** — reads and parses a `govid.json` override file. Delegates JSON parsing to the package-level `parseAppConfig` helper in `preference_service.go`.
 - **`MergeConfig(cfg, base, validFormats, validQualities) (AppPreferences, []string)`** — validates each non-empty config field against the supplied option slices and confirms the path exists as a directory, then merges valid fields onto `base`. Returns the merged struct and a slice of validation error strings for any skipped fields. No widget dependency.
 
-`AppPreferences` is a plain value struct with no widget references. `applyPreferencesToWidgets(AppPreferences)` in `helpers.go` is the single translator from struct → widget state. `savePreferences(path)` in `helpers.go` is the reverse translator (widget state → struct → `prefSvc.Save`).
+`AppPreferences` is a plain value struct with no widget references. `applyPreferencesToWidgets(AppPreferences)` in `helpers.go` is the single translator from struct → widget state. `savePreferences(path)` in `preference_service.go` is the reverse — reads widget state and delegates to `prefSvc.Save`. `resetPreferences()` (data + log-buffer reset) and `rebuildUI()` (dark theme + `createUI`) in `helpers.go` together handle a full application reset; separating them lets callers invoke only what they need.
 
 ---
 

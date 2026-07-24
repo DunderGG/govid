@@ -37,6 +37,7 @@ package "Application Core" #F0F4F8 {
         +applyPreferencesToWidgets(p)
         +savePreferences(path)
         +resetPreferences()
+        +rebuildUI()
         +checkDependencies()
         +createUI()
         +createMainMenu()

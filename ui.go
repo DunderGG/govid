@@ -405,6 +405,7 @@ func (app *DownloaderApp) showPreferences() {
 				return
 			}
 			app.resetPreferences()
+			app.rebuildUI()
 			ui.savePrefs.SetChecked(true)
 			ui.maxSpeed.SetText("")
 			ui.cookies.SetText("")

@@ -1,15 +1,13 @@
 // helpers.go — Utility functions that support the rest of the application.
 //
 // Sections:
-//   - File I/O: parse govid.json into AppConfig (parseAppConfig); open save folder.
-//     Config loading and merging has moved to PreferenceService (LoadFromFile, MergeConfig).
+//   - File I/O: save-folder launcher.
 //   - UI updates: status label, log output, status dot animation, progress bar.
-//   - Preference management: widget ↔ AppPreferences translation and reset.
+//   - Preference management: applyPreferencesToWidgets, resetPreferences, rebuildUI.
 //   - External tools: thin delegates to DependencyService.
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"image/color"
@@ -41,32 +39,6 @@ func exitCodeFromError(err error) ExitCode {
 
 // configFileName is the optional JSON override file read by "Load from Config".
 const configFileName = "govid.json"
-
-// parseAppConfig unmarshals raw JSON bytes into an AppConfig.
-//
-// Unlike C++, it is safe to return a pointer to a local variable here.
-// The Go compiler performs escape analysis — when it detects that
-// a local variable's address outlives the function (e.g. because it is returned),
-// the variable is automatically allocated on the heap instead of the stack. The
-// garbage collector then owns that memory and frees it once nothing holds a
-// reference to it. You never call delete or free.
-func parseAppConfig(data []byte) (*AppConfig, error) {
-	var config AppConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, err
-	}
-	return &config, nil
-}
-
-// isValidOption reports whether value is present in the options slice.
-func isValidOption(value string, options []string) bool {
-	for _, opt := range options {
-		if opt == value {
-			return true
-		}
-	}
-	return false
-}
 
 // openDownloadFolder launches the system file manager pointing at the current
 // save destination. The platform-specific command is provided by openFolderCommand.
@@ -260,55 +232,20 @@ func (app *DownloaderApp) applyPreferencesToWidgets(p AppPreferences) {
 	ui.logLimit.SetSelected(p.LogLimit)
 	ui.maxSpeed.SetText(p.MaxSpeed)
 }
-
-// savePreferences collects the current widget state into an AppPreferences
-// struct and delegates persistence to PreferenceService.Save.
-func (app *DownloaderApp) savePreferences(savePath string) {
-	ui := app.ui
-	app.prefSvc.Save(AppPreferences{
-		SavePrefs:         ui.savePrefs.Checked,
-		SavedPath:         savePath,
-		Format:            ui.format.Selected,
-		Quality:           ui.quality.Selected,
-		MaxSpeed:          strings.TrimSpace(ui.maxSpeed.Text),
-		ThemeMode:         ui.themeMode.Selected,
-		CookiesPath:       strings.TrimSpace(ui.cookies.Text),
-		LogLimit:          ui.logLimit.Selected,
-		BatchMode:         ui.batchMode.Checked,
-		SaveLog:           ui.saveLog.Checked,
-		Notify:            ui.notify.Checked,
-		AutoRetry:         ui.autoRetry.Checked,
-		EnablePostProcess: ui.enablePostProcess.Checked,
-		SmoothMotion:      ui.smoothMotion.Checked,
-		SmoothMotionMode:  ui.smoothMotionMode.Selected,
-		SmoothFPS:         ui.smoothMotionFPS.Value,
-		Sharpen:           ui.sharpen.Checked,
-		SharpenAmount:     ui.sharpenAmount.Value,
-		NormalizeAudio:    ui.normalizeAudio.Checked,
-		VividMode:         ui.vividMode.Checked,
-		Denoise:           ui.denoise.Checked,
-		DenoiseMode:       ui.denoiseMode.Selected,
-		HDRToSDR:          ui.hdrToSdr.Checked,
-		Deband:            ui.deband.Checked,
-		AutoCrop:          ui.autoCrop.Checked,
-		Stabilize:         ui.stabilize.Checked,
-		Deinterlace:       ui.deinterlace.Checked,
-		NightMode:         ui.nightMode.Checked,
-		UpscaleVideo:      ui.upscaleVideo.Checked,
-		UpscaleTarget:     ui.upscaleTarget.Selected,
-	})
-}
-
-// resetPreferences clears all stored preferences and rebuilds the UI with
-// defaults. The Preferences window is responsible for resetting its own
-// widgets to match after calling this.
+// resetPreferences clears the stored preference data and resets the log
+// buffer to its default limit. Call rebuildUI afterwards to complete the
+// visual reset.
 func (app *DownloaderApp) resetPreferences() {
 	app.prefSvc.Reset()
 	app.logSvc.SetBufferLimit(200)
+}
+
+// rebuildUI applies the default dark theme and recreates the main window
+// layout. Called after resetPreferences to complete a full application reset.
+func (app *DownloaderApp) rebuildUI() {
 	fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
 	app.createUI()
 }
-
 // ── External tools ───────────────────────────────────────────────────────────
 
 // checkDependencies verifies that the required external tools — yt-dlp and

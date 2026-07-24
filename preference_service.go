@@ -7,12 +7,16 @@
 //     applying fallbacks where appropriate. Has no dependency on any UI widget.
 //   - LoadFromFile / MergeConfig: load and merge a govid.json config override
 //     into AppPreferences without touching any widget.
+//   - savePreferences: DownloaderApp method co-located here for cohesion; reads
+//     widget state to build the AppPreferences snapshot passed to Save.
 //   - Named constants for every preference key and default value.
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"fyne.io/fyne/v2"
 )
@@ -211,7 +215,75 @@ func (prefSvc *PreferenceService) Reset() {
 	}
 }
 
+// ── DownloaderApp preference helpers ────────────────────────────────────────────
+// savePreferences remains a method on DownloaderApp because it reads widget
+// state; it lives here to keep all preference-related code in one file.
+
+// savePreferences collects the current widget state into an AppPreferences
+// struct and delegates persistence to PreferenceService.Save.
+func (app *DownloaderApp) savePreferences(savePath string) {
+	ui := app.ui
+	app.prefSvc.Save(AppPreferences{
+		SavePrefs:         ui.savePrefs.Checked,
+		SavedPath:         savePath,
+		Format:            ui.format.Selected,
+		Quality:           ui.quality.Selected,
+		MaxSpeed:          strings.TrimSpace(ui.maxSpeed.Text),
+		ThemeMode:         ui.themeMode.Selected,
+		CookiesPath:       strings.TrimSpace(ui.cookies.Text),
+		LogLimit:          ui.logLimit.Selected,
+		BatchMode:         ui.batchMode.Checked,
+		SaveLog:           ui.saveLog.Checked,
+		Notify:            ui.notify.Checked,
+		AutoRetry:         ui.autoRetry.Checked,
+		EnablePostProcess: ui.enablePostProcess.Checked,
+		SmoothMotion:      ui.smoothMotion.Checked,
+		SmoothMotionMode:  ui.smoothMotionMode.Selected,
+		SmoothFPS:         ui.smoothMotionFPS.Value,
+		Sharpen:           ui.sharpen.Checked,
+		SharpenAmount:     ui.sharpenAmount.Value,
+		NormalizeAudio:    ui.normalizeAudio.Checked,
+		VividMode:         ui.vividMode.Checked,
+		Denoise:           ui.denoise.Checked,
+		DenoiseMode:       ui.denoiseMode.Selected,
+		HDRToSDR:          ui.hdrToSdr.Checked,
+		Deband:            ui.deband.Checked,
+		AutoCrop:          ui.autoCrop.Checked,
+		Stabilize:         ui.stabilize.Checked,
+		Deinterlace:       ui.deinterlace.Checked,
+		NightMode:         ui.nightMode.Checked,
+		UpscaleVideo:      ui.upscaleVideo.Checked,
+		UpscaleTarget:     ui.upscaleTarget.Selected,
+	})
+}
+
 // ── Config file ──────────────────────────────────────────────────────────────
+
+// parseAppConfig unmarshals raw JSON bytes into an AppConfig.
+//
+// Unlike C++, it is safe to return a pointer to a local variable here.
+// The Go compiler performs escape analysis — when it detects that
+// a local variable's address outlives the function (e.g. because it is returned),
+// the variable is automatically allocated on the heap instead of the stack. The
+// garbage collector then owns that memory and frees it once nothing holds a
+// reference to it. You never call delete or free.
+func parseAppConfig(data []byte) (*AppConfig, error) {
+	var config AppConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
+// isValidOption reports whether value is present in the options slice.
+func isValidOption(value string, options []string) bool {
+	for _, opt := range options {
+		if opt == value {
+			return true
+		}
+	}
+	return false
+}
 
 // LoadFromFile reads and parses a govid.json config override file at the given
 // path. Returns (*AppConfig, nil) on success or (nil, err) if the file cannot
