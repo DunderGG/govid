@@ -499,17 +499,17 @@ func (app *DownloaderApp) createUI() {
 		}
 		app.createUI()
 	}
-	ui.saveLog.OnChanged = func(checked bool) {
-		fyne.CurrentApp().Preferences().SetBool("saveLog", checked)
+	ui.saveLog.OnChanged = func(_ bool) {
+		app.savePreferences(app.ui.path.Text)
 	}
-	ui.notify.OnChanged = func(checked bool) {
-		fyne.CurrentApp().Preferences().SetBool(prefNotify, checked)
+	ui.notify.OnChanged = func(_ bool) {
+		app.savePreferences(app.ui.path.Text)
 	}
-	ui.autoRetry.OnChanged = func(checked bool) {
-		fyne.CurrentApp().Preferences().SetBool(prefAutoRetry, checked)
+	ui.autoRetry.OnChanged = func(_ bool) {
+		app.savePreferences(app.ui.path.Text)
 	}
-	ui.enablePostProcess.OnChanged = func(checked bool) {
-		fyne.CurrentApp().Preferences().SetBool(prefEnablePostProcess, checked)
+	ui.enablePostProcess.OnChanged = func(_ bool) {
+		app.savePreferences(app.ui.path.Text)
 	}
 	ui.path.SetPlaceHolder("Download folder...")
 	ui.path.OnChanged = func(text string) {
