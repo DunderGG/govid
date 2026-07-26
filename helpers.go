@@ -12,9 +12,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -83,16 +81,7 @@ func (app *DownloaderApp) appendOutput(line string, col color.Color) {
 	app.logSvc.WriteToFile(line)
 
 	if IsErrorLine(line) {
-		dir := strings.TrimSpace(app.ui.path.Text)
-		if dir == "" {
-			if exePath, err := os.Executable(); err == nil {
-				dir = filepath.Dir(exePath)
-			}
-		}
-		if dir == "" {
-			dir = "."
-		}
-		app.logSvc.WriteToErrorLog(line, dir)
+		app.logSvc.WriteToErrorLog(line)
 	}
 }
 

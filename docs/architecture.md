@@ -164,7 +164,7 @@ Owns the session log file handle, two mutexes, daily rotation policy, and the UI
 - **`OpenSessionLog(dir string) (string, error)`** — opens (or appends to) the daily `GoVid_log_YYYY-MM-DD.txt` in `dir`. Returns the resolved path.
 - **`CloseSessionLog()`** — writes a closing marker and closes the file.
 - **`WriteToFile(line string)`** — appends a timestamped line to the open session log.
-- **`WriteToErrorLog(line, dir string)`** — appends a timestamped line to the daily `GoVid_errors_YYYY-MM-DD.txt` in `dir`. Opens and closes the file on each call.
+- **`WriteToErrorLog(line string)`** — appends a timestamped line to the daily `GoVid_errors_YYYY-MM-DD.txt`. Uses the session directory cached by `OpenSessionLog`; falls back to the executable directory when no session is active. Opens and closes the file on each call.
 - **`SetBufferLimit(n int)` / `BufferLimit() int`** — gets/sets the UI log line cap (replaces the former `logBufferLimit` global).
 
 Package-level helpers: `IsErrorLine(line string) bool` (matches ERROR/FAILED), `ParseBufferLimit(s string) int` (converts the preference string to an integer), `SessionLogPath(dir string)`, `ErrorLogPath(dir string)`.

@@ -27,6 +27,7 @@ type LogService struct {
 	mutex       sync.Mutex
 	errorMutex  sync.Mutex
 	bufferLimit int
+	sessionDir  string // anchored once at OpenSessionLog time; used by WriteToErrorLog
 }
 
 // NewLogService returns a LogService with the default buffer limit (200 lines).
@@ -56,6 +57,7 @@ func (svc *LogService) OpenSessionLog(dir string) (string, error) {
 	}
 	svc.mutex.Lock()
 	svc.file = f
+	svc.sessionDir = dir
 	svc.mutex.Unlock()
 	return path, nil
 }
@@ -69,6 +71,7 @@ func (svc *LogService) CloseSessionLog() {
 		fmt.Fprintf(svc.file, "[%s] [SYSTEM] Log file closed.\n", time.Now().Format("15:04:05"))
 		svc.file.Close()
 		svc.file = nil
+		svc.sessionDir = ""
 	}
 }
 
@@ -89,8 +92,23 @@ func (svc *LogService) WriteToFile(line string) {
 	}
 }
 
-// WriteToErrorLog appends a timestamped line to the daily error log in dir.
-func (svc *LogService) WriteToErrorLog(line, dir string) {
+// WriteToErrorLog appends a timestamped line to the daily error log. It uses
+// the session directory cached at OpenSessionLog time. If no session is active,
+// it falls back to the directory containing the executable.
+func (svc *LogService) WriteToErrorLog(line string) {
+	svc.mutex.Lock()
+	dir := svc.sessionDir
+	svc.mutex.Unlock()
+
+	if dir == "" {
+		if exePath, err := os.Executable(); err == nil {
+			dir = filepath.Dir(exePath)
+		}
+	}
+	if dir == "" {
+		dir = "."
+	}
+
 	svc.errorMutex.Lock()
 	defer svc.errorMutex.Unlock()
 	path := ErrorLogPath(dir)

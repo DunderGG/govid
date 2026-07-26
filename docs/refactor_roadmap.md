@@ -15,7 +15,7 @@ These steps touch isolated areas with no cross-component dependencies and can be
 - ~~**PPEngine steps 2 & 3**~~ — *Done. Probe functions and argument builders moved to `pp_engine.go` as private `PPEngine` methods; the explicit `ffprobePath` parameter replaced by `engine.FFprobePath`.*
 - ~~**PreferenceService step 2**~~ — *Done. `LoadFromFile` and `MergeConfig` added to `PreferenceService`; `loadConfigFile` and `applyConfig` removed from `helpers.go`. `applyPreferencesToWidgets` extended with guarded writes for `Format`, `Quality`, and `SavedPath`.*
 - ~~**PreferenceService step 3**~~ — *Done. The four direct-write `OnChanged` handlers (`saveLog`, `notify`, `autoRetry`, `enablePostProcess`) now call `app.savePreferences(app.ui.path.Text)`. The stray raw string `"saveLog"` was also replaced by the service call.*
-- **LogService step 1** — Cache the active session directory on `LogService` at `OpenSessionLog` time so `WriteToErrorLog` no longer requires the caller to re-read `app.ui.path.Text` mid-session.
+- ~~**LogService step 1**~~ — *Done. `sessionDir` field added to `LogService`, set by `OpenSessionLog` and cleared by `CloseSessionLog`. `WriteToErrorLog` signature reduced to `(line string)`; the directory is now resolved internally, falling back to the executable directory when no session is active. The dir-computation block removed from `appendOutput`.*
 - **main.go cleanup** — Replace `os.Exit(0)` with `return` for idiomatic control flow; expose a `RequestCancel()` method on `DownloaderApp` to encapsulate safe cancellation behind a single entry point.
 
 ### Phase 2 — Complete DownloadEngine (sequential)
@@ -157,13 +157,13 @@ See the sections below for per-component details and open next steps.
 
 ## LogService
 
-**Done:** `LogService` struct introduced in `log_service.go`. It owns the session log file handle, two mutexes, the daily rotation policy (daily `YYYY-MM-DD` filename scheme), and the UI buffer-limit value. `DownloaderApp` holds `logSvc *LogService` (previously `log *LogManager`).
+**Done:** `LogService` struct introduced in `log_service.go`. It owns the session log file handle, two mutexes, the daily rotation policy (daily `YYYY-MM-DD` filename scheme), the UI buffer-limit value, and the session directory cached at log-open time. `DownloaderApp` holds `logSvc *LogService` (previously `log *LogManager`).
 
 Extracted from `helpers.go` and `download.go`:
 - `OpenSessionLog(dir string) (string, error)` — replaces the inline `os.OpenFile` + `app.log.file = file` block in `startDownload`.
 - `CloseSessionLog()` — replaces the inline mutex + write + close + nil block in `startDownload`.
 - `WriteToFile(line string)` — replaces the `app.log.mutex.Lock` / `fmt.Fprintf` / `Unlock` block inside `appendOutput`.
-- `WriteToErrorLog(line, dir string)` — replaces `appendErrorOutput` + `dailyErrorLogPath` in `helpers.go`.
+- `WriteToErrorLog(line string)` — replaces `appendErrorOutput` + `dailyErrorLogPath` in `helpers.go`. The `dir` parameter has been removed; the service now uses `sessionDir` cached at `OpenSessionLog` time.
 - `SetBufferLimit(n int)` / `BufferLimit() int` — replace the `logBufferLimit` package-level global.
 - `IsErrorLine(line string) bool` — replaces `isErrorLogLine` (package-level helper, no instance needed).
 - `ParseBufferLimit(s string) int` — replaces `parseLogLimit` (package-level helper).
@@ -173,7 +173,7 @@ Extracted from `helpers.go` and `download.go`:
 
 **Next steps:**
 
-1. **Cache the active session dir on `LogService`** — `OpenSessionLog(dir)` already knows the save directory at session start; storing it on the service would let `WriteToErrorLog` use the session dir automatically instead of requiring the caller to re-read `app.ui.path.Text` on every call. This also fixes a subtle correctness issue: `appendOutput` currently reads `app.ui.path.Text` from outside `fyne.Do`, meaning the widget could change mid-session and shift the error log to a different directory than the session log. Storing the dir at `OpenSessionLog` time would anchor both files to the same location for the lifetime of a session.
+1. ~~**Cache the active session dir on `LogService`**~~ — *Done. `LogService` now stores `sessionDir` (set at `OpenSessionLog`, cleared at `CloseSessionLog`). `WriteToErrorLog` resolves the directory internally; `appendOutput` no longer reads `app.ui.path.Text` outside `fyne.Do`.*
 
 2. **Extract `logSessionConfiguration` into a `SessionConfig` value struct** — `logSessionConfiguration` reads directly from ~15 `app.ui.*` fields (format, quality, trim, toggles, post-process settings). When `DownloadEngine.runYtDlp` eventually becomes `engine.Run(ctx, req, callbacks)`, its caller will pass config as data rather than reading widgets inline. At that point, introduce a `SessionConfig` plain struct (parallel to `AppPreferences`) and a `logSvc.WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))` method — completing the "structured log helper" described in the original roadmap item.
 

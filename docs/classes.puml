@@ -304,7 +304,7 @@ package "Log Service" #F0F8FF {
         +OpenSessionLog(dir string) : (string, error)
         +CloseSessionLog()
         +WriteToFile(line string)
-        +WriteToErrorLog(line, dir string)
+        +WriteToErrorLog(line string)
         +IsActive() : bool
         +SetBufferLimit(n int)
         +BufferLimit() : int
