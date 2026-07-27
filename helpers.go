@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"image/color"
@@ -31,6 +32,28 @@ func exitCodeFromError(err error) ExitCode {
 		return ExitCode(exitErr.ExitCode())
 	}
 	return ExitUpdateFailed
+}
+
+// SetCancelFunc replaces the active cancellation callback for the current job.
+func (app *DownloaderApp) SetCancelFunc(cancel context.CancelFunc) {
+	app.cancelMu.Lock()
+	defer app.cancelMu.Unlock()
+	app.cancelFn = cancel
+}
+
+// RequestCancel safely invokes the active cancellation callback once.
+// It returns true if a callback was present and called.
+func (app *DownloaderApp) RequestCancel() bool {
+	app.cancelMu.Lock()
+	cancel := app.cancelFn
+	app.cancelFn = nil
+	app.cancelMu.Unlock()
+
+	if cancel == nil {
+		return false
+	}
+	cancel()
+	return true
 }
 
 // ── File I/O ─────────────────────────────────────────────────────────────────

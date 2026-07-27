@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 
 	"fyne.io/fyne/v2"
@@ -83,6 +84,7 @@ type DownloaderApp struct {
 	ui         *UIWidgets         // The graphical interface components
 	stats      *DownloadStats     // Statistics tracked during a session
 	logSvc     *LogService        // Session log, error log, and buffer-limit management
+	cancelMu   sync.Mutex         // Guards cancelFn updates and reads
 	cancelFn   context.CancelFunc // Function used to signal yt-dlp to stop
 	stopPulse  chan struct{}       // Closed to stop the status dot pulse goroutine
 	uiManager  *UIManager         // Owns secondary window state (About, Help, History, Prefs, PP)

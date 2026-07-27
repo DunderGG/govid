@@ -92,7 +92,7 @@ func (app *DownloaderApp) startDownload() {
 	// In the batch case, each URL's runCtx is a child of queueCtx via a second context.WithCancel(queueCtx).
 	// Cancelling a child only affects that child
 	queueCtx, stopQueue := context.WithCancel(context.Background())
-	app.cancelFn = stopQueue
+	app.SetCancelFunc(stopQueue)
 
 	// Launch smoothing goroutine: interpolates progress bar towards the target
 	// percentage using an easing step, giving a smooth visual effect.
@@ -132,6 +132,7 @@ func (app *DownloaderApp) startDownload() {
 		// Always stop the smoother and re-enable the download button when the
 		// batch finishes, regardless of how it ends.
 		defer stopQueue()
+		defer app.SetCancelFunc(nil)
 		defer app.isRunning.Store(false)
 		defer fyne.Do(func() {
 			if app.ppFailed.Load() > 0 {
@@ -164,7 +165,7 @@ func (app *DownloaderApp) startDownload() {
 			var skipItem context.CancelFunc
 			if len(urls) > 1 {
 				runCtx, skipItem = context.WithCancel(queueCtx)
-				app.cancelFn = skipItem
+				app.SetCancelFunc(skipItem)
 			}
 
 			if len(urls) > 1 {
@@ -190,7 +191,7 @@ func (app *DownloaderApp) startDownload() {
 		if hasPostProcess && len(allFinalPaths) > 0 && queueCtx.Err() == nil {
 			// Re-enable cancel and point it at the queue context so the user can
 			// abort all running FFmpeg jobs at once.
-			app.cancelFn = stopQueue
+			app.SetCancelFunc(stopQueue)
 			fyne.Do(func() { app.ui.cancelBtn.Enable() })
 			app.updateStatus("Status: Post-processing...")
 			app.setStatusIndicator("processing")

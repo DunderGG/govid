@@ -579,8 +579,7 @@ func (app *DownloaderApp) createUI() {
 	ui.cancelBtn.Icon = themedIcon(IconCancel)
 	ui.cancelBtn.Text = "Cancel"
 	ui.cancelBtn.OnTapped = func() {
-		if app.cancelFn != nil {
-			app.cancelFn()
+		if app.RequestCancel() {
 			app.appendOutput("Download canceled by user.", colWarning)
 		}
 	}

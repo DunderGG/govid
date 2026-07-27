@@ -145,9 +145,7 @@ func main() {
 				"A download or post-processing job is currently running.\nAre you sure you want to quit?",
 				func(confirmed bool) {
 					if confirmed {
-						if dlApp.cancelFn != nil {
-							dlApp.cancelFn()
-						}
+						dlApp.RequestCancel()
 						mainApp.Quit()
 					}
 				},

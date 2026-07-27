@@ -16,7 +16,7 @@ These steps touch isolated areas with no cross-component dependencies and can be
 - ~~**PreferenceService step 2**~~ — *Done. `LoadFromFile` and `MergeConfig` added to `PreferenceService`; `loadConfigFile` and `applyConfig` removed from `helpers.go`. `applyPreferencesToWidgets` extended with guarded writes for `Format`, `Quality`, and `SavedPath`.*
 - ~~**PreferenceService step 3**~~ — *Done. The four direct-write `OnChanged` handlers (`saveLog`, `notify`, `autoRetry`, `enablePostProcess`) now call `app.savePreferences(app.ui.path.Text)`. The stray raw string `"saveLog"` was also replaced by the service call.*
 - ~~**LogService step 1**~~ — *Done. `sessionDir` field added to `LogService`, set by `OpenSessionLog` and cleared by `CloseSessionLog`. `WriteToErrorLog` signature reduced to `(line string)`; the directory is now resolved internally, falling back to the executable directory when no session is active. The dir-computation block removed from `appendOutput`.*
-- **main.go cleanup** — Replace `os.Exit(0)` with `return` for idiomatic control flow; expose a `RequestCancel()` method on `DownloaderApp` to encapsulate safe cancellation behind a single entry point.
+- ~~**main.go cleanup**~~ — *Done. The `-update` success path in `main()` now exits via `return` (non-error path), and cancellation is encapsulated behind `DownloaderApp.RequestCancel()` with synchronized access to the active cancel callback.*
 
 ### Phase 2 — Complete DownloadEngine (sequential)
 
@@ -214,14 +214,8 @@ The package-level `UpdateYtDlpCLI()` replaces the old `updateYtDlp()` free funct
 
 ## main.go
 
-- [ ] Potential race/coupling around cancellation function access
-   - In main.go:144, the close handler reads and invokes downloader.cancelFn directly, while that field is reassigned during downloads in download.go:95, download.go:167, and download.go:193. This can become a concurrency hazard and also leaks internal state outside DownloaderApp.
-   - Refactor: expose a method like RequestCancel() on DownloaderApp that safely checks/invokes the cancel func behind synchronization (or an atomic/mutex-protected accessor).
+- [x] Potential race/coupling around cancellation function access — *Done. Direct reads/invocations of `cancelFn` were removed from UI/close handlers; callers now use `RequestCancel()`, and cancel callback access is synchronized behind a mutex on `DownloaderApp`.*
 
-- [ ] Non-idiomatic os.Exit(0) in main normal flow
-   - In main.go:109, using os.Exit(0) after -update is functional, but in Go it’s generally cleaner to return from main unless you specifically need a non-zero process exit or to bypass defers.
-   - Refactor: replace with return for more idiomatic control flow and easier future maintenance.
+- [x] Non-idiomatic os.Exit(0) in main normal flow — *Done. The `-update` success path exits via `return`; `os.Exit(...)` remains only for non-zero error exit code propagation.*
 
-- Open question
-
-   - [ ] If you expect concurrent cancellation from multiple UI paths (close intercept + cancel button), do we want strict single-cancel semantics? If yes, a sync.Once around cancel invocation may be worthwhile.
+- [x] Open question: strict single-cancel semantics — *Addressed. `RequestCancel()` atomically takes-and-clears the active cancel callback before invocation, preventing repeated concurrent invocations of the same cancel function from multiple UI paths.*
