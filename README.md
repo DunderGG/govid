@@ -1,6 +1,16 @@
-# <img width="64" height="64" alt="appicon" src="https://github.com/user-attachments/assets/d81ed71e-cc17-4944-aafc-d94f7af758b4" />  **GoVid**
+# <img src="https://github.com/user-attachments/assets/d81ed71e-cc17-4944-aafc-d94f7af758b4" alt="GoVid icon" width="64" height="64" /> **GoVid**
 
-GoVid is a high-performance, cross-platform video downloader built with Go. It provides a clean graphical interface for the powerful `yt-dlp` tool, allowing you to easily download and convert videos from various online platforms.
+Fast, cross-platform desktop video downloader for `yt-dlp` with optional FFmpeg post-processing.
+
+[![Latest Release](https://img.shields.io/github/v/release/DunderGG/govid?label=release)](https://github.com/DunderGG/govid/releases/latest)
+[![License](https://img.shields.io/github/license/DunderGG/govid)](LICENSE)
+![Go Version](https://img.shields.io/badge/go-1.26%2B-00ADD8)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-2ea44f)
+
+Download: [Latest Release](https://github.com/DunderGG/govid/releases/latest)
+Quick links: [Features](#-features) · [Getting Started](#-getting-started) · [Usage](#-usage)
+
+Why GoVid: a native GUI focused on speed, batch workflows, and quality controls without command-line setup.
 
 ## ✨ Features
 
