@@ -19,15 +19,15 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Quality Control**: Select your preferred maximum resolution for downloads.
 - **Video Trimming**: Download only a specific segment — specify a start time, an end time, or both (`HH:MM:SS` / `MM:SS` / seconds).
 - **Batch Processing**: Download multiple URLs at once by switching to Batch Mode (one URL per line).
-- **Real-time Progress**: Visual progress bars and a live scrollable log view.
-- **Professional Post-Processing**: Seamless integration with FFmpeg for frame interpolation (60FPS), sharpening, and audio normalization.
-- **Motion Smoothing**: Three modes (Precise, Balanced, Fast) for AI-driven smooth motion interpolation.
-- **Download Management**: Easily start, monitor, and cancel active downloads.
+- **Real-time Progress**: Live progress tracking with per-download progress bars and a scrollable activity log.
+- **Optional Post-Processing**: Seamless integration with FFmpeg for frame interpolation (60FPS), sharpening, and audio normalization.
+- **Motion Smoothing**: Three interpolation modes (Precise, Balanced, Fast) for smoother motion at higher frame rates.
+- **Download Management**: Start, monitor, and cancel active downloads from a single queue view.
 - **Speed Limiting**: Cap download bandwidth to avoid saturating your network.
-- **Config Support**: Load settings from a `govid.json` file for automation or specific defaults.
+- **Config Support**: Configuration file support via `govid.json` for startup defaults and repeatable workflows.
 - **Log Export**: Option to save download logs to `.txt` files for troubleshooting.
-- **Completion Notifications**: Optional system notifications when a download finishes.
-- **Dark / Light Theme**: Switch between themes via Tools → Preferences.
+- **Completion Notifications**: Optional desktop notifications when downloads complete.
+- **Dark / Light Theme**: Built-in light and dark themes configurable in Preferences.
 
 ## 📥 Download
 
