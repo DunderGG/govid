@@ -86,17 +86,19 @@ Ensure you have [Go 1.26+](https://go.dev/dl/) installed.
 
 ## 📖 Usage
 
-1. **Launch**: Open the GoVid application.
-2. **URL / Batch Mode**: Paste the video URL. Enable **Batch Mode** to paste a list of URLs (one per line).
-3. **Configuration**: Select your desired output format (MP4, MKV, WebM, MP3, or M4A) and maximum resolution.
-4. **Trim (optional)**: Enter a start time, end time, or both (e.g. `00:01:30` / `00:05:00`) to download only a portion of the video.
-5. **Post-Processing (Advanced)**: Go to **Tools → Preferences** to enable:
-    - **Smooth Motion**: Interpolates video to 60fps.
+1. **Launch**: Open GoVid.
+2. **URL or Batch Mode**: Paste a video URL. Enable **Batch Mode** to paste multiple URLs (one per line).
+3. **Format and Quality**: Choose the output format (MP4, MKV, WebM, MP3, or M4A) and maximum resolution.
+4. **Trim (Optional)**: Enter a start time, end time, or both (for example `00:01:30` and `00:05:00`) to download only part of the video.
+5. **Post-Processing (Advanced)**: Open **Tools → Preferences** to enable:
+    - **Smooth Motion**: Interpolates video to 60 fps.
     - **Sharpen Video**: Restores edge detail.
     - **Normalize Audio**: Balances volume levels.
-6. **JSON Config**: Place a `govid.json` in the app folder to store advanced patterns. Use the **Load from Config** button in Preferences to apply them.
-7. **Save Location**: Choose the directory where you want to save the file.
-8. **Download**: Click **Download Now!** to start.
+6. **JSON Config (Optional)**: Place a `govid.json` file in the app folder for startup defaults and repeatable workflows, then click **Load from Config** in Preferences.
+7. **Save Location**: Choose where the output file should be saved.
+8. **Download**: Click **Download Now** to start.
+
+> **Note:** If a download fails, run `--update` to refresh `yt-dlp` and try again.
 
 ### Command Line Options
 
