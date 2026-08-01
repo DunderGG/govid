@@ -235,6 +235,19 @@ This document outlines planned features, improvements, and known limitations for
 - [X] Make sure only one Preferences window can be opened.
 - [ ] The code for the guide window needs improving. Get rid of extremely long text strings.
 - [X] Errors from ffmpeg sometimes gets buried in the verbose logs. Maybe Errors should be logged to separate file?
+- [ ] Investigate GPU acceleration for FFmpeg.
+	- [ ] Identify target acceleration backends per OS: `nvenc`/`cuda` (NVIDIA), `qsv` (Intel), `amf` (AMD), and `videotoolbox` (macOS).
+	- [ ] Verify which backends are available in our bundled FFmpeg builds (`ffmpeg -hide_banner -encoders`, `-hwaccels`, `-decoders`, `-filters`).
+	- [ ] Decide feature scope: which post-processing operations should use GPU first (e.g. scaling, tone mapping, denoise) and which remain CPU.
+	- [ ] Add runtime capability detection in Go and cache results by backend/vendor so unsupported paths are never selected.
+	- [ ] Design command builders for GPU pipelines (upload/download, hwaccel flags, codec selection) with safe CPU fallback equivalents.
+	- [ ] Add a user setting: `Auto` (recommended), explicit backend selection, and `Off` for troubleshooting.
+	- [ ] Implement strict fallback behavior: if GPU init fails, retry once with CPU and log a concise reason.
+	- [ ] Benchmark representative jobs (1080p, 1440p, 4K; short and long clips) for speed, quality, and failure rate versus CPU.
+	- [ ] Add guardrails for known edge cases (driver mismatch, out-of-memory, unsupported pixel formats, HDR filter incompatibilities).
+	- [ ] Expose diagnostics in logs and About/Help (detected backend, selected path, fallback reason) to simplify bug reports.
+	- [ ] Document platform prerequisites (driver versions, required FFmpeg features) and add a quick verification checklist to release docs.
+- [ ] We may want to start limiting how much we are logging. There is a lot of "noise" we don't care about.
 
 ---
 
@@ -355,6 +368,7 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Capture and store the real source title in history using a structured yt-dlp output field; fall back to filename/title inference if unavailable.
 - [X] Show a "History" panel or tab in the UI.
 - [ ] Warn the user when they paste a URL that has already been downloaded.
+- [ ] Add a toggle to keep history or not, and a button to clear history (warn first).
 
 ### Structural Refactoring
 > Decouple core logic from the main UI controller.
