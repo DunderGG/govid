@@ -236,7 +236,7 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] The code for the guide window needs improving. Get rid of extremely long text strings.
 - [X] Errors from ffmpeg sometimes gets buried in the verbose logs. Maybe Errors should be logged to separate file?
 - [ ] Investigate GPU acceleration for FFmpeg.
-	- [ ] Identify target acceleration backends per OS: `nvenc`/`cuda` (NVIDIA), `qsv` (Intel), `amf` (AMD), and `videotoolbox` (macOS).
+	- [X] Identify [target acceleration backends](gpu-acceleration.md) per OS: `nvenc`/`cuda` (NVIDIA), `qsv` (Intel), `amf` (AMD), and `videotoolbox` (macOS).
 	- [ ] Verify which backends are available in our bundled FFmpeg builds (`ffmpeg -hide_banner -encoders`, `-hwaccels`, `-decoders`, `-filters`).
 	- [ ] Decide feature scope: which post-processing operations should use GPU first (e.g. scaling, tone mapping, denoise) and which remain CPU.
 	- [ ] Add runtime capability detection in Go and cache results by backend/vendor so unsupported paths are never selected.
