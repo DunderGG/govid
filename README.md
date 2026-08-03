@@ -133,6 +133,10 @@ Example `govid.json`:
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) - YouTube-dl fork with additional features
 - [FFmpeg](https://ffmpeg.org/) - A collection of libraries and tools to process multimedia content
 
+## 🤝 Contributing
+
+Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete development, dependency, testing, and packaging workflow.
+
 ## 👤 Author
 
 **David Bennehag** - [@DunderGG](https://github.com/DunderGG) - [dunder.gg](https://dunder.gg)

@@ -233,11 +233,13 @@ This document outlines planned features, improvements, and known limitations for
 ### General improvements
 > Any general improvements we can think of
 - [X] Make sure only one Preferences window can be opened.
+- [ ] We may want to start limiting how much we are logging. There is a lot of "noise" we don't care about.
 - [ ] The code for the guide window needs improving. Get rid of extremely long text strings.
 - [X] Errors from ffmpeg sometimes gets buried in the verbose logs. Maybe Errors should be logged to separate file?
 - [ ] Investigate GPU acceleration for FFmpeg.
 	- [X] Identify [target acceleration backends](gpu-acceleration.md) per OS: `nvenc`/`cuda` (NVIDIA), `qsv` (Intel), `amf` (AMD), and `videotoolbox` (macOS).
-	- [ ] Verify which backends are available in our bundled FFmpeg builds (`ffmpeg -hide_banner -encoders`, `-hwaccels`, `-decoders`, `-filters`).
+	- [X] Verify which backends are available in our [current bundled FFmpeg build](gpu-acceleration.md#5-current-bundled-build-inventory) (`ffmpeg -hide_banner -encoders`, `-hwaccels`, `-decoders`, `-filters`). 
+		- [ ] Re-run for future macOS and Linux artifacts.
 	- [ ] Decide feature scope: which post-processing operations should use GPU first (e.g. scaling, tone mapping, denoise) and which remain CPU.
 	- [ ] Add runtime capability detection in Go and cache results by backend/vendor so unsupported paths are never selected.
 	- [ ] Design command builders for GPU pipelines (upload/download, hwaccel flags, codec selection) with safe CPU fallback equivalents.
@@ -247,7 +249,6 @@ This document outlines planned features, improvements, and known limitations for
 	- [ ] Add guardrails for known edge cases (driver mismatch, out-of-memory, unsupported pixel formats, HDR filter incompatibilities).
 	- [ ] Expose diagnostics in logs and About/Help (detected backend, selected path, fallback reason) to simplify bug reports.
 	- [ ] Document platform prerequisites (driver versions, required FFmpeg features) and add a quick verification checklist to release docs.
-- [ ] We may want to start limiting how much we are logging. There is a lot of "noise" we don't care about.
 
 ---
 

@@ -87,7 +87,36 @@ Relevant names include `cuda`, `nvenc`, `qsv`, `amf`, `vaapi`, `d3d11va`, `vulka
 
 ---
 
-## 5. Pipeline design constraints
+## 5. Current bundled build inventory
+
+Verified on 2026-08-02 against the Windows binary packaged from `external/ffmpeg.exe`:
+
+| Property | Value |
+|---|---|
+| FFmpeg version | `8.1-essentials_build-www.gyan.dev` |
+| SHA-256 | `1A65D5B0B10D8D9A81D2824A3538046A40ED3607C906B335A166ADD87613F705` |
+| Build source | gyan.dev essentials build |
+
+### Reported hardware APIs
+
+The binary reports `cuda`, `qsv`, `amf`, `d3d11va`, `d3d12va`, `dxva2`, and `vaapi` from `-hwaccels`.
+
+| Backend | Encoders | Decoders | Relevant filters | Build status |
+|---|---|---|---|---|
+| NVIDIA | `h264_nvenc`, `hevc_nvenc`, `av1_nvenc` | CUVID support for AV1, H.264, HEVC, MJPEG, MPEG-1/2/4, VC-1, VP8, and VP9 | `scale_cuda`, `colorspace_cuda`, `bilateral_cuda`, `bwdif_cuda`, `yadif_cuda`, `hwupload_cuda`, and others | Compiled in |
+| Intel QSV | H.264, HEVC, AV1, VP9, MPEG-2, and MJPEG | AV1, H.264, HEVC, MJPEG, MPEG-2, VC-1, VP8, VP9, and VVC | `scale_qsv`, `vpp_qsv`, `deinterlace_qsv`, overlay, pad, and stack filters | Compiled in |
+| AMD AMF | `h264_amf`, `hevc_amf`, `av1_amf` | `av1_amf`, `h264_amf`, `hevc_amf`, `vp9_amf` | `vpp_amf`, `sr_amf` | Compiled in |
+| VAAPI | H.264, HEVC, AV1, VP8, VP9, MPEG-2, and MJPEG | Reported as a hardware API; codec use is selected through `-hwaccel vaapi` | Scaling, tone mapping, denoise, sharpness, deinterlace, color adjustment, overlay, pad, and stack filters | Compiled in; not a primary Windows path |
+| VideoToolbox | None | None | None | Not compiled in, as expected for Windows |
+| Vulkan / OpenCL | None reported by the targeted inventory | None reported by the targeted inventory | None reported by the targeted inventory | Not available in this build |
+
+This confirms that the current package contains the components needed to attempt the three primary Windows pipelines. It does not confirm that any pipeline works on the current or an end user's GPU. Driver and device initialization belong to runtime capability detection.
+
+Windows is currently the only platform with a bundled artifact in this repository. Repeat this inventory and record a platform-specific binary checksum when macOS and Linux packages are added.
+
+---
+
+## 6. Pipeline design constraints
 
 - Hardware decode alone may not improve a CPU-filtered job. Downloading frames to system memory can erase the gain.
 - Hardware filters usually require a specific pixel format and frames resident on the correct device.
@@ -99,7 +128,7 @@ Relevant names include `cuda`, `nvenc`, `qsv`, `amf`, `vaapi`, `d3d11va`, `vulka
 
 ---
 
-## 6. Recommended implementation order
+## 7. Recommended implementation order
 
 1. Inventory the bundled FFmpeg builds using the four capability commands above.
 2. Add typed backend and capability models in Go.
@@ -113,7 +142,7 @@ Complex existing filters such as `nlmeans`, `deshake`, `deband`, and audio proce
 
 ---
 
-## 7. Definition of done for backend identification
+## 8. Definition of done for backend identification
 
 - Target device, decode, filter, and encode APIs are named for Windows, Linux, and macOS.
 - Initial platform priorities and stable configuration identifiers are defined.
