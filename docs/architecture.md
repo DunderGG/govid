@@ -48,7 +48,7 @@ govid/
 ├── ── Orchestration ───────────────────────────────────────────────
 ├── download.go             DownloaderApp.startDownload / runYtDlp — UI orchestration for a download session
 ├── postprocess.go          DownloaderApp.buildPostProcessFilters / applyFFmpegFilters — thin UI wrapper + utility functions
-├── logscanner.go           watchOutput / parseProgress — yt-dlp stdout/stderr parsing goroutines
+├── logscanner.go           DownloadEngine.watchOutput / parseProgress — yt-dlp stdout/stderr parsing goroutines
 │
 ├── ── UI ──────────────────────────────────────────────────────────
 ├── ui.go                   createUI, createMainMenu, showPreferences, showPostProcessing
@@ -118,9 +118,11 @@ Owns the five singleton secondary windows (About, Help, History, Preferences, Po
 A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and provides two methods:
 
 - **`BuildArgs(DownloadRequest) DownloadArgs`** — pure function; assembles the yt-dlp command-line arguments from a request value struct. No I/O.
-- **`Execute(ctx, args, autoRetry, index, total, ProcessCallbacks) (scanResult, error)`** — starts the process, streams stdout/stderr through `ProcessCallbacks.WatchOutput`, and retries on transient errors with 1 s / 5 s / 30 s back-off.
+- **`Execute(ctx, args, autoRetry, index, total, ProcessCallbacks) (scanResult, error)`** — starts the process, streams stdout/stderr through its own private `watchOutput` method (defined in `logscanner.go`), and retries on transient errors with 1 s / 5 s / 30 s back-off.
 
-`ProcessCallbacks` is a bridge struct: it carries closures that let the engine report progress back to the UI without importing Fyne. `DownloaderApp.runYtDlp()` is the only caller.
+The private `watchOutput(stdout, stderr, cb) scanResult` and `parseProgress(line, cb)` methods own all output-scanning; they hold no UI state and report every line and progress tick through `ProcessCallbacks`.
+
+`ProcessCallbacks` is a bridge struct: it carries closures (`OnLog`, `OnStatus`, `OnProgress`) that let the engine report progress back to the UI without importing Fyne. `OnProgress(pct float64, size string)` is called for each parsed percentage; `size` is the last reported downloaded-size token, or empty when the line had none. `DownloaderApp.runYtDlp()` is the only caller.
 
 ---
 
@@ -222,7 +224,7 @@ User clicks Download
             ├─ engine.BuildArgs(DownloadRequest)   → []string args
             ├─ engine.Execute(ctx, args, cb)        → scanResult
             │    ├─ cmd.StdoutPipe / StderrPipe
-            │    └─ cb.WatchOutput → watchOutput() goroutines (parse % / size)
+            │    └─ engine.watchOutput() goroutines (parse % / size) → cb.OnProgress
             ├─ finalizeDownloadedFiles()            glob → rename
             └─ historySvc.AppendAll()               JSON append
   └─ applyFFmpegFilters()     if post-processing enabled
@@ -313,7 +315,7 @@ func classify(err error) Category {
 | Goroutine | Started by | Cancelled by |
 |---|---|---|
 | Per-URL download worker | `startDownload()` via `sync.WaitGroup` | `context.WithCancel` (Cancel button) |
-| `watchOutput` stdout/stderr | `DownloadEngine.Execute()` | process exit + pipe close |
+| `DownloadEngine.watchOutput` stdout/stderr | `DownloadEngine.Execute()` | process exit + pipe close |
 | Progress bar smoother | `createUI()` → ticker goroutine | same context cancel |
 | Status dot pulse | `setStatusIndicator("active")` | `stopPulse` channel close |
 | Post-process worker pool | `PPEngine.ApplyFilters()` | same context |

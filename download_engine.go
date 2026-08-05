@@ -13,7 +13,6 @@ import (
 	"context"
 	"fmt"
 	"image/color"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -179,15 +178,16 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 }
 
 // ProcessCallbacks lets the engine report events to the UI layer without
-// importing Fyne. The caller wires these to its own log/status/watch methods.
+// importing Fyne. The caller wires these to its own log/status/progress methods.
 type ProcessCallbacks struct {
 	// OnLog is called for every message the engine wants to show in the log view.
 	OnLog func(line string, col color.Color)
 	// OnStatus is called to update the short status label.
 	OnStatus func(msg string)
-	// WatchOutput reads stdout and stderr from a running yt-dlp process,
-	// forwarding lines to the UI and returning collected scan metadata.
-	WatchOutput func(stdout, stderr io.Reader) scanResult
+	// OnProgress is called whenever a progress percentage is parsed from yt-dlp
+	// output. size is the last reported downloaded-size token (e.g. "15.2MiB"),
+	// or empty when the output line did not include one.
+	OnProgress func(pct float64, size string)
 }
 
 // Execute runs yt-dlp with the given args, retrying on transient errors
@@ -240,7 +240,7 @@ func (engine *DownloadEngine) Execute(ctx context.Context, args []string, autoRe
 			cb.OnStatus("Status: Downloading...")
 		}
 
-		result = cb.WatchOutput(stdout, stderr)
+		result = engine.watchOutput(stdout, stderr, cb)
 		cmdErr = cmd.Wait()
 		if cmdErr == nil {
 			break

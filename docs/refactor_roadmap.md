@@ -22,7 +22,7 @@ These steps touch isolated areas with no cross-component dependencies and can be
 
 Each step depends on the previous one.
 
-1. **DownloadEngine step 1** — Add `OnProgress(pct float64, size string)` to `ProcessCallbacks`; move `watchOutput` and `parseProgress` out of `DownloaderApp` so the engine owns its own output scanning.
+1. ~~**DownloadEngine step 1**~~ — *Done. `OnProgress(pct float64, size string)` added to `ProcessCallbacks`; `watchOutput` and `parseProgress` moved from `DownloaderApp` to private `DownloadEngine` methods in `logscanner.go`. `Execute` now calls `engine.watchOutput` directly (the `WatchOutput` callback field was removed); progress and size are reported to the caller via `OnProgress` instead of writing `app.stats` directly.*
 2. **DownloadEngine step 2** — Move `finalizeDownloadedFiles` to `DownloadEngine` as a `FinalizeFiles(savePath, downloadID string, onLog func(...)) []string` method.
 3. **DownloadEngine step 3** — Collapse `runYtDlp` into `engine.Run(ctx, req, callbacks)` — a pure composition of `BuildArgs` + `Execute` + `FinalizeFiles` with no remaining UI state reads.
 4. **DownloadEngine step 4** — Reduce the argument count of `Execute()`.
@@ -60,7 +60,7 @@ All steps depend on the preceding phases. Execute in order; each step shrinks th
 ## High Priority
 
 - [ ] Refactor ui.go into smaller helpers — Split the large window construction into helpers for menus, dialogs, history, and preferences so the file is easier to scan and change. *(ui.go is 709 lines; `showAbout`, `showHistory`, `showConfigHelp` have moved to UIManager but `createUI`, `createMainMenu`, `showPreferences`, `showPostProcessing` remain. Blocked until more services are extracted.)*
-- [ ] Split download.go into phases — Separate yt-dlp argument building, process startup, output parsing, and retry handling into smaller functions. *(`BuildArgs` and the retry loop are in `DownloadEngine`. Remaining: move `watchOutput`/`parseProgress`/`finalizeDownloadedFiles` then `runYtDlp` — see DownloadEngine next steps below.)*
+- [ ] Split download.go into phases — Separate yt-dlp argument building, process startup, output parsing, and retry handling into smaller functions. *(`BuildArgs` and the retry loop are in `DownloadEngine`; output scanning (`watchOutput`/`parseProgress`) also moved there ✓. Remaining: move `finalizeDownloadedFiles` then `runYtDlp` — see DownloadEngine next steps below.)*
 - [ ] Break postprocess.go into smaller pipelines — Move FFmpeg option building, UI state handling, and feature-specific logic into smaller functions or separate files. *(`PPEngine` owns filter execution. Probe functions and `buildFFmpegArgs`/`patchThreadCount` moved to `pp_engine.go` ✓. Remaining: decouple `buildPostProcessFilters` from widgets — see PPEngine next steps below.)*
 - [x] Use context.Context consistently for cancellation — Pass context through the download pipeline so stopping a job does not leave background work running. *(Context flows correctly through `startDownload` → `runYtDlp` → `DownloadEngine.Execute` → `PPEngine.ApplyFilters`. Resolved as a side-effect of the service extractions.)*
 - [ ] Group UIWidgets into smaller structs — Break the large UIWidgets type into smaller feature-specific structs like download controls and preferences controls. *(Still one flat 40-field struct. Best tackled alongside the ui.go refactor.)*
@@ -103,15 +103,15 @@ See the sections below for per-component details and open next steps.
 
 ## DownloadEngine
 
-**Done:** `DownloadEngine` struct introduced in `download_engine.go`. It owns the yt-dlp and ffmpeg binary paths and exposes two methods: `BuildArgs(DownloadRequest) DownloadArgs` (pure argument construction, no I/O) and `Execute(ctx, args, autoRetry, index, total, ProcessCallbacks) (scanResult, error)` (retry loop with exponential backoff). `ProcessCallbacks` bridges log, status, and output-scanning events back to the UI without Fyne imports. `download.go` is now a thin orchestration layer that collects UI state and delegates to the engine.
+**Done:** `DownloadEngine` struct introduced in `download_engine.go`. It owns the yt-dlp and ffmpeg binary paths and exposes two methods: `BuildArgs(DownloadRequest) DownloadArgs` (pure argument construction, no I/O) and `Execute(ctx, args, autoRetry, index, total, ProcessCallbacks) (scanResult, error)` (retry loop with exponential backoff). `ProcessCallbacks` bridges log, status, and progress events back to the UI without Fyne imports. Its private `watchOutput`/`parseProgress` methods (moved from `DownloaderApp`, now living in `logscanner.go`) own all yt-dlp output scanning and report progress via `OnProgress(pct float64, size string)` instead of writing to `app.stats` directly. `download.go` is now a thin orchestration layer that collects UI state and delegates to the engine.
 
 **Next steps:**
 
-1. **Move `watchOutput` / `parseProgress` out of `DownloaderApp`** — these are called through `ProcessCallbacks.WatchOutput` but still live on `DownloaderApp` because they write to `app.stats` (progress tracking state). Extracting them requires either moving `DownloadStats` into `DownloadEngine` or passing a `OnProgress(pct float64, size string)` callback so the engine owns no mutable UI state.
+1. ~~**Move `watchOutput` / `parseProgress` out of `DownloaderApp`**~~ — *Done. Both are now private methods on `DownloadEngine` in `logscanner.go`, taking a `ProcessCallbacks` parameter. `ProcessCallbacks.WatchOutput` was removed; `Execute` calls `engine.watchOutput` directly, and a new `OnProgress(pct float64, size string)` field lets the caller update its own progress bar and `DownloadStats` without the engine touching UI state.*
 
 2. **Move `finalizeDownloadedFiles` to `DownloadEngine`** — it is called right after `Execute` in `runYtDlp` and is purely file-system work (glob, rename, uniquePath). A `FinalizeFiles(savePath, downloadID string, onLog func(...)) []string` method would complete the engine's ownership of a single URL's full lifecycle.
 
-3. **Move `runYtDlp` to `DownloadEngine`** — once the two steps above are done, `runYtDlp` becomes a pure composition of `BuildArgs` + `Execute` + `FinalizeFiles` with no remaining UI state reads, and can become `engine.Run(ctx, req, callbacks)`.
+3. **Move `runYtDlp` to `DownloadEngine`** — once the step above is done, `runYtDlp` becomes a pure composition of `BuildArgs` + `Execute` + `FinalizeFiles` with no remaining UI state reads, and can become `engine.Run(ctx, req, callbacks)`.
 
 4. **Refactor `execute`** — The function `Execute()` takes too many arguments.
 

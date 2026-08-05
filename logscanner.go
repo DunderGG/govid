@@ -1,11 +1,13 @@
-// logscanner.go — Parses and routes yt-dlp stdout/stderr to the UI.
+// logscanner.go — Parses yt-dlp stdout/stderr and reports events via callbacks.
 //
 // Responsibilities:
 //   - Reads stdout and stderr from an active yt-dlp process concurrently.
-//   - Routes each line to the UI with appropriate colouring.
+//   - Reports each line to the caller (via ProcessCallbacks.OnLog) with
+//     appropriate colouring.
 //   - Extracts file-format metadata (source extensions, conversion flag)
 //     for display in the post-download summary.
-//   - Parses percentage and size tokens for the animated progress bar.
+//   - Parses percentage and size tokens, reporting them via
+//     ProcessCallbacks.OnProgress for the animated progress bar.
 package main
 
 import (
@@ -42,9 +44,10 @@ var transientErrPatterns = []string{
 }
 
 // watchOutput reads stdout and stderr from a running yt-dlp process concurrently,
-// forwarding every line to the UI log and collecting format metadata.
-// It blocks until both streams reach EOF.
-func (app *DownloaderApp) watchOutput(stdout, stderr io.Reader) scanResult {
+// forwarding every line to the UI log (via cb.OnLog) and collecting format
+// metadata. It blocks until both streams reach EOF. The engine owns no mutable
+// UI state itself — progress updates are reported through cb.OnProgress.
+func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCallbacks) scanResult {
 	var (
 		result    scanResult
 		waitGroup sync.WaitGroup
@@ -56,17 +59,17 @@ func (app *DownloaderApp) watchOutput(stdout, stderr io.Reader) scanResult {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			line := scanner.Text()
-			app.parseProgress(line)
+			engine.parseProgress(line, cb)
 			// Capture the extension of each file yt-dlp writes to disk.
 			if dest, found := strings.CutPrefix(line, "[download] Destination: "); found {
 				if ext := strings.TrimPrefix(filepath.Ext(dest), "."); ext != "" {
 					result.sourceExts = append(result.sourceExts, ext)
 				}
 			}
-			app.appendOutput(line, theme.ForegroundColor())
+			cb.OnLog(line, theme.ForegroundColor())
 		}
 		if err := scanner.Err(); err != nil {
-			app.appendOutput(fmt.Sprintf("[SYSTEM] stdout read error: %v", err), colWarning)
+			cb.OnLog(fmt.Sprintf("[SYSTEM] stdout read error: %v", err), colWarning)
 		}
 	}()
 
@@ -100,10 +103,10 @@ func (app *DownloaderApp) watchOutput(stdout, stderr io.Reader) scanResult {
 			default:
 				logColor = theme.ForegroundColor()
 			}
-			app.appendOutput(line, logColor)
+			cb.OnLog(line, logColor)
 		}
 		if err := scanner.Err(); err != nil {
-			app.appendOutput(fmt.Sprintf("[SYSTEM] stderr read error: %v", err), colWarning)
+			cb.OnLog(fmt.Sprintf("[SYSTEM] stderr read error: %v", err), colWarning)
 		}
 	}()
 
@@ -112,19 +115,20 @@ func (app *DownloaderApp) watchOutput(stdout, stderr io.Reader) scanResult {
 }
 
 // parseProgress scans a line of yt-dlp output for percentage markers and size
-// information, updating the progress bar target and session statistics.
-func (app *DownloaderApp) parseProgress(line string) {
+// information, reporting them to cb.OnProgress for the caller to apply to
+// its own progress bar and session statistics.
+func (engine *DownloadEngine) parseProgress(line string, cb ProcessCallbacks) {
 	if strings.Contains(line, "%") {
 		fields := strings.Fields(line)
 		for _, field := range fields {
 			if strings.HasSuffix(field, "%") {
 				var val float64
 				fmt.Sscanf(field, "%f%%", &val)
-				app.setProgress(val / 100.0)
+				size := ""
 				if len(fields) >= 4 {
-					app.stats.lastSize = fields[3]
-					fmt.Sscanf(app.stats.lastSize, "%f%s", &app.stats.downloadedRaw, &app.stats.unit)
+					size = fields[3]
 				}
+				cb.OnProgress(val/100.0, size)
 				break
 			}
 		}

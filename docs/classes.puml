@@ -118,6 +118,8 @@ package "Download Engine" #FFF8F0 {
         --
         +BuildArgs(req DownloadRequest) : DownloadArgs
         +Execute(ctx, args, autoRetry,\n  index, total, cb) : scanResult
+        -watchOutput(stdout, stderr, cb) : scanResult
+        -parseProgress(line, cb)
     }
 
     class DownloadRequest <<data>> {
@@ -137,10 +139,9 @@ package "Download Engine" #FFF8F0 {
     }
 
     class ProcessCallbacks <<bridge>> {
-        +Log : func(line string, col color.Color)
-        +Status : func(msg string)
-        +WatchOutput : func(stdout, stderr io.Reader) scanResult
-        +ShowRetry : func(n, total int, delay time.Duration)
+        +OnLog : func(line string, col color.Color)
+        +OnStatus : func(msg string)
+        +OnProgress : func(pct float64, size string)
     }
 
     class scanResult <<data>> {

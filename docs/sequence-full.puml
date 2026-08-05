@@ -9,7 +9,7 @@ skinparam shadowing false
 actor       User            as U
 participant "Fyne UI"       as UI
 participant "DownloaderApp" as App
-participant "watchOutput\ngoroutines" as WO
+participant "DownloadEngine\nwatchOutput" as WO
 participant "yt-dlp"        as YT
 participant "FFmpeg"        as FF
 participant "OS / Disk"     as OS
@@ -91,13 +91,14 @@ group loop [for each URL in queue]
         App -> YT  : cmd.Start()
         App -> UI  : updateStatus("Downloading…")
 
-        App -> WO  : watchOutput(stdout, stderr)
+        App -> WO  : engine.watchOutput(stdout, stderr, cb)
 
         group Concurrent output scanning
             WO  -> YT : scan stdout line by line
             loop stdout lines
-                WO  -> App : parseProgress(line)\n  — extract %, size → stats.targetPct
-                WO  -> UI  : appendOutput(line, foreground colour)
+                WO  -> WO  : engine.parseProgress(line, cb)\n  — extract %, size
+                WO  -> App : cb.OnProgress(pct, size)\n  — App applies to stats.targetPct
+                WO  -> App : cb.OnLog(line, foreground colour)
             end
             WO  -> WO : scanner.Err() check → log if I/O error
 
@@ -105,7 +106,7 @@ group loop [for each URL in queue]
             loop stderr lines
                 WO  -> WO  : detect [Merger]/[VideoConvertor] → wasConverted
                 WO  -> WO  : check transientErrPatterns → hadTransientErr
-                WO  -> UI  : appendOutput(line, red/amber/grey/default)
+                WO  -> App : cb.OnLog(line, red/amber/grey/default)
             end
             WO  -> WO : scanner.Err() check → log if I/O error
         end

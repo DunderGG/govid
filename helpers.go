@@ -108,6 +108,16 @@ func (app *DownloaderApp) appendOutput(line string, col color.Color) {
 	}
 }
 
+// updateProgress is a ProcessCallbacks.OnProgress handler: it advances the
+// progress bar and, when size is non-empty, records it in the session stats.
+func (app *DownloaderApp) updateProgress(pct float64, size string) {
+	app.setProgress(pct)
+	if size != "" {
+		app.stats.lastSize = size
+		fmt.Sscanf(size, "%f%s", &app.stats.downloadedRaw, &app.stats.unit)
+	}
+}
+
 // setStatusIndicator updates the status dot color to reflect the current
 // download state. It also manages the pulse goroutine:
 //   - "active"   → starts or continues the pulsing animation (cyan)
@@ -244,6 +254,7 @@ func (app *DownloaderApp) applyPreferencesToWidgets(p AppPreferences) {
 	ui.logLimit.SetSelected(p.LogLimit)
 	ui.maxSpeed.SetText(p.MaxSpeed)
 }
+
 // resetPreferences clears the stored preference data and resets the log
 // buffer to its default limit. Call rebuildUI afterwards to complete the
 // visual reset.
@@ -258,6 +269,7 @@ func (app *DownloaderApp) rebuildUI() {
 	fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
 	app.createUI()
 }
+
 // ── External tools ───────────────────────────────────────────────────────────
 
 // checkDependencies verifies that the required external tools — yt-dlp and

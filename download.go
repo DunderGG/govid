@@ -274,9 +274,9 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	}
 
 	result, cmdErr := engine.Execute(ctx, args, app.ui.autoRetry.Checked, index, total, ProcessCallbacks{
-		OnLog:       app.appendOutput,
-		OnStatus:    app.updateStatus,
-		WatchOutput: app.watchOutput,
+		OnLog:      app.appendOutput,
+		OnStatus:   app.updateStatus,
+		OnProgress: app.updateProgress,
 	})
 
 	// Rename temp files to their clean, conflict-free names.
