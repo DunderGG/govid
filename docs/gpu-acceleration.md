@@ -1,6 +1,6 @@
 # GoVid — FFmpeg GPU Acceleration
 
-> **Status:** backend targets identified; capability detection and GPU pipelines are not yet implemented.
+> **Status:** backend targets, bundled-build capabilities, and feature scope identified; capability detection and GPU pipelines are not yet implemented.
 > **Audience:** contributors and maintainers working on FFmpeg post-processing.
 
 ---
@@ -128,7 +128,39 @@ Windows is currently the only platform with a bundled artifact in this repositor
 
 ---
 
-## 7. Recommended implementation order
+## 7. Feature scope decision
+
+Decided 2026-08-20, scoped against the checkbox filters built by `buildPostProcessFilters` in `postprocess.go`, using the bundled-build inventory in §5.
+
+| Feature (UI checkbox) | FFmpeg filter(s) | Scope this phase | Reason |
+|---|---|---|---|
+| Final video encode | `libx264` / `libvpx-vp9` | **GPU** | Swapping only the `-c:v` encoder needs no change to the existing `-vf` graph; every accelerated backend accepts software frames directly for encode. Benefits every post-processing job regardless of which other filters are active. |
+| `upscaleVideo` | `scale` (lanczos) | Deferred | Cross-vendor GPU equivalents exist (`scale_cuda`, `scale_qsv`, `scale_vaapi`) but only work cleanly in a full hardware pipeline when scaling is the sole active filter; needs `-hwaccel`/pixel-format plumbing not yet designed. |
+| `deinterlace` | `bwdif` | Deferred | Cross-vendor GPU equivalents exist (`bwdif_cuda`, `deinterlace_qsv`, `deinterlace_vaapi`) with the same sole-active-filter constraint as `upscaleVideo`. |
+| `denoise` | `nlmeans` / `hqdn3d` | CPU (stays) | Only a VAAPI-specific equivalent (`denoise_vaapi`) exists in the bundled build; not cross-vendor. Matches the CPU-first guidance in §6. |
+| `hdrToSdr` | `zscale`/`tonemap` | CPU (stays) | Only a VAAPI-specific equivalent (`tonemap_vaapi`) exists; this filter is already flagged as unreliable in the roadmap, so added complexity is avoided for now. |
+| `sharpen` | `cas` | CPU (stays) | No direct GPU equivalent; VAAPI's `sharpness_vaapi` is a different algorithm and single-vendor. |
+| `vividMode` | `eq` | CPU (stays) | No direct GPU equivalent; VAAPI's `procamp_vaapi` is single-vendor and not equivalent. |
+| `deband` | `deband` | CPU (stays) | No GPU equivalent in the bundled build. |
+| `stabilize` | `deshake` | CPU (stays) | No GPU equivalent in the bundled build. |
+| `autoCrop` | `cropdetect` + `crop` | CPU (stays) | Already a low-cost operation; not worth the pipeline complexity. |
+| `normalizeAudio` | `loudnorm` | CPU (stays) | Audio filter; target backends in this document apply to video only. |
+| `nightMode` | `dynaudnorm` | CPU (stays) | Audio filter; target backends in this document apply to video only. |
+
+### Final-encode mapping
+
+| Output | Current CPU encoder | `nvidia` | `intel` | `amd` | `vaapi` | `videotoolbox` |
+|---|---|---|---|---|---|---|
+| MP4/MKV (H.264) | `libx264 -crf 18 -preset slower` | `h264_nvenc` | `h264_qsv` | `h264_amf` | `h264_vaapi` | `h264_videotoolbox` |
+| WebM (VP9) | `libvpx-vp9 -crf 31 -b:v 0 -deadline good -cpu-used 2` | stays CPU | stays CPU | stays CPU | stays CPU | stays CPU |
+
+WebM output stays on the CPU VP9 encoder in this phase: the bundled build has no NVENC or AMF VP9 encoder, so a GPU path would only cover VAAPI/QSV and produce inconsistent behavior across vendors.
+
+Hardware encoder settings should target visual parity with the current `-crf 18 -preset slower` baseline, using each vendor's constant-quality mode (`h264_nvenc -rc constqp -qp <n>`, `h264_qsv -global_quality <n>`, `h264_amf -qp_i/-qp_p <n>`, `h264_vaapi -qp <n>`, `h264_videotoolbox -q:v <n>`). Exact numeric values are left to the benchmarking step in §8, not fixed here.
+
+---
+
+## 8. Recommended implementation order
 
 1. Inventory the bundled FFmpeg builds using the four capability commands above.
 2. Add typed backend and capability models in Go.
@@ -142,7 +174,7 @@ Complex existing filters such as `nlmeans`, `deshake`, `deband`, and audio proce
 
 ---
 
-## 8. Definition of done for backend identification
+## 9. Definition of done for backend identification
 
 - Target device, decode, filter, and encode APIs are named for Windows, Linux, and macOS.
 - Initial platform priorities and stable configuration identifiers are defined.

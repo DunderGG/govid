@@ -240,7 +240,8 @@ This document outlines planned features, improvements, and known limitations for
 	- [X] Identify [target acceleration backends](gpu-acceleration.md) per OS: `nvenc`/`cuda` (NVIDIA), `qsv` (Intel), `amf` (AMD), and `videotoolbox` (macOS).
 	- [X] Verify which backends are available in our [current bundled FFmpeg build](gpu-acceleration.md#5-current-bundled-build-inventory) (`ffmpeg -hide_banner -encoders`, `-hwaccels`, `-decoders`, `-filters`). 
 		- [ ] Re-run for future macOS and Linux artifacts.
-	- [ ] Decide feature scope: which post-processing operations should use GPU first (e.g. scaling, tone mapping, denoise) and which remain CPU.
+	- [X] Decide [feature scope](gpu-acceleration.md#7-feature-scope-decision): which post-processing operations should use GPU first (e.g. scaling, tone mapping, denoise) and which remain CPU.
+		- [ ] Revisit the deferred GPU scale/deinterlace fast-path once final-encode acceleration is implemented and benchmarked.
 	- [ ] Add runtime capability detection in Go and cache results by backend/vendor so unsupported paths are never selected.
 	- [ ] Design command builders for GPU pipelines (upload/download, hwaccel flags, codec selection) with safe CPU fallback equivalents.
 	- [ ] Add a user setting: `Auto` (recommended), explicit backend selection, and `Off` for troubleshooting.
