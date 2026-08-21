@@ -85,6 +85,8 @@ ffmpeg -hide_banner -filters
 
 Relevant names include `cuda`, `nvenc`, `qsv`, `amf`, `vaapi`, `d3d11va`, `vulkan`, and `videotoolbox`. Checks should use exact parsed component names rather than loose substring matching.
 
+The runtime probe encodes a single synthetic frame (`probeEncoder` in `gpu_capability.go`) at 320x240, not a smaller size: several hardware encoders (notably NVENC) reject resolutions below their minimum supported size with an "Invalid argument" (`EINVAL`) error, which would otherwise be misread as the encoder/GPU being unavailable rather than a probe artifact.
+
 ---
 
 ## 5. Current bundled build inventory
@@ -183,3 +185,15 @@ Complex existing filters such as `nlmeans`, `deshake`, `deband`, and audio proce
 - Compile-time FFmpeg capability checks are distinguished from runtime device probes.
 - CPU fallback remains a requirement for every accelerated path.
 - The next work item can verify these targets against the actual bundled FFmpeg builds.
+
+---
+
+## 10. Runtime guardrails
+
+Implemented in `pp_engine.go`, addressing failure modes observed beyond a simple nonzero ffmpeg exit:
+
+- **Concurrent hardware encoder session cap** — `PPEngine.gpuSem`, a buffered channel sized `maxConcurrentGPUJobs` (2), bounds how many GPU-encoded jobs run simultaneously within a single `ApplyFilters` batch. Consumer GPUs (NVENC in particular) enforce a low concurrent session limit; without this cap, a batch with more workers than that limit would see most jobs fail on the GPU and silently retry to CPU, largely negating the speedup. CPU-only jobs are unaffected and do not touch the semaphore.
+- **Stall watchdog** — `runJob` starts a `time.AfterFunc` timer (`gpuStallTimeout`, 30s) only for GPU-encoded jobs, reset on every line of ffmpeg output. If a hung driver stops producing output entirely for that long, the process is killed and `retryWithCPU` takes over, instead of the batch hanging indefinitely. CPU jobs are not subject to this timeout.
+- The GPU semaphore slot and watchdog are released *before* a CPU retry begins (not merely via `defer` at function return), so the retry's CPU-only encode does not needlessly hold a GPU session slot for its entire duration.
+
+Not yet covered: an explicit driver-mismatch/out-of-memory classification (currently folded into the generic retry-on-any-failure path), and HDR/10-bit pixel-format compatibility checks ahead of encode (currently relies on the CPU filter chain already normalizing to `yuv420p` where applicable, plus the generic retry as a safety net).

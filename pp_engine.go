@@ -37,13 +37,27 @@ type PPEngine struct {
 	// user preference through; PlanEncoder always falls back to CPU otherwise.
 	GPUBackend      GPUBackend
 	GPUCapabilities map[GPUBackend]BackendCapability
+
+	// gpuSem caps how many GPU-encoded jobs run concurrently, since consumer
+	// GPUs (NVENC in particular) enforce a low concurrent hardware encoder
+	// session limit; exceeding it fails jobs that would otherwise succeed.
+	gpuSem chan struct{}
 }
+
+// maxConcurrentGPUJobs bounds simultaneous hardware encoder sessions across
+// a single ApplyFilters batch, independent of the CPU worker pool size.
+const maxConcurrentGPUJobs = 2
+
+// gpuStallTimeout is how long a GPU-encoded job may produce no FFmpeg output
+// before it is treated as a hung driver, killed, and retried on the CPU.
+const gpuStallTimeout = 30 * time.Second
 
 // NewPPEngine returns a PPEngine configured with the given binary paths.
 func NewPPEngine(ffmpegPath, ffprobePath string) *PPEngine {
 	return &PPEngine{
 		FFmpegPath:  ffmpegPath,
 		FFprobePath: ffprobePath,
+		gpuSem:      make(chan struct{}, maxConcurrentGPUJobs),
 	}
 }
 
@@ -170,6 +184,30 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		sizeBefore = info.Size()
 	}
 
+	// GPU jobs share a small semaphore since consumer GPUs cap concurrent
+	// hardware encoder sessions; CPU jobs are unaffected. releaseGPU is called
+	// explicitly before a CPU retry so the slot frees up immediately instead of
+	// staying held for the retry's duration, and is idempotent so the deferred
+	// call on every other exit path is a safe no-op if already released.
+	var watchdog *time.Timer
+	released := false
+	releaseGPU := func() {
+		if released {
+			return
+		}
+		released = true
+		if watchdog != nil {
+			watchdog.Stop()
+		}
+		if job.usedGPU {
+			<-engine.gpuSem
+		}
+	}
+	if job.usedGPU {
+		engine.gpuSem <- struct{}{}
+	}
+	defer releaseGPU()
+
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, engine.FFmpegPath, job.ffmpegArgs...)
 	hideWindow(cmd)
@@ -182,6 +220,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		// If FFmpeg fails, log the error and the captured output.
 		if err != nil {
 			if job.usedGPU {
+				releaseGPU()
 				engine.retryWithCPU(ctx, job, cb, lastLine(string(out)))
 				return
 			}
@@ -216,11 +255,27 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		return
 	}
 
+	// GPU jobs get a stall watchdog: if a hung driver stops producing any
+	// output, kill the process so the existing CPU retry can take over
+	// instead of the batch hanging indefinitely.
+	if job.usedGPU {
+		watchdog = time.AfterFunc(gpuStallTimeout, func() {
+			cb.OnLog(
+				fmt.Sprintf("[SYSTEM] GPU encode produced no output for %s, assuming a hung driver; terminating.", gpuStallTimeout),
+				colWarning,
+			)
+			_ = cmd.Process.Kill()
+		})
+	}
+
 	// Stream FFmpeg's stderr in real-time to the log and status bar.
 	var errLines []string
 	scanner := bufio.NewScanner(stderrPipe)
 	scanner.Split(scanCRLF)
 	for scanner.Scan() {
+		if watchdog != nil {
+			watchdog.Reset(gpuStallTimeout)
+		}
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
@@ -245,6 +300,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 			if len(errLines) > 0 {
 				reason = errLines[len(errLines)-1]
 			}
+			releaseGPU()
 			engine.retryWithCPU(ctx, job, cb, reason)
 			return
 		}

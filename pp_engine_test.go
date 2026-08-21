@@ -41,3 +41,10 @@ func TestBuildFFmpegArgsForBackendNoFilters(t *testing.T) {
 		t.Errorf("buildFFmpegArgsForBackend(...) with no filters = %q, want stream copy", got)
 	}
 }
+
+func TestNewPPEngineGPUSemCapacity(t *testing.T) {
+	engine := NewPPEngine("ffmpeg", "ffprobe")
+	if cap(engine.gpuSem) != maxConcurrentGPUJobs {
+		t.Errorf("gpuSem capacity = %d, want %d", cap(engine.gpuSem), maxConcurrentGPUJobs)
+	}
+}
