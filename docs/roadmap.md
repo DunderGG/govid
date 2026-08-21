@@ -246,11 +246,10 @@ This document outlines planned features, improvements, and known limitations for
 	- [X] Design [command builders](gpu-acceleration.md#7-feature-scope-decision) for GPU pipelines (`PlanEncoder`/`EncoderPlan` in `gpu_capability.go`) with safe CPU fallback equivalents.
 	- [X] Add a [user setting](gpu-acceleration.md#8-recommended-implementation-order): `Auto` (recommended), explicit backend selection, and `Off` for troubleshooting. ("Encoder Backend" selector in the Post-Processing window, wired through `applyFFmpegFilters`.)
 	- [X] Implement [strict fallback behavior](gpu-acceleration.md#6-pipeline-design-constraints): if GPU init fails, retry once with CPU and log a concise reason. (`PPEngine.retryWithCPU` in `pp_engine.go`.)
-	- [ ] Benchmark representative jobs (1080p, 1440p, 4K; short and long clips) for speed, quality, and failure rate versus CPU.
+	- [X] Benchmark representative jobs (1080p, 1440p, 4K; short and long clips) for speed, quality, and failure rate versus CPU.
 	- [X] Add [guardrails for known edge cases](gpu-acceleration.md#10-runtime-guardrails): a concurrent hardware-encoder-session cap and a stall watchdog with CPU fallback. (`PPEngine.gpuSem`/`gpuStallTimeout` in `pp_engine.go`.)
 	- [X] Expose diagnostics in logs (detected backend, selected path, fallback reason) to simplify bug reports.
-	- [ ] Also show in the post-processing window that GPU acceleration is being used, and which backend is selected.
-	- [ ] Document platform prerequisites (driver versions, required FFmpeg features) and add a quick verification checklist to release docs.
+	- [X] Document platform prerequisites (driver versions, required FFmpeg features) and add a quick verification checklist to release docs.
 
 ---
 

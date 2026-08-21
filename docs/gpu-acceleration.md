@@ -197,3 +197,32 @@ Implemented in `pp_engine.go`, addressing failure modes observed beyond a simple
 - The GPU semaphore slot and watchdog are released *before* a CPU retry begins (not merely via `defer` at function return), so the retry's CPU-only encode does not needlessly hold a GPU session slot for its entire duration.
 
 Not yet covered: an explicit driver-mismatch/out-of-memory classification (currently folded into the generic retry-on-any-failure path), and HDR/10-bit pixel-format compatibility checks ahead of encode (currently relies on the CPU filter chain already normalizing to `yuv420p` where applicable, plus the generic retry as a safety net).
+
+---
+
+## 11. Platform prerequisites and verification checklist
+
+These are the driver/runtime versions and FFmpeg features each backend depends on, plus a quick checklist for confirming a machine can actually use hardware acceleration before filing or triaging a bug report.
+
+### Driver and runtime prerequisites
+
+| Backend | OS | Required driver / runtime | Notes |
+|---|---|---|---|
+| `nvidia` (NVENC) | Windows, Linux | A current NVIDIA GeForce/Studio or Quadro driver matching the GPU's NVENC generation (Kepler-era and newer). | Very old drivers or GPUs predating NVENC support cause `Compiled=true, Available=false`; the probe's `Reason` reports the ffmpeg init failure text rather than a driver version, so cross-check with `nvidia-smi` if the reason is ambiguous. |
+| `intel` (QSV) | Windows, Linux | A current Intel graphics driver exposing Quick Sync (iGPU enabled in firmware/BIOS); on Linux this is the `intel-media-driver` (iHD) package, not the legacy `i965` driver. | QSV requires the GPU/iGPU to be enabled and, on multi-GPU laptops, sometimes requires it to be the active render device. |
+| `amd` (AMF) | Windows | A current AMD Software/Adrenalin driver. | AMF is Windows-only in this project's scope (§2); no Linux AMF target is defined. |
+| `vaapi` | Linux | The Mesa VAAPI driver for the GPU vendor in use (e.g. `mesa-va-drivers` for AMD/Intel) or the vendor VAAPI driver for NVIDIA. | Not a primary Windows path (§2); listed here for completeness since the bundled build compiles it in (§5). |
+| `videotoolbox` | macOS | Native OS framework; no separate driver install. | Requires a macOS version still supported by the FFmpeg build in use; exact codec support varies by hardware generation (§2). |
+
+### Required FFmpeg build features
+
+Every backend also needs the bundled FFmpeg binary itself to be built with the matching hwaccel, encoder, and filter support — see the inventory commands and component names in §4, and the verified Windows build inventory in §5. A driver can be fully up to date and the backend will still be unavailable if the binary lacks the component.
+
+### Quick verification checklist
+
+1. Confirm the vendor driver is installed and current for the target backend, using the table above.
+2. Run the four inventory commands from §4 (`-hwaccels`, `-encoders`, `-decoders`, `-filters`) against the bundled `ffmpeg` binary and confirm the backend's hwaccel and encoder names are present.
+3. Start a post-processing job with the "Encoder Backend" setting pinned to the backend under test (not `Auto`), and check the app log for the `FormatGPUDiagnostics` line (`gpu_capability.go`) reporting that backend as available with its target encoder.
+4. If the backend reports unavailable, read the logged `Reason` string first; it distinguishes "not compiled into ffmpeg" from "runtime probe failed to initialize," which narrows the fix to a build swap versus a driver/hardware issue.
+5. If the job instead falls back to CPU mid-run, check for the `retryWithCPU` fallback log line (§6) and the ffmpeg failure line it captures, rather than assuming the earlier probe was wrong — probe success only means single-frame init worked, not that every job configuration will succeed.
+6. On repeat regressions after a driver or FFmpeg build update, re-run the §5 inventory and record a new checksum/date entry so the documented capabilities stay accurate.
