@@ -65,6 +65,7 @@ type UIWidgets struct {
 	nightMode         *widget.Check       // Post-processing: Dynamic audio compression
 	upscaleVideo      *widget.Check       // Post-processing: Resolution upscaling
 	upscaleTarget     *widget.Select      // Target resolution for upscaling
+	gpuBackend        *widget.Select      // GPU acceleration backend for the final encode step
 }
 
 // DownloadStats tracks the real-time metrics of a download session.

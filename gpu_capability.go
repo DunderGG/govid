@@ -314,3 +314,39 @@ func gpuEncoderPlan(backend GPUBackend) EncoderPlan {
 	}
 	return plan
 }
+
+// ── UI label mapping ─────────────────────────────────────────────────────────
+
+// backendLabels maps each GPUBackend to its display label in the UI.
+var backendLabels = map[GPUBackend]string{
+	BackendAuto:         "Auto (Recommended)",
+	BackendOff:          "Off",
+	BackendNVIDIA:       "NVIDIA",
+	BackendIntel:        "Intel",
+	BackendAMD:          "AMD",
+	BackendVAAPI:        "VAAPI",
+	BackendVideoToolbox: "VideoToolbox",
+}
+
+// GPUBackendOptions returns the backend labels applicable to the current
+// runtime.GOOS, in priority order, for use in a UI selector.
+func GPUBackendOptions() []string {
+	options := []string{backendLabels[BackendAuto], backendLabels[BackendOff]}
+	for _, def := range backendDefs {
+		if osIn(def.OSes, runtime.GOOS) {
+			options = append(options, backendLabels[def.Backend])
+		}
+	}
+	return options
+}
+
+// GPUBackendFromLabel resolves a UI label back to its GPUBackend identifier,
+// falling back to BackendAuto for an unrecognized or empty label.
+func GPUBackendFromLabel(label string) GPUBackend {
+	for backend, l := range backendLabels {
+		if l == label {
+			return backend
+		}
+	}
+	return BackendAuto
+}

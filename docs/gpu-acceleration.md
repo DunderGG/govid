@@ -1,6 +1,6 @@
 # GoVid — FFmpeg GPU Acceleration
 
-> **Status:** backend targets, bundled-build capabilities, and feature scope identified; runtime capability detection implemented; GPU pipelines are not yet implemented.
+> **Status:** backend targets, bundled-build capabilities, and feature scope identified; runtime capability detection and the encode-only command builder are implemented and wired to a user-facing setting; GPU scale/deinterlace pipelines are not yet implemented.
 > **Audience:** contributors and maintainers working on FFmpeg post-processing.
 
 ---
@@ -158,7 +158,7 @@ WebM output stays on the CPU VP9 encoder in this phase: the bundled build has no
 
 Hardware encoder settings should target visual parity with the current `-crf 18 -preset slower` baseline, using each vendor's constant-quality mode (`h264_nvenc -rc constqp -qp <n>`, `h264_qsv -global_quality <n>`, `h264_amf -qp_i/-qp_p <n>`, `h264_vaapi -qp <n>`, `h264_videotoolbox -q:v <n>`). Exact numeric values are left to the benchmarking step in §8, not fixed here.
 
-Implemented in `gpu_capability.go` as `PlanEncoder(requested GPUBackend, capabilities map[GPUBackend]BackendCapability, containerExt string) EncoderPlan` — always returns a runnable `-c:v` argument set, falling back to the CPU encoder whenever the requested/auto backend isn't `Available`, matching `.webm`, or is `off`. `PPEngine` carries dormant `GPUBackend`/`GPUCapabilities` fields (zero-value = CPU-only); nothing sets them to a non-off value yet, so this step introduces no runtime behavior change. Wiring real detection results and a user preference through is the next roadmap item.
+Implemented in `gpu_capability.go` as `PlanEncoder(requested GPUBackend, capabilities map[GPUBackend]BackendCapability, containerExt string) EncoderPlan` — always returns a runnable `-c:v` argument set, falling back to the CPU encoder whenever the requested/auto backend isn't `Available`, matching `.webm`, or is `off`. `PPEngine`'s `GPUBackend`/`GPUCapabilities` fields are now wired from a "Encoder Backend" selector in the Post-Processing window (`ui.gpuBackend`, persisted as the `gpuBackend` preference) and `GPUCapabilityService.Detect` in `postprocess.go`'s `applyFFmpegFilters`. `GPUBackendOptions`/`GPUBackendFromLabel` map the selector's OS-filtered labels ("Auto (Recommended)", "Off", "NVIDIA", "Intel", "AMD", "VAAPI", "VideoToolbox") to `GPUBackend` values.
 
 ---
 
@@ -167,7 +167,7 @@ Implemented in `gpu_capability.go` as `PlanEncoder(requested GPUBackend, capabil
 1. Inventory the bundled FFmpeg builds using the four capability commands above.
 2. Add typed backend and capability models in Go.
 3. Implement runtime probes and cache results for the current FFmpeg binary, device, and driver environment. *(Done — see `GPUCapabilityService`, `BackendCapability`, and `Detect` in `gpu_capability.go`. Detection covers the H.264 final-encode path only, in-memory for the current app run; not yet wired into the encode path.)*
-4. Accelerate final video encoding first, because it has clear boundaries and CPU equivalents. *(Command builder done — see `PlanEncoder`/`EncoderPlan` in `gpu_capability.go`, wired as dormant fields on `PPEngine` in `pp_engine.go`. Not yet fed live detection results or a user preference.)*
+4. Accelerate final video encoding first, because it has clear boundaries and CPU equivalents. *(Done — see `PlanEncoder`/`EncoderPlan` in `gpu_capability.go`, wired via the "Encoder Backend" setting in the Post-Processing window. Fallback-on-failure and cross-run benchmarking still pending.)*
 5. Add GPU scaling where frames can remain on one device for the full video path.
 6. Evaluate tone mapping and denoise independently; keep them on CPU until quality, format support, and transfer overhead are understood.
 7. Benchmark representative 1080p, 1440p, and 4K jobs before enabling any backend in `auto` mode.

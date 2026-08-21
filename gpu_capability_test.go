@@ -2,6 +2,43 @@ package main
 
 import "testing"
 
+func TestGPUBackendFromLabel(t *testing.T) {
+	tests := []struct {
+		label string
+		want  GPUBackend
+	}{
+		{"Auto (Recommended)", BackendAuto},
+		{"Off", BackendOff},
+		{"NVIDIA", BackendNVIDIA},
+		{"Intel", BackendIntel},
+		{"AMD", BackendAMD},
+		{"VAAPI", BackendVAAPI},
+		{"VideoToolbox", BackendVideoToolbox},
+		{"unrecognized label", BackendAuto},
+		{"", BackendAuto},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.label, func(t *testing.T) {
+			if got := GPUBackendFromLabel(tt.label); got != tt.want {
+				t.Errorf("GPUBackendFromLabel(%q) = %v, want %v", tt.label, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGPUBackendOptions(t *testing.T) {
+	options := GPUBackendOptions()
+	if len(options) < 2 || options[0] != "Auto (Recommended)" || options[1] != "Off" {
+		t.Errorf("GPUBackendOptions() = %v, want it to start with [Auto (Recommended) Off]", options)
+	}
+	for _, label := range options {
+		if GPUBackendFromLabel(label) == BackendAuto && label != "Auto (Recommended)" {
+			t.Errorf("GPUBackendOptions() included unrecognized label %q", label)
+		}
+	}
+}
+
 func TestIsEncoderCompiled(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -245,6 +245,7 @@ func (app *DownloaderApp) applyPreferencesToWidgets(p AppPreferences) {
 	ui.nightMode.SetChecked(p.NightMode)
 	ui.upscaleVideo.SetChecked(p.UpscaleVideo)
 	ui.upscaleTarget.SetSelected(p.UpscaleTarget)
+	ui.gpuBackend.SetSelected(p.GPUBackend)
 	ui.cookies.SetText(p.CookiesPath)
 	ui.batchMode.SetChecked(p.BatchMode)
 	ui.saveLog.SetChecked(p.SaveLog)

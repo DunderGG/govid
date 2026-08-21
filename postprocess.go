@@ -149,6 +149,8 @@ func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []stri
 // to PPEngine.ApplyFilters, wiring the app's log/status/failure callbacks.
 func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfFilters, afFilters []string) {
 	engine := NewPPEngine(app.depSvc.Resolve("ffmpeg"), app.depSvc.Resolve("ffprobe"))
+	engine.GPUBackend = GPUBackendFromLabel(app.ui.gpuBackend.Selected)
+	engine.GPUCapabilities = app.gpuSvc.Detect(ctx)
 	engine.ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks{
 		OnLog:     app.appendOutput,
 		OnStatus:  app.updateStatus,

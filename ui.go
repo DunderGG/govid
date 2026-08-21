@@ -95,6 +95,7 @@ func (app *DownloaderApp) showPostProcessing() {
 	ui.upscaleTarget.SetSelected(prefs.UpscaleTarget)
 	ui.normalizeAudio.SetChecked(prefs.NormalizeAudio)
 	ui.nightMode.SetChecked(prefs.NightMode)
+	ui.gpuBackend.SetSelected(prefs.GPUBackend)
 
 	// FPS slider for smooth motion — use a bound float so the label updates live.
 	fpsBinding := binding.NewFloat()
@@ -259,6 +260,10 @@ func (app *DownloaderApp) showPostProcessing() {
 
 	form := &widget.Form{
 		Items: []*widget.FormItem{
+			// ── GPU ACCELERATION ────────────────────────────────────────────────
+			{Text: "", Widget: sectionHeader("GPU ACCELERATION")},
+			{Text: "Encoder Backend", Widget: ui.gpuBackend, HintText: "Accelerates the final re-encode step (only applies when at least one video filter above is enabled); falls back to CPU automatically if unavailable"},
+			{Text: "", Widget: sectionDivider()},
 			// ── MOTION ────────────────────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("MOTION ENHANCEMENT")},
 			{Text: "Smooth Motion", Widget: ui.smoothMotion, HintText: "Interpolate frames for fluid playback (slow)"},

@@ -244,8 +244,7 @@ This document outlines planned features, improvements, and known limitations for
 		- [ ] Revisit the deferred GPU scale/deinterlace fast-path once final-encode acceleration is implemented and benchmarked.
 	- [X] Add [runtime capability detection](gpu-acceleration.md#8-recommended-implementation-order) in Go (`GPUCapabilityService` in `gpu_capability.go`) and cache results by backend/vendor so unsupported paths are never selected.
 	- [X] Design [command builders](gpu-acceleration.md#7-feature-scope-decision) for GPU pipelines (`PlanEncoder`/`EncoderPlan` in `gpu_capability.go`) with safe CPU fallback equivalents.
-		- [ ] Wire `PPEngine.GPUBackend`/`GPUCapabilities` to real detection results once the user setting below exists.
-	- [ ] Add a user setting: `Auto` (recommended), explicit backend selection, and `Off` for troubleshooting.
+	- [X] Add a [user setting](gpu-acceleration.md#8-recommended-implementation-order): `Auto` (recommended), explicit backend selection, and `Off` for troubleshooting. ("Encoder Backend" selector in the Post-Processing window, wired through `applyFFmpegFilters`.)
 	- [ ] Implement strict fallback behavior: if GPU init fails, retry once with CPU and log a concise reason.
 	- [ ] Benchmark representative jobs (1080p, 1440p, 4K; short and long clips) for speed, quality, and failure rate versus CPU.
 	- [ ] Add guardrails for known edge cases (driver mismatch, out-of-memory, unsupported pixel formats, HDR filter incompatibilities).

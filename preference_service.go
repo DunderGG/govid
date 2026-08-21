@@ -55,6 +55,7 @@ const (
 	prefNightMode         = "nightMode"
 	prefUpscaleVideo      = "upscaleVideo"
 	prefUpscaleTarget     = "upscaleTarget"
+	prefGPUBackend        = "gpuBackend"
 )
 
 // ── Default values ────────────────────────────────────────────────────────────
@@ -70,6 +71,7 @@ const (
 	defaultUpscaleTarget     = "2× (Double)"
 	defaultSharpenAmount     = 1.0
 	defaultEnablePostProcess = true
+	defaultGPUBackend        = "Auto (Recommended)"
 )
 
 // AppPreferences is a plain value struct that mirrors every user preference.
@@ -106,6 +108,7 @@ type AppPreferences struct {
 	NightMode         bool
 	UpscaleVideo      bool
 	UpscaleTarget     string
+	GPUBackend        string
 }
 
 // PreferenceService reads from and writes to a Fyne Preferences store.
@@ -155,6 +158,7 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		NightMode:         prefSvc.store.Bool(prefNightMode),
 		UpscaleVideo:      prefSvc.store.Bool(prefUpscaleVideo),
 		UpscaleTarget:     prefSvc.store.StringWithFallback(prefUpscaleTarget, defaultUpscaleTarget),
+		GPUBackend:        prefSvc.store.StringWithFallback(prefGPUBackend, defaultGPUBackend),
 	}
 }
 
@@ -196,6 +200,7 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 	prefSvc.store.SetBool(prefNightMode, p.NightMode)
 	prefSvc.store.SetBool(prefUpscaleVideo, p.UpscaleVideo)
 	prefSvc.store.SetString(prefUpscaleTarget, p.UpscaleTarget)
+	prefSvc.store.SetString(prefGPUBackend, p.GPUBackend)
 }
 
 // Reset removes every preference key managed by this service from the Fyne
@@ -210,6 +215,7 @@ func (prefSvc *PreferenceService) Reset() {
 		prefDenoise, prefDenoiseMode, prefHDRToSDR, prefDeband,
 		prefAutoCrop, prefStabilize, prefDeinterlace, prefNightMode,
 		prefUpscaleVideo, prefUpscaleTarget,
+		prefGPUBackend,
 	} {
 		prefSvc.store.RemoveValue(key)
 	}
@@ -254,6 +260,7 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 		NightMode:         ui.nightMode.Checked,
 		UpscaleVideo:      ui.upscaleVideo.Checked,
 		UpscaleTarget:     ui.upscaleTarget.Selected,
+		GPUBackend:        ui.gpuBackend.Selected,
 	})
 }
 

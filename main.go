@@ -81,6 +81,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 			nightMode:         widget.NewCheck("Night Mode", nil),
 			upscaleVideo:      widget.NewCheck("Upscale Video", nil),
 			upscaleTarget:     widget.NewSelect([]string{"2× (Double)", "1080p", "1440p", "4K (2160p)"}, nil),
+			gpuBackend:        widget.NewSelect(GPUBackendOptions(), nil),
 		},
 		stats:  &DownloadStats{},
 		logSvc: NewLogService(),
