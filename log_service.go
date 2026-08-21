@@ -151,7 +151,12 @@ func (svc *LogService) BufferLimit() int {
 // ── Package-level helpers ────────────────────────────────────────────────────
 
 // IsErrorLine returns true when the line contains "ERROR" or "FAILED" (case-insensitive).
+// yt-dlp's own [debug] diagnostics (e.g. "error cp1252 (No ANSI)") are excluded
+// up front so they aren't misclassified as real errors.
 func IsErrorLine(line string) bool {
+	if strings.Contains(line, "[debug]") {
+		return false
+	}
 	upper := strings.ToUpper(line)
 	return strings.Contains(upper, "ERROR") || strings.Contains(upper, "FAILED")
 }
