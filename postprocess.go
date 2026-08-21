@@ -83,10 +83,11 @@ func (app *DownloaderApp) buildPostProcessFilters() (vfFilters, afFilters []stri
 		vfFilters = append(vfFilters, fmt.Sprintf("cas=strength=%.2f", strength))
 	}
 	if app.ui.vividMode.Checked {
-		// contrast=1.15 adds a subtle pop; saturation=1.25 enriches colours.
-		// gamma_b=1.08 lifts the blue channel in midtones/highlights, counteracting
+		// contrast=1.30 and saturation=1.50 give a strong "vivid" pop; brightness=0.02
+		// and gamma=1.05 lift overall midtones slightly to keep shadows from crushing.
+		// gamma_b=1.1 lifts the blue channel in midtones/highlights, counteracting
 		// the warm/yellow cast that boosted saturation introduces in white areas.
-		vfFilters = append(vfFilters, "eq=contrast=1.15:saturation=1.25:gamma_b=1.08")
+		vfFilters = append(vfFilters, "eq=contrast=1.30:brightness=0.02:saturation=1.50:gamma=1.05:gamma_b=1.1")
 	}
 	if app.ui.deband.Checked {
 		vfFilters = append(vfFilters, "deband")
