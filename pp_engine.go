@@ -31,6 +31,12 @@ import (
 type PPEngine struct {
 	FFmpegPath  string // absolute path to ffmpeg binary
 	FFprobePath string // absolute path to ffprobe binary
+
+	// GPUBackend and GPUCapabilities are zero-value (CPU-only) until the
+	// "Add a user setting" roadmap item wires real detection results and a
+	// user preference through; PlanEncoder always falls back to CPU otherwise.
+	GPUBackend      GPUBackend
+	GPUCapabilities map[GPUBackend]BackendCapability
 }
 
 // NewPPEngine returns a PPEngine configured with the given binary paths.
@@ -399,17 +405,8 @@ func (engine *PPEngine) buildFFmpegArgs(inputPath, tmpOutput string, vfFilters, 
 	args := []string{"-y", "-threads", "0", "-i", inputPath}
 	if len(vfFilters) > 0 {
 		args = append(args, "-vf", strings.Join(vfFilters, ","))
-		// Choose encoder based on output container.
-		// libx264 cannot be muxed into WebM; use libvpx-vp9 instead.
-		// VP9 CRF 31 with -b:v 0 (constant-quality mode) is roughly equivalent
-		// in perceived quality to H.264 CRF 18.
-		if strings.ToLower(filepath.Ext(tmpOutput)) == ".webm" {
-			args = append(args, "-c:v", "libvpx-vp9", "-crf", "31", "-b:v", "0", "-deadline", "good", "-cpu-used", "2")
-		} else {
-			// CRF 18 is visually near-lossless for H.264. The slower preset
-			// squeezes more quality out at the same CRF.
-			args = append(args, "-c:v", "libx264", "-crf", "18", "-preset", "slower")
-		}
+		plan := PlanEncoder(engine.GPUBackend, engine.GPUCapabilities, filepath.Ext(tmpOutput))
+		args = append(args, plan.Args...)
 	} else {
 		args = append(args, "-c:v", "copy")
 	}
@@ -463,11 +460,7 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 		finalPath := inputPath
 		encodeMode := "Stream copy"
 		if len(activeVF) > 0 {
-			if ext == ".webm" {
-				encodeMode = "Re-encode (libvpx-vp9, CRF 31)"
-			} else {
-				encodeMode = "Re-encode (libx264, CRF 18, slower)"
-			}
+			encodeMode = PlanEncoder(engine.GPUBackend, engine.GPUCapabilities, ext).Label
 		}
 		jobs = append(jobs, PostProcessJob{
 			inputPath:   inputPath,

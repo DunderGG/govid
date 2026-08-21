@@ -243,7 +243,8 @@ This document outlines planned features, improvements, and known limitations for
 	- [X] Decide [feature scope](gpu-acceleration.md#7-feature-scope-decision): which post-processing operations should use GPU first (e.g. scaling, tone mapping, denoise) and which remain CPU.
 		- [ ] Revisit the deferred GPU scale/deinterlace fast-path once final-encode acceleration is implemented and benchmarked.
 	- [X] Add [runtime capability detection](gpu-acceleration.md#8-recommended-implementation-order) in Go (`GPUCapabilityService` in `gpu_capability.go`) and cache results by backend/vendor so unsupported paths are never selected.
-	- [ ] Design command builders for GPU pipelines (upload/download, hwaccel flags, codec selection) with safe CPU fallback equivalents.
+	- [X] Design [command builders](gpu-acceleration.md#7-feature-scope-decision) for GPU pipelines (`PlanEncoder`/`EncoderPlan` in `gpu_capability.go`) with safe CPU fallback equivalents.
+		- [ ] Wire `PPEngine.GPUBackend`/`GPUCapabilities` to real detection results once the user setting below exists.
 	- [ ] Add a user setting: `Auto` (recommended), explicit backend selection, and `Off` for troubleshooting.
 	- [ ] Implement strict fallback behavior: if GPU init fails, retry once with CPU and log a concise reason.
 	- [ ] Benchmark representative jobs (1080p, 1440p, 4K; short and long clips) for speed, quality, and failure rate versus CPU.

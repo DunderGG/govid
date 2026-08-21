@@ -15,6 +15,7 @@ import (
 	"context"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -203,4 +204,113 @@ func probeEncoder(ctx context.Context, ffmpegPath, encoderName string) (bool, st
 		reason = reason[idx+1:]
 	}
 	return false, reason
+}
+
+// ── Encoder command builder ─────────────────────────────────────────────────
+// Quality values below target visual parity with the current CPU baseline
+// (libx264 -crf 18 -preset slower); they are approximate and expected to be
+// refined by the benchmarking roadmap item, not final tuned values.
+const (
+	qualityNVENCConstQP     = 19
+	qualityQSVGlobalQuality = 20
+	qualityAMFQPI           = 20
+	qualityAMFQPP           = 22
+	qualityVAAPIQP          = 20
+	qualityVideoToolboxQV   = 65
+)
+
+// backendPriority is the fixed selection order used to resolve "auto".
+var backendPriority = []GPUBackend{
+	BackendNVIDIA, BackendIntel, BackendAMD, BackendVAAPI, BackendVideoToolbox,
+}
+
+// EncoderPlan is the resolved -c:v argument set for a single post-processing
+// job, along with a human-readable label for logs and job summaries.
+type EncoderPlan struct {
+	Args    []string
+	Label   string
+	UsedGPU bool
+	Backend GPUBackend
+}
+
+// PlanEncoder resolves which encoder to use for a post-processing job and
+// always returns a runnable plan: GPU args when the requested backend (or,
+// for "auto", the highest-priority available backend) is usable, otherwise
+// the existing CPU encoder for containerExt. WebM always stays on the CPU
+// VP9 encoder regardless of the requested backend (docs/gpu-acceleration.md
+// §7 — no NVENC/AMF VP9 encoder in the bundled build).
+func PlanEncoder(requested GPUBackend, capabilities map[GPUBackend]BackendCapability, containerExt string) EncoderPlan {
+	if strings.ToLower(containerExt) == ".webm" {
+		return cpuEncoderPlan(containerExt)
+	}
+
+	resolved := requested
+	if resolved == BackendAuto {
+		var ok bool
+		resolved, ok = firstAvailableBackend(capabilities)
+		if !ok {
+			return cpuEncoderPlan(containerExt)
+		}
+	}
+
+	if resolved == "" || resolved == BackendOff {
+		return cpuEncoderPlan(containerExt)
+	}
+
+	if cap, ok := capabilities[resolved]; ok && cap.Available {
+		return gpuEncoderPlan(resolved)
+	}
+	return cpuEncoderPlan(containerExt)
+}
+
+// firstAvailableBackend returns the highest-priority backend that is
+// Available in capabilities, for resolving BackendAuto.
+func firstAvailableBackend(capabilities map[GPUBackend]BackendCapability) (GPUBackend, bool) {
+	for _, backend := range backendPriority {
+		if cap, ok := capabilities[backend]; ok && cap.Available {
+			return backend, true
+		}
+	}
+	return "", false
+}
+
+// cpuEncoderPlan returns the existing CPU encoder args for containerExt:
+// libvpx-vp9 for WebM, libx264 otherwise.
+func cpuEncoderPlan(containerExt string) EncoderPlan {
+	if strings.ToLower(containerExt) == ".webm" {
+		return EncoderPlan{
+			Args:  []string{"-c:v", "libvpx-vp9", "-crf", "31", "-b:v", "0", "-deadline", "good", "-cpu-used", "2"},
+			Label: "Re-encode (libvpx-vp9, CRF 31)",
+		}
+	}
+	return EncoderPlan{
+		Args:  []string{"-c:v", "libx264", "-crf", "18", "-preset", "slower"},
+		Label: "Re-encode (libx264, CRF 18, slower)",
+	}
+}
+
+// gpuEncoderPlan returns the -c:v args and label for the given backend's
+// H.264 encoder using its constant-quality mode.
+func gpuEncoderPlan(backend GPUBackend) EncoderPlan {
+	plan := EncoderPlan{UsedGPU: true, Backend: backend}
+	switch backend {
+	case BackendNVIDIA:
+		plan.Args = []string{"-c:v", "h264_nvenc", "-rc", "constqp", "-qp", strconv.Itoa(qualityNVENCConstQP)}
+		plan.Label = "Re-encode (NVIDIA NVENC, CQP " + strconv.Itoa(qualityNVENCConstQP) + ")"
+	case BackendIntel:
+		plan.Args = []string{"-c:v", "h264_qsv", "-global_quality", strconv.Itoa(qualityQSVGlobalQuality)}
+		plan.Label = "Re-encode (Intel QSV, Q" + strconv.Itoa(qualityQSVGlobalQuality) + ")"
+	case BackendAMD:
+		plan.Args = []string{"-c:v", "h264_amf", "-qp_i", strconv.Itoa(qualityAMFQPI), "-qp_p", strconv.Itoa(qualityAMFQPP)}
+		plan.Label = "Re-encode (AMD AMF, QP " + strconv.Itoa(qualityAMFQPI) + "/" + strconv.Itoa(qualityAMFQPP) + ")"
+	case BackendVAAPI:
+		plan.Args = []string{"-c:v", "h264_vaapi", "-qp", strconv.Itoa(qualityVAAPIQP)}
+		plan.Label = "Re-encode (VAAPI, QP " + strconv.Itoa(qualityVAAPIQP) + ")"
+	case BackendVideoToolbox:
+		plan.Args = []string{"-c:v", "h264_videotoolbox", "-q:v", strconv.Itoa(qualityVideoToolboxQV)}
+		plan.Label = "Re-encode (VideoToolbox, Q" + strconv.Itoa(qualityVideoToolboxQV) + ")"
+	default:
+		return cpuEncoderPlan("")
+	}
+	return plan
 }
