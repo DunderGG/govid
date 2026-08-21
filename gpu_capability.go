@@ -13,6 +13,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -184,27 +185,27 @@ func isEncoderCompiled(encodersOutput, encoderName string) bool {
 // size with an "Invalid argument" error, which would otherwise be misread as
 // the encoder/GPU being unavailable.
 func probeEncoder(ctx context.Context, ffmpegPath, encoderName string) (bool, string) {
-    probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-    defer cancel()
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-    cmd := exec.CommandContext(probeCtx, ffmpegPath,
-        "-hide_banner", "-loglevel", "error",
-        "-f", "lavfi", "-i", "color=c=black:s=320x240:d=1",
-        "-frames:v", "1", "-c:v", encoderName,
-        "-f", "null", "-",
-    )
-    hideWindow(cmd)
+	cmd := exec.CommandContext(probeCtx, ffmpegPath,
+		"-hide_banner", "-loglevel", "error",
+		"-f", "lavfi", "-i", "color=c=black:s=320x240:d=1",
+		"-frames:v", "1", "-c:v", encoderName,
+		"-f", "null", "-",
+	)
+	hideWindow(cmd)
 
-    out, err := cmd.CombinedOutput()
-    if err == nil {
-        return true, ""
-    }
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return true, ""
+	}
 
-    reason := lastLine(string(out))
-    if reason == "" {
-        reason = err.Error()
-    }
-    return false, reason
+	reason := lastLine(string(out))
+	if reason == "" {
+		reason = err.Error()
+	}
+	return false, reason
 }
 
 // ── Encoder command builder ─────────────────────────────────────────────────
@@ -350,4 +351,32 @@ func GPUBackendFromLabel(label string) GPUBackend {
 		}
 	}
 	return BackendAuto
+}
+
+// ── Diagnostics ──────────────────────────────────────────────────────────────
+
+// FormatGPUDiagnostics renders one line per backend applicable to the current
+// runtime.GOOS, reporting whether it is available and, if not, why — for the
+// startup session log and the About window's GPU Acceleration section.
+func FormatGPUDiagnostics(capabilities map[GPUBackend]BackendCapability) []string {
+	var lines []string
+	for _, def := range backendDefs {
+		if !osIn(def.OSes, runtime.GOOS) {
+			continue
+		}
+		bc, ok := capabilities[def.Backend]
+		label := backendLabels[def.Backend]
+		switch {
+		case !ok:
+			lines = append(lines, fmt.Sprintf("%s: not detected", label))
+		case bc.Available:
+			lines = append(lines, fmt.Sprintf("%s: available (%s)", label, bc.Encoder))
+		default:
+			lines = append(lines, fmt.Sprintf("%s: unavailable — %s", label, bc.Reason))
+		}
+	}
+	if len(lines) == 0 {
+		return []string{"No GPU acceleration backend targets this OS; using CPU encoding."}
+	}
+	return lines
 }

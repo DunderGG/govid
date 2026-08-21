@@ -248,7 +248,7 @@ This document outlines planned features, improvements, and known limitations for
 	- [X] Implement [strict fallback behavior](gpu-acceleration.md#6-pipeline-design-constraints): if GPU init fails, retry once with CPU and log a concise reason. (`PPEngine.retryWithCPU` in `pp_engine.go`.)
 	- [ ] Benchmark representative jobs (1080p, 1440p, 4K; short and long clips) for speed, quality, and failure rate versus CPU.
 	- [X] Add [guardrails for known edge cases](gpu-acceleration.md#10-runtime-guardrails): a concurrent hardware-encoder-session cap and a stall watchdog with CPU fallback. (`PPEngine.gpuSem`/`gpuStallTimeout` in `pp_engine.go`.)
-	- [ ] Expose diagnostics in logs and About/Help (detected backend, selected path, fallback reason) to simplify bug reports.
+	- [X] Expose diagnostics in logs (detected backend, selected path, fallback reason) to simplify bug reports.
 	- [ ] Also show in the post-processing window that GPU acceleration is being used, and which backend is selected.
 	- [ ] Document platform prerequisites (driver versions, required FFmpeg features) and add a quick verification checklist to release docs.
 

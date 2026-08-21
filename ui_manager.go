@@ -64,11 +64,13 @@ func focusOrCreate(window *fyne.Window) bool {
 func onWindowClosed(window *fyne.Window) func() {
 	return func() { *window = nil }
 }
+
 // parseURL is a small helper to safely parse a URL string for use in hyperlinks.
 func parseURL(rawURL string) *url.URL {
 	parsed, _ := url.Parse(rawURL)
 	return parsed
 }
+
 // showAbout opens a small window with information about the creator and the app.
 // It is a singleton: if already open, the existing window is focused instead.
 func (manager *UIManager) showAbout() {

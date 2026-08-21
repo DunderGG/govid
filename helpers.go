@@ -283,9 +283,15 @@ func (app *DownloaderApp) checkDependencies() {
 }
 
 // startGPUDetection runs GPU backend capability detection in the background
-// so results are cached before post-processing needs them.
+// so results are cached before post-processing needs them, logging a summary
+// once detection completes so it's captured in the session log for bug reports.
 func (app *DownloaderApp) startGPUDetection() {
-	go app.gpuSvc.Detect(context.Background())
+	go func() {
+		capabilities := app.gpuSvc.Detect(context.Background())
+		for _, line := range FormatGPUDiagnostics(capabilities) {
+			app.appendOutput("[SYSTEM] GPU: "+line, colSystem)
+		}
+	}()
 }
 
 // runUpdateInUI sets the initial UI state for an update and delegates

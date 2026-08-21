@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"runtime"
+	"strings"
+	"testing"
+)
 
 func TestGPUBackendFromLabel(t *testing.T) {
 	tests := []struct {
@@ -178,4 +182,77 @@ func TestPlanEncoder(t *testing.T) {
 			}
 		})
 	}
+}
+
+// firstApplicableBackendDef returns the first backendDef targeting the
+// current runtime.GOOS, so diagnostics tests stay valid across platforms.
+func firstApplicableBackendDef(t *testing.T) backendDef {
+	t.Helper()
+	for _, def := range backendDefs {
+		if osIn(def.OSes, runtime.GOOS) {
+			return def
+		}
+	}
+	t.Fatalf("no backendDef targets runtime.GOOS %q", runtime.GOOS)
+	return backendDef{}
+}
+
+func TestFormatGPUDiagnostics(t *testing.T) {
+	def := firstApplicableBackendDef(t)
+
+	t.Run("available backend reports its encoder", func(t *testing.T) {
+		caps := map[GPUBackend]BackendCapability{
+			def.Backend: {Backend: def.Backend, Available: true, Encoder: def.Encoder},
+		}
+		lines := FormatGPUDiagnostics(caps)
+		found := false
+		for _, line := range lines {
+			if strings.Contains(line, "available ("+def.Encoder+")") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("FormatGPUDiagnostics(...) = %v, want a line reporting %s available (%s)", lines, def.Backend, def.Encoder)
+		}
+	})
+
+	t.Run("unavailable backend reports its reason", func(t *testing.T) {
+		caps := map[GPUBackend]BackendCapability{
+			def.Backend: {Backend: def.Backend, Available: false, Reason: "driver initialization failed"},
+		}
+		lines := FormatGPUDiagnostics(caps)
+		found := false
+		for _, line := range lines {
+			if strings.Contains(line, "unavailable — driver initialization failed") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("FormatGPUDiagnostics(...) = %v, want a line reporting the unavailable reason", lines)
+		}
+	})
+
+	t.Run("missing capability reports not detected", func(t *testing.T) {
+		lines := FormatGPUDiagnostics(map[GPUBackend]BackendCapability{})
+		found := false
+		for _, line := range lines {
+			if strings.Contains(line, "not detected") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("FormatGPUDiagnostics(...) = %v, want a line reporting not detected", lines)
+		}
+	})
+
+	t.Run("no applicable backends falls back to a CPU-only message", func(t *testing.T) {
+		original := backendDefs
+		backendDefs = nil
+		defer func() { backendDefs = original }()
+
+		lines := FormatGPUDiagnostics(map[GPUBackend]BackendCapability{})
+		if len(lines) != 1 || !strings.Contains(lines[0], "No GPU acceleration backend") {
+			t.Errorf("FormatGPUDiagnostics(...) = %v, want a single CPU-only fallback message", lines)
+		}
+	})
 }

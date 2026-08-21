@@ -27,7 +27,8 @@ type LogService struct {
 	mutex       sync.Mutex
 	errorMutex  sync.Mutex
 	bufferLimit int
-	sessionDir  string // anchored once at OpenSessionLog time; used by WriteToErrorLog
+	sessionDir  string   // anchored once at OpenSessionLog time; used by WriteToErrorLog
+	preSession  []string // timestamped lines written before a session log file exists; flushed by OpenSessionLog
 }
 
 // NewLogService returns a LogService with the default buffer limit (200 lines).
@@ -48,7 +49,10 @@ func ErrorLogPath(dir string) string {
 }
 
 // OpenSessionLog opens (or creates) the daily session log in dir, appending to
-// any existing content. Returns the resolved path on success.
+// any existing content, then flushes any lines buffered before this session
+// started (e.g. startup dependency checks, GPU diagnostics) so they aren't
+// lost just because logging wasn't enabled yet when they were printed.
+// Returns the resolved path on success.
 func (svc *LogService) OpenSessionLog(dir string) (string, error) {
 	path := SessionLogPath(dir)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -58,6 +62,10 @@ func (svc *LogService) OpenSessionLog(dir string) (string, error) {
 	svc.mutex.Lock()
 	svc.file = f
 	svc.sessionDir = dir
+	for _, line := range svc.preSession {
+		fmt.Fprintln(f, line)
+	}
+	svc.preSession = nil
 	svc.mutex.Unlock()
 	return path, nil
 }
@@ -82,13 +90,21 @@ func (svc *LogService) IsActive() bool {
 	return svc.file != nil
 }
 
-// WriteToFile appends a timestamped line to the open session log.
-// It is a no-op when no session log is open.
+// WriteToFile appends a timestamped line to the open session log. If no
+// session log is open yet, the formatted line is buffered instead (capped to
+// BufferLimit) and flushed by the next OpenSessionLog call, so nothing
+// printed before logging is enabled gets silently discarded.
 func (svc *LogService) WriteToFile(line string) {
 	svc.mutex.Lock()
 	defer svc.mutex.Unlock()
+	formatted := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), line)
 	if svc.file != nil {
-		fmt.Fprintf(svc.file, "[%s] %s\n", time.Now().Format("15:04:05"), line)
+		fmt.Fprintln(svc.file, formatted)
+		return
+	}
+	svc.preSession = append(svc.preSession, formatted)
+	if len(svc.preSession) > svc.bufferLimit {
+		svc.preSession = svc.preSession[len(svc.preSession)-svc.bufferLimit:]
 	}
 }
 
