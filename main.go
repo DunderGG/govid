@@ -38,6 +38,7 @@ var (
 
 // newDownloaderApp constructs and fully initialises a DownloaderApp.
 func newDownloaderApp(window fyne.Window) *DownloaderApp {
+	depSvc := NewDependencyService()
 	dlApp := &DownloaderApp{
 		window:    window,
 		uiManager: NewUIManager(window),
@@ -83,7 +84,8 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 		},
 		stats:  &DownloadStats{},
 		logSvc: NewLogService(),
-		depSvc: NewDependencyService(),
+		depSvc: depSvc,
+		gpuSvc: NewGPUCapabilityService(depSvc.Resolve("ffmpeg")),
 	}
 
 	// Load saved preferences and apply them to all widgets.
@@ -136,6 +138,7 @@ func main() {
 	dlApp.createMainMenu()
 	dlApp.createUI()
 	dlApp.checkDependencies()
+	dlApp.startGPUDetection()
 
 	// Show a confirmation dialog if a download or post-processing job is active.
 	mainWindow.SetCloseIntercept(func() {

@@ -44,6 +44,7 @@ govid/
 ├── log_service.go          LogService — session log open/close, error log routing, buffer-limit management
 ├── dependency_service.go   DependencyService — binary path resolution, dependency checks, yt-dlp updater
 ├── ui_manager.go           UIManager — owns secondary window lifecycle (About, Help, History, Prefs, PP)
+├── gpu_capability.go       GPUCapabilityService — GPU backend capability detection and cache (see docs/gpu-acceleration.md)
 │
 ├── ── Orchestration ───────────────────────────────────────────────
 ├── download.go             DownloaderApp.startDownload / runYtDlp — UI orchestration for a download session
@@ -210,6 +211,18 @@ The package-level `UpdateYtDlpCLI()` function is used by the `--update` CLI flag
 *Defined in:* `theme.go`
 
 Both implement `fyne.Theme`. `darkTheme` is the default; `lightTheme` is applied when the user selects "Light" in Preferences. The active theme is stored as a preference and applied at startup before the window is created.
+
+---
+
+### 4.11 `GPUCapabilityService` — GPU backend capability detection
+*Defined in:* `gpu_capability.go`; see `docs/gpu-acceleration.md` for the design behind it.
+
+Detects, once per app run, which GPU acceleration backends the bundled ffmpeg binary can actually use for final-encode acceleration. Holds `ffmpegPath` and a mutex-guarded cache keyed by `GPUBackend` (`auto`/`off`/`nvidia`/`intel`/`amd`/`vaapi`/`videotoolbox`).
+
+- **`Detect(ctx context.Context) map[GPUBackend]BackendCapability`** — on first call, runs `ffmpeg -encoders` once and, per backend applicable to the current `runtime.GOOS`, checks whether its H.264 encoder is compiled in (`isEncoderCompiled`) and then probes it with a short synthetic encode (`probeEncoder`). Caches the result; later calls return the cached copy. Started in the background via `startGPUDetection()` in `helpers.go`, called from `main()` alongside `checkDependencies()`.
+- **`Capability(backend GPUBackend) (BackendCapability, bool)`** — reads a single cached backend result.
+
+`BackendCapability` records `Applicable`, `Compiled`, `Available`, the target `Encoder`, and a `Reason` string for diagnostics. This step only covers detection; no encode-path integration, user setting, or fallback logic consumes it yet (tracked as separate roadmap items).
 
 ---
 

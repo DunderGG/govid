@@ -1,6 +1,6 @@
 # GoVid — FFmpeg GPU Acceleration
 
-> **Status:** backend targets, bundled-build capabilities, and feature scope identified; capability detection and GPU pipelines are not yet implemented.
+> **Status:** backend targets, bundled-build capabilities, and feature scope identified; runtime capability detection implemented; GPU pipelines are not yet implemented.
 > **Audience:** contributors and maintainers working on FFmpeg post-processing.
 
 ---
@@ -164,7 +164,7 @@ Hardware encoder settings should target visual parity with the current `-crf 18 
 
 1. Inventory the bundled FFmpeg builds using the four capability commands above.
 2. Add typed backend and capability models in Go.
-3. Implement runtime probes and cache results for the current FFmpeg binary, device, and driver environment.
+3. Implement runtime probes and cache results for the current FFmpeg binary, device, and driver environment. *(Done — see `GPUCapabilityService`, `BackendCapability`, and `Detect` in `gpu_capability.go`. Detection covers the H.264 final-encode path only, in-memory for the current app run; not yet wired into the encode path.)*
 4. Accelerate final video encoding first, because it has clear boundaries and CPU equivalents.
 5. Add GPU scaling where frames can remain on one device for the full video path.
 6. Evaluate tone mapping and denoise independently; keep them on CPU until quality, format support, and transfer overhead are understood.

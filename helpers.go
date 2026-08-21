@@ -281,6 +281,12 @@ func (app *DownloaderApp) checkDependencies() {
 	})
 }
 
+// startGPUDetection runs GPU backend capability detection in the background
+// so results are cached before post-processing needs them.
+func (app *DownloaderApp) startGPUDetection() {
+	go app.gpuSvc.Detect(context.Background())
+}
+
 // runUpdateInUI sets the initial UI state for an update and delegates
 // execution to DependencyService, which runs yt-dlp -U in a background
 // goroutine and reports progress via UpdateCallbacks.

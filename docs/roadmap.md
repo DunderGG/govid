@@ -242,13 +242,14 @@ This document outlines planned features, improvements, and known limitations for
 		- [ ] Re-run for future macOS and Linux artifacts.
 	- [X] Decide [feature scope](gpu-acceleration.md#7-feature-scope-decision): which post-processing operations should use GPU first (e.g. scaling, tone mapping, denoise) and which remain CPU.
 		- [ ] Revisit the deferred GPU scale/deinterlace fast-path once final-encode acceleration is implemented and benchmarked.
-	- [ ] Add runtime capability detection in Go and cache results by backend/vendor so unsupported paths are never selected.
+	- [X] Add [runtime capability detection](gpu-acceleration.md#8-recommended-implementation-order) in Go (`GPUCapabilityService` in `gpu_capability.go`) and cache results by backend/vendor so unsupported paths are never selected.
 	- [ ] Design command builders for GPU pipelines (upload/download, hwaccel flags, codec selection) with safe CPU fallback equivalents.
 	- [ ] Add a user setting: `Auto` (recommended), explicit backend selection, and `Off` for troubleshooting.
 	- [ ] Implement strict fallback behavior: if GPU init fails, retry once with CPU and log a concise reason.
 	- [ ] Benchmark representative jobs (1080p, 1440p, 4K; short and long clips) for speed, quality, and failure rate versus CPU.
 	- [ ] Add guardrails for known edge cases (driver mismatch, out-of-memory, unsupported pixel formats, HDR filter incompatibilities).
 	- [ ] Expose diagnostics in logs and About/Help (detected backend, selected path, fallback reason) to simplify bug reports.
+	- [ ] Also show in the post-processing window that GPU acceleration is being used, and which backend is selected.
 	- [ ] Document platform prerequisites (driver versions, required FFmpeg features) and add a quick verification checklist to release docs.
 
 ---
