@@ -131,6 +131,22 @@ func (engine *PPEngine) resolveAutoCrop(ctx context.Context, inputPath string, f
 	return resolved
 }
 
+// retryWithCPU rebuilds job's ffmpeg args using the CPU encoder and runs it
+// once more. Used when a GPU-accelerated encode fails at runtime despite
+// passing the earlier capability probe (docs/gpu-acceleration.md §8 — strict
+// fallback behavior).
+func (engine *PPEngine) retryWithCPU(ctx context.Context, job PostProcessJob, cb PPCallbacks, reason string) {
+	cb.OnLog(fmt.Sprintf("[SYSTEM] GPU encode failed (%s) — retrying with CPU.", reason), colWarning)
+
+	job.ffmpegArgs = engine.patchThreadCount(
+		engine.buildFFmpegArgsForBackend(job.inputPath, job.tmpOutput, job.vfFilters, job.afFilters, BackendOff),
+		strconv.Itoa(job.threads),
+	)
+	job.encodeMode = PlanEncoder(BackendOff, nil, filepath.Ext(job.tmpOutput)).Label
+	job.usedGPU = false
+	engine.runJob(ctx, job, cb)
+}
+
 // runJob executes a single PostProcessJob and streams FFmpeg's stderr to the UI
 // in real-time. Progress stats update the status bar; all other lines are
 // forwarded to the log. The original file is replaced only if FFmpeg succeeds.
@@ -165,6 +181,10 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 
 		// If FFmpeg fails, log the error and the captured output.
 		if err != nil {
+			if job.usedGPU {
+				engine.retryWithCPU(ctx, job, cb, lastLine(string(out)))
+				return
+			}
 			cb.OnLog(fmt.Sprintf("[ERROR] Post-processing failed: %v", err), colError)
 			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 				if line != "" {
@@ -220,6 +240,14 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	duration := time.Since(start)
 
 	if err != nil {
+		if job.usedGPU {
+			reason := err.Error()
+			if len(errLines) > 0 {
+				reason = errLines[len(errLines)-1]
+			}
+			engine.retryWithCPU(ctx, job, cb, reason)
+			return
+		}
 		cb.OnFailure()
 		cb.OnLog(
 			fmt.Sprintf("[ERROR] Post-processing failed: %v", err),
@@ -400,12 +428,19 @@ func (engine *PPEngine) parseRationalFPS(s string) float64 {
 // buildFFmpegArgs constructs the FFmpeg argument list for a single post-processing
 // job. The -threads placeholder is set to "0" and patched to the real count later.
 func (engine *PPEngine) buildFFmpegArgs(inputPath, tmpOutput string, vfFilters, afFilters []string) []string {
+	return engine.buildFFmpegArgsForBackend(inputPath, tmpOutput, vfFilters, afFilters, engine.GPUBackend)
+}
+
+// buildFFmpegArgsForBackend is buildFFmpegArgs with an explicit backend
+// override, used by runJob's strict CPU fallback to rebuild CPU-only args
+// when a GPU-accelerated job fails at runtime.
+func (engine *PPEngine) buildFFmpegArgsForBackend(inputPath, tmpOutput string, vfFilters, afFilters []string, backend GPUBackend) []string {
 	// Note: -stats_period was added in FFmpeg 4.4; omitting it keeps progress
 	// reporting working on older builds (FFmpeg defaults to 0.5 s anyway).
 	args := []string{"-y", "-threads", "0", "-i", inputPath}
 	if len(vfFilters) > 0 {
 		args = append(args, "-vf", strings.Join(vfFilters, ","))
-		plan := PlanEncoder(engine.GPUBackend, engine.GPUCapabilities, filepath.Ext(tmpOutput))
+		plan := PlanEncoder(backend, engine.GPUCapabilities, filepath.Ext(tmpOutput))
 		args = append(args, plan.Args...)
 	} else {
 		args = append(args, "-c:v", "copy")
@@ -459,8 +494,11 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 		tmpOutput := strings.TrimSuffix(inputPath, ext) + "_pp" + ext
 		finalPath := inputPath
 		encodeMode := "Stream copy"
+		usedGPU := false
 		if len(activeVF) > 0 {
-			encodeMode = PlanEncoder(engine.GPUBackend, engine.GPUCapabilities, ext).Label
+			plan := PlanEncoder(engine.GPUBackend, engine.GPUCapabilities, ext)
+			encodeMode = plan.Label
+			usedGPU = plan.UsedGPU
 		}
 		jobs = append(jobs, PostProcessJob{
 			inputPath:   inputPath,
@@ -470,6 +508,7 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 			vfFilters:   activeVF,
 			afFilters:   afFilters,
 			encodeMode:  encodeMode,
+			usedGPU:     usedGPU,
 			totalFrames: engine.computeOutputFrameCount(ctx, inputPath, engine.probeFrameCount(ctx, inputPath), activeVF),
 		})
 	}

@@ -196,12 +196,9 @@ func probeEncoder(ctx context.Context, ffmpegPath, encoderName string) (bool, st
 		return true, ""
 	}
 
-	reason := strings.TrimSpace(string(out))
+	reason := lastLine(string(out))
 	if reason == "" {
 		reason = err.Error()
-	}
-	if idx := strings.LastIndex(reason, "\n"); idx != -1 {
-		reason = reason[idx+1:]
 	}
 	return false, reason
 }

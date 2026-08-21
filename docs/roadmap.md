@@ -245,7 +245,7 @@ This document outlines planned features, improvements, and known limitations for
 	- [X] Add [runtime capability detection](gpu-acceleration.md#8-recommended-implementation-order) in Go (`GPUCapabilityService` in `gpu_capability.go`) and cache results by backend/vendor so unsupported paths are never selected.
 	- [X] Design [command builders](gpu-acceleration.md#7-feature-scope-decision) for GPU pipelines (`PlanEncoder`/`EncoderPlan` in `gpu_capability.go`) with safe CPU fallback equivalents.
 	- [X] Add a [user setting](gpu-acceleration.md#8-recommended-implementation-order): `Auto` (recommended), explicit backend selection, and `Off` for troubleshooting. ("Encoder Backend" selector in the Post-Processing window, wired through `applyFFmpegFilters`.)
-	- [ ] Implement strict fallback behavior: if GPU init fails, retry once with CPU and log a concise reason.
+	- [X] Implement [strict fallback behavior](gpu-acceleration.md#6-pipeline-design-constraints): if GPU init fails, retry once with CPU and log a concise reason. (`PPEngine.retryWithCPU` in `pp_engine.go`.)
 	- [ ] Benchmark representative jobs (1080p, 1440p, 4K; short and long clips) for speed, quality, and failure rate versus CPU.
 	- [ ] Add guardrails for known edge cases (driver mismatch, out-of-memory, unsupported pixel formats, HDR filter incompatibilities).
 	- [ ] Expose diagnostics in logs and About/Help (detected backend, selected path, fallback reason) to simplify bug reports.

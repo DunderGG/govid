@@ -6,7 +6,7 @@
 //   - Thin applyFFmpegFilters wrapper: collects binary paths and wires
 //     PPCallbacks before delegating to PPEngine.ApplyFilters.
 //   - Shared helpers called by pp_engine.go (same package): formatFFmpegProgress,
-//     formatBytes, formatDuration, filterShortName, scanCRLF.
+//     formatBytes, formatDuration, filterShortName, scanCRLF, lastLine.
 package main
 
 import (
@@ -270,6 +270,15 @@ func scanCRLF(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		return len(data), data, nil
 	}
 	return 0, nil, nil
+}
+
+// lastLine returns the last non-empty, trimmed line of s, or "" if s is empty.
+func lastLine(s string) string {
+	s = strings.TrimSpace(s)
+	if idx := strings.LastIndex(s, "\n"); idx != -1 {
+		return strings.TrimSpace(s[idx+1:])
+	}
+	return s
 }
 
 // formatBytes formats a byte count as a human-readable string (e.g. "45.2 MiB").

@@ -1,6 +1,6 @@
 # GoVid — FFmpeg GPU Acceleration
 
-> **Status:** backend targets, bundled-build capabilities, and feature scope identified; runtime capability detection and the encode-only command builder are implemented and wired to a user-facing setting; GPU scale/deinterlace pipelines are not yet implemented.
+> **Status:** backend targets, bundled-build capabilities, and feature scope identified; runtime capability detection and the encode-only command builder are implemented, wired to a user-facing setting, and protected by a strict CPU fallback on runtime failure; GPU scale/deinterlace pipelines are not yet implemented.
 > **Audience:** contributors and maintainers working on FFmpeg post-processing.
 
 ---
@@ -124,7 +124,7 @@ Windows is currently the only platform with a bundled artifact in this repositor
 - Audio filters remain on the CPU; the target backends apply only to video processing and encoding.
 - Codec availability is hardware-dependent. H.264 is the safest baseline; HEVC, AV1, 10-bit formats, and chroma subsampling require separate capability flags.
 - GPU output must preserve GoVid's current temporary-file and replace-on-success behavior.
-- Explicit backend selection should report why it is unavailable, then follow the project's defined fallback policy.
+- Explicit backend selection should report why it is unavailable, then follow the project's defined fallback policy. *(Implemented — see `PPEngine.retryWithCPU` in `pp_engine.go`: if a GPU-encoded job exits non-zero, `runJob` rebuilds the job with `buildFFmpegArgsForBackend(..., BackendOff)`, logs the ffmpeg failure reason via the shared `lastLine` helper, and retries once with CPU before falling through to the normal failure path. The retry is silent to the failure-tracking UI — `cb.OnFailure()` only fires if the CPU retry itself fails — so a successful fallback does not surface the "Retry" button.)*
 
 ---
 

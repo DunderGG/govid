@@ -117,4 +117,5 @@ type PostProcessJob struct {
 	threads     int      // thread count assigned to this job
 	encodeMode  string   // human-readable encode strategy, for summary logging
 	totalFrames int64    // total video frames, for progress percentage (0 = unknown)
+	usedGPU     bool     // true if ffmpegArgs uses a GPU encoder; enables one CPU retry on failure
 }
