@@ -179,28 +179,32 @@ func isEncoderCompiled(encodersOutput, encoderName string) bool {
 // probeEncoder attempts to encode a single synthetic frame with encoderName.
 // It reports whether the encoder initialized successfully and, if not, a
 // short human-readable reason drawn from ffmpeg's error output.
+// 320x240 is used rather than a smaller frame because several hardware
+// encoders (notably NVENC) reject resolutions below their minimum supported
+// size with an "Invalid argument" error, which would otherwise be misread as
+// the encoder/GPU being unavailable.
 func probeEncoder(ctx context.Context, ffmpegPath, encoderName string) (bool, string) {
-	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+    probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+    defer cancel()
 
-	cmd := exec.CommandContext(probeCtx, ffmpegPath,
-		"-hide_banner", "-loglevel", "error",
-		"-f", "lavfi", "-i", "color=c=black:s=64x64:d=1",
-		"-frames:v", "1", "-c:v", encoderName,
-		"-f", "null", "-",
-	)
-	hideWindow(cmd)
+    cmd := exec.CommandContext(probeCtx, ffmpegPath,
+        "-hide_banner", "-loglevel", "error",
+        "-f", "lavfi", "-i", "color=c=black:s=320x240:d=1",
+        "-frames:v", "1", "-c:v", encoderName,
+        "-f", "null", "-",
+    )
+    hideWindow(cmd)
 
-	out, err := cmd.CombinedOutput()
-	if err == nil {
-		return true, ""
-	}
+    out, err := cmd.CombinedOutput()
+    if err == nil {
+        return true, ""
+    }
 
-	reason := lastLine(string(out))
-	if reason == "" {
-		reason = err.Error()
-	}
-	return false, reason
+    reason := lastLine(string(out))
+    if reason == "" {
+        reason = err.Error()
+    }
+    return false, reason
 }
 
 // ── Encoder command builder ─────────────────────────────────────────────────
