@@ -75,61 +75,64 @@ group loop [for each URL in queue]
 
     App -> App : runYtDlp(runCtx, url, …)
 
-    group Build yt-dlp arguments
-        App -> App : select format flag (bestvideo+bestaudio / audio-only / WebM VP9…)
-        App -> App : apply quality height filter if set
-        App -> App : embed unique downloadID token in output template
-        App -> App : append ""--ffmpeg-location"", ""--limit-rate"", ""--cookies"" if set
-        App -> App : append ""--download-sections"" / ""--force-keyframes-at-cuts"" if trimming
-        App -> App : append ""--merge-output-format"", ""--remux-video"", ""--recode-video""
-    end
-
-    group Retry loop [attempt 1..3]
-        App -> OS  : exec.CommandContext(runCtx, yt-dlp, args…)
-        OS  -> YT  : spawn process
-        App -> YT  : StdoutPipe() + StderrPipe()
-        App -> YT  : cmd.Start()
-        App -> UI  : updateStatus("Downloading…")
-
-        App -> WO  : engine.watchOutput(stdout, stderr, cb)
-
-        group Concurrent output scanning
-            WO  -> YT : scan stdout line by line
-            loop stdout lines
-                WO  -> WO  : engine.parseProgress(line, cb)\n  — extract %, size
-                WO  -> App : cb.OnProgress(pct, size)\n  — App applies to stats.targetPct
-                WO  -> App : cb.OnLog(line, foreground colour)
-            end
-            WO  -> WO : scanner.Err() check → log if I/O error
-
-            WO  -> YT : scan stderr line by line
-            loop stderr lines
-                WO  -> WO  : detect [Merger]/[VideoConvertor] → wasConverted
-                WO  -> WO  : check transientErrPatterns → hadTransientErr
-                WO  -> App : cb.OnLog(line, red/amber/grey/default)
-            end
-            WO  -> WO : scanner.Err() check → log if I/O error
+    group engine.Run(ctx, req, autoRetry, index, total, cb)  — BuildArgs + Execute + FinalizeFiles
+        group Build yt-dlp arguments
+            App -> App : select format flag (bestvideo+bestaudio / audio-only / WebM VP9…)
+            App -> App : apply quality height filter if set
+            App -> App : embed unique downloadID token in output template
+            App -> App : append ""--ffmpeg-location"", ""--limit-rate"", ""--cookies"" if set
+            App -> App : append ""--download-sections"" / ""--force-keyframes-at-cuts"" if trimming
+            App -> App : append ""--merge-output-format"", ""--remux-video"", ""--recode-video""
         end
 
-        WO  --> App : scanResult{sourceExts, wasConverted, hadTransientErr}
-        App -> YT  : cmd.Wait()
-        YT  --> App : exit code / error (cmdErr)
+        group Retry loop [attempt 1..3]
+            App -> OS  : exec.CommandContext(runCtx, yt-dlp, args…)
+            OS  -> YT  : spawn process
+            App -> YT  : StdoutPipe() + StderrPipe()
+            App -> YT  : cmd.Start()
+            App -> UI  : updateStatus("Downloading…")
+
+            App -> WO  : engine.watchOutput(stdout, stderr, cb)
+
+            group Concurrent output scanning
+                WO  -> YT : scan stdout line by line
+                loop stdout lines
+                    WO  -> WO  : engine.parseProgress(line, cb)\n  — extract %, size
+                    WO  -> App : cb.OnProgress(pct, size)\n  — App applies to stats.targetPct
+                    WO  -> App : cb.OnLog(line, foreground colour)
+                end
+                WO  -> WO : scanner.Err() check → log if I/O error
+
+                WO  -> YT : scan stderr line by line
+                loop stderr lines
+                    WO  -> WO  : detect [Merger]/[VideoConvertor] → wasConverted
+                    WO  -> WO  : check transientErrPatterns → hadTransientErr
+                    WO  -> App : cb.OnLog(line, red/amber/grey/default)
+                end
+                WO  -> WO : scanner.Err() check → log if I/O error
+            end
+
+            WO  --> App : scanResult{sourceExts, wasConverted, hadTransientErr}
+            App -> YT  : cmd.Wait()
+            YT  --> App : exit code / error (cmdErr)
+
+            alt cmdErr == nil
+                App -> App : break retry loop  ✓
+            else cmdErr != nil && autoRetry.Checked && hadTransientErr && attempt < 3
+                App -> UI  : appendOutput("[SYSTEM] Transient error — retrying in Xs…")
+                App -> App : time.After(1s / 5s / 30s)  [or ctx.Done()]
+                note right : attempts: 1 s → 5 s → 30 s backoff
+            else permanent failure or auto-retry disabled
+                App -> App : break retry loop  ✗
+            end
+        end
 
         alt cmdErr == nil
-            App -> App : break retry loop  ✓
-        else cmdErr != nil && autoRetry.Checked && hadTransientErr && attempt < 3
-            App -> UI  : appendOutput("[SYSTEM] Transient error — retrying in Xs…")
-            App -> App : time.After(1s / 5s / 30s)  [or ctx.Done()]
-            note right : attempts: 1 s → 5 s → 30 s backoff
-        else permanent failure or auto-retry disabled
-            App -> App : break retry loop  ✗
+            App -> OS  : engine.FinalizeFiles(savePath, downloadID)\n  — Glob(*downloadID*)\n  — strip token, uniquePath\n  — os.Rename(tmp → final)
+            OS  --> App : []finalPaths
         end
     end
-
-    alt cmdErr == nil
-        App -> OS  : engine.FinalizeFiles(savePath, downloadID)\n  — Glob(*downloadID*)\n  — strip token, uniquePath\n  — os.Rename(tmp → final)
-        OS  --> App : []finalPaths
-    end
+    App <-- App : DownloadResult{FinalPaths, Extension, Scan, Err}
 
     group UI result (fyne.Do)
         alt cancelled (ctx.Err == Canceled)

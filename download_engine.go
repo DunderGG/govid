@@ -252,6 +252,44 @@ func (engine *DownloadEngine) Execute(ctx context.Context, args []string, autoRe
 	return result, cmdErr
 }
 
+// DownloadResult is the outcome of a single Run call: everything the caller
+// needs to report status and record history, with no intermediate UI state.
+type DownloadResult struct {
+	FinalPaths []string
+	Extension  string // e.g. "mp4", "mkv", "mp3"
+	Scan       scanResult
+	Err        error
+}
+
+// Run composes BuildArgs, Execute, and FinalizeFiles into the full lifecycle
+// of a single URL: build the yt-dlp command, run it with retry handling, and
+// (on success) rename the output files to their final, conflict-free names.
+// It reads no UI state — all inputs come from req and the given parameters —
+// and reports every event through cb.
+func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, autoRetry bool, index, total int, cb ProcessCallbacks) DownloadResult {
+	built := engine.BuildArgs(req)
+	if built.HasTrim {
+		cb.OnLog(
+			fmt.Sprintf("[SYSTEM] Trimming: %s → %s", built.TrimDisplayStart, built.TrimDisplayEnd),
+			colSystem,
+		)
+	}
+
+	scan, cmdErr := engine.Execute(ctx, built.Args, autoRetry, index, total, cb)
+
+	var finalPaths []string
+	if cmdErr == nil {
+		finalPaths = engine.FinalizeFiles(req.SavePath, built.DownloadID, cb.OnLog)
+	}
+
+	return DownloadResult{
+		FinalPaths: finalPaths,
+		Extension:  built.Extension,
+		Scan:       scan,
+		Err:        cmdErr,
+	}
+}
+
 // FinalizeFiles finds all files written by yt-dlp under the given downloadID
 // token, strips the token from their names, and renames them to their final
 // conflict-free paths using uniquePath. It returns the list of final paths so

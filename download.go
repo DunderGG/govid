@@ -229,12 +229,13 @@ func (app *DownloaderApp) startDownload() {
 	}()
 }
 
-// runYtDlp manages the external lifecycle of the yt-dlp process. It builds
-// the command arguments based on UI selections (quality, format), executes
-// the tool, and pipes its output/errors back to the UI in real-time.
-// It returns the list of finalized output file paths on success, or nil on
-// failure or cancellation. Post-processing is the caller's responsibility.
-// index and total indicate the position within a batch (both 1 for single downloads).
+// runYtDlp gathers UI state into a DownloadRequest, delegates the full
+// download lifecycle to engine.Run, and then handles app-specific side
+// effects: history recording, the completion/failure report in the log,
+// and system notifications. It returns the list of finalized output file
+// paths on success, or nil on failure or cancellation. Post-processing is
+// the caller's responsibility. index and total indicate the position within
+// a batch (both 1 for single downloads).
 func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath string, trimStart string, trimEnd string, index, total int) []string {
 	startTime := time.Now()
 
@@ -249,40 +250,30 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		app.depSvc.Resolve("ffmpeg"),
 	)
 
-	built := engine.BuildArgs(DownloadRequest{
+	selection := app.ui.format.Selected
+	quality := app.ui.quality.Selected
+
+	dl := engine.Run(ctx, DownloadRequest{
 		URL:         rawURL,
 		SavePath:    savePath,
-		Format:      app.ui.format.Selected,
-		Quality:     app.ui.quality.Selected,
+		Format:      selection,
+		Quality:     quality,
 		TrimStart:   trimStart,
 		TrimEnd:     trimEnd,
 		MaxSpeed:    limit,
 		CookiesPath: strings.TrimSpace(app.ui.cookies.Text),
-	})
-
-	args := built.Args
-	extension := built.Extension
-	downloadID := built.DownloadID
-	selection := app.ui.format.Selected
-	quality := app.ui.quality.Selected
-
-	if built.HasTrim {
-		app.appendOutput(
-			fmt.Sprintf("[SYSTEM] Trimming: %s → %s", built.TrimDisplayStart, built.TrimDisplayEnd),
-			colSystem,
-		)
-	}
-
-	result, cmdErr := engine.Execute(ctx, args, app.ui.autoRetry.Checked, index, total, ProcessCallbacks{
+	}, app.ui.autoRetry.Checked, index, total, ProcessCallbacks{
 		OnLog:      app.appendOutput,
 		OnStatus:   app.updateStatus,
 		OnProgress: app.updateProgress,
 	})
 
-	// Rename temp files to their clean, conflict-free names.
-	var finalPaths []string
-	if cmdErr == nil && downloadID != "" {
-		finalPaths = engine.FinalizeFiles(savePath, downloadID, app.appendOutput)
+	cmdErr := dl.Err
+	extension := dl.Extension
+	result := dl.Scan
+	finalPaths := dl.FinalPaths
+
+	if cmdErr == nil {
 		postProcessed := app.ui.enablePostProcess.Checked
 		rec := DownloadRecord{
 			URL:           rawURL,
