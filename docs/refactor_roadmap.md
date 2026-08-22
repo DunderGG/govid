@@ -32,7 +32,7 @@ Each step depends on the previous one.
 Phase 3 is independent of Phase 2 and can proceed in parallel.
 
 1. **PPEngine step 1** — Introduce a `PostProcessSettings` value struct; make `buildPostProcessFilters` accept it instead of reading `*UIWidgets` directly. The caller populates the struct from widget state before calling in.
-2. **PPEngine steps 4 & 5** — Refactor / document `runJob`; break compound expressions (e.g. the nested `computeOutputFrameCount` call) into separate named variables.
+2. **PPEngine steps 4 & 5** — Refactor / document `runJob`; extract the GPU job lifecycle (semaphore acquire/release, stall watchdog, `retryWithCPU` fallback) into a dedicated helper separate from the core ffmpeg execution/logging/rename flow; break compound expressions (e.g. the nested `computeOutputFrameCount` call) into separate named variables.
 
 ### Phase 4 — LogService follow-on (after Phase 2 step 3)
 
@@ -53,7 +53,7 @@ All steps depend on the preceding phases. Execute in order; each step shrinks th
 - **High Priority: Group UIWidgets** — Break the 40-field flat struct into feature-specific sub-structs now that `createUI` lives in `UIManager`.
 - **High Priority: Refactor ui.go** — Split the remaining window construction into focused helpers for menus, dialogs, and layout.
 - **LogService step 3** — Replace the direct widget mutation in `appendOutput` with an `OnLogLine func(line string, col color.Color)` callback, now that `UIManager` owns widget lifecycle.
-- **Update documentation** — Refresh `architecture.md`, `classes.puml`, and the sequence diagrams to reflect the fully extracted architecture.
+- **Update documentation** — `architecture.md` is already current (§4.11 documents `GPUCapabilityService`); `classes.puml` and the sequence diagrams still have no GPU-related entries and need `GPUCapabilityService`, `GPUBackend`, `BackendCapability`, and `EncoderPlan` added, alongside the rest of the fully extracted architecture.
 
 ---
 
@@ -96,6 +96,7 @@ Breaking down the `DownloaderApp` "God Object" into specialized components:
 - [ ] **HistoryService** — download history persistence, schema evolution, and lookup helpers.
 - [ ] **LogService** — session log/error log routing, rotation policy, and structured log helpers.
 - [ ] **DependencyService** — binary discovery, dependency checks, and updater command execution.
+- [ ] **GPUCapabilityService** — FFmpeg GPU backend detection, capability caching, and encoder-plan resolution (see [gpu-acceleration.md](gpu-acceleration.md)).
 - [ ] **Update documentation** — architecture.md, classes.puml, and sequence diagrams fully reflect the extracted architecture.
 
 See the sections below for per-component details and open next steps.
@@ -117,7 +118,7 @@ See the sections below for per-component details and open next steps.
 
 ## PPEngine
 
-**Done:** `PPEngine` struct introduced in `pp_engine.go`. It owns the ffmpeg and ffprobe binary paths and exposes `ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks)`. `PPCallbacks` bridges log, status, and failure events to the UI. Private methods `detectCropFilter`, `resolveAutoCrop`, and `runJob` are fully engine-owned. Probe helpers (`probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, `parseRationalFPS`) and argument builders (`buildFFmpegArgs`, `patchThreadCount`) moved from `postprocess.go` to `pp_engine.go` as private methods, dropping their explicit `ffprobePath` parameters. `postprocess.go` is now a thin layer containing `buildPostProcessFilters` (reads UI state), `applyFFmpegFilters` (5-line wrapper), and shared format/scan helpers (`formatFFmpegProgress`, `formatBytes`, `formatDuration`, `filterShortName`, `scanCRLF`) used by `runJob`.
+**Done:** `PPEngine` struct introduced in `pp_engine.go`. It owns the ffmpeg and ffprobe binary paths and exposes `ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks)`. `PPCallbacks` bridges log, status, and failure events to the UI. Private methods `detectCropFilter`, `resolveAutoCrop`, and `runJob` are fully engine-owned. Probe helpers (`probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, `parseRationalFPS`) and argument builders (`buildFFmpegArgs`, `patchThreadCount`) moved from `postprocess.go` to `pp_engine.go` as private methods, dropping their explicit `ffprobePath` parameters. `postprocess.go` is now a thin layer containing `buildPostProcessFilters` (reads UI state), `applyFFmpegFilters` (5-line wrapper), and shared format/scan helpers (`formatFFmpegProgress`, `formatBytes`, `formatDuration`, `filterShortName`, `scanCRLF`) used by `runJob`. GPU acceleration for the final encode step has since been layered on: `PPEngine.GPUBackend`/`GPUCapabilities` feed `PlanEncoder` inside `buildFFmpegArgsForBackend`, and `runJob` gained a bounded `gpuSem` semaphore, a stall watchdog, and a `retryWithCPU` fallback for GPU-encoded jobs (see [gpu-acceleration.md](gpu-acceleration.md) §6/§10).
 
 **Next steps:**
 
@@ -127,7 +128,7 @@ See the sections below for per-component details and open next steps.
 
 3. ~~**Move `buildFFmpegArgs` and `patchThreadCount` to `PPEngine`**~~ — *Done. Both are now private methods on `PPEngine` in `pp_engine.go`. Call sites in `ApplyFilters` updated to use the `engine.` receiver.*
 
-4. **Refactor `runJob()`** — Or document it better. The multiple renaming and error handling is quite confusing.
+4. **Refactor `runJob()`** — Or document it better. The multiple renaming and error handling is quite confusing, and has grown further since GPU acceleration was added: the function now interleaves core ffmpeg execution/logging/rename with GPU-only concerns (`gpuSem` acquire/release, the stall watchdog, and the `retryWithCPU` fallback branch). Extracting the GPU job lifecycle into its own helper (e.g. a small `gpuJobGuard` type or paired `acquireGPU`/`releaseGPU` methods) would let `runJob` itself focus solely on the ffmpeg process lifecycle.
 
 5. **One operation per line** — For example, break the "totalFrames: computeOutputFrameCount(ctx, engine.FFprobePath, inputPath, probeFrameCount(ctx, engine.FFprobePath, inputPath), activeVF)" into separate operations.
 
@@ -139,13 +140,13 @@ See the sections below for per-component details and open next steps.
 
 1. **Move `showPreferences` to UIManager** — currently calls `savePreferences`, `resetPreferences`, `loadConfigFromFile`, `applyConfig`, `createUI`. Once `PreferenceService` owns those, `showPreferences` needs only a `PreferenceService` reference and an `onThemeChange` callback, which is manageable.
 
-2. **Move `showPostProcessing` to UIManager** — currently calls `computeProcessingLoad`, `buildPostProcessFilters`, `savePreferences`. Once `PreferenceService` and `PPEngine` are the named dependencies, the callback surface shrinks to two objects.
+2. **Move `showPostProcessing` to UIManager** — currently calls `computeProcessingLoad`, `buildPostProcessFilters`, `savePreferences`, and (via `applyFFmpegFilters`) reads `app.ui.gpuBackend.Selected` and calls `app.gpuSvc.Detect`. Once `PreferenceService`, `PPEngine`, and `GPUCapabilityService` are the named dependencies, the callback surface shrinks to three objects.
 
 3. **Move `createMainMenu` to UIManager** — menu item callbacks (`startDownload`, `runUpdateInUI`, `showPostProcessing`, etc.) become `UIManager` callback fields, wired at construction time. Depends on `DependencyService` for the updater action.
 
 4. **Move `createUI` to UIManager** — the largest step. The main window layout reads from `*UIWidgets` and calls back into almost every service. This should be last, after all other services exist, so callbacks are typed references rather than raw closures over `DownloaderApp`.
 
-5. **Remove direct service references from UIManager** — `UIManager` currently holds `historySvc *HistoryService` directly, creating dual ownership (both `DownloaderApp` and `UIManager` own the same instance). As each `show*` method migrates here, it will add more service fields, tightening coupling further. The clean solution is for `UIManager` to hold **no service references** — instead, inject callbacks at construction time (e.g. `OnLoadHistory func() ([]DownloadHistoryEntry, error)`, `OnClearHistory func() error`). `DownloaderApp` wires those callbacks to its services at startup, so `UIManager` stays decoupled from service types entirely. This step should be done once all `show*` methods have moved here, so the full callback surface is known before the constructor is redesigned.
+5. **Remove direct service references from UIManager** — `UIManager` currently holds `historySvc *HistoryService` directly, creating dual ownership (both `DownloaderApp` and `UIManager` own the same instance). As each `show*` method migrates here, it will add more service fields, tightening coupling further — once step 2 above lands, `gpuSvc *GPUCapabilityService` will join `historySvc` as a second directly-held service reference. The clean solution is for `UIManager` to hold **no service references** — instead, inject callbacks at construction time (e.g. `OnLoadHistory func() ([]DownloadHistoryEntry, error)`, `OnClearHistory func() error`, `OnDetectGPU func(ctx context.Context) map[GPUBackend]BackendCapability`). `DownloaderApp` wires those callbacks to its services at startup, so `UIManager` stays decoupled from service types entirely. This step should be done once all `show*` methods have moved here, so the full callback surface is known before the constructor is redesigned.
 
 ## HistoryService
 
@@ -211,6 +212,14 @@ The package-level `UpdateYtDlpCLI()` replaces the old `updateYtDlp()` free funct
 2. ~~**Move `loadConfigFromFile` / `applyConfig` to `PreferenceService`**~~ — *Done. `LoadFromFile(path) (*AppConfig, error)` and `MergeConfig(cfg, base, validFormats, validQualities) (AppPreferences, []string)` added to `preference_service.go`. `loadConfigFile` and `applyConfig` removed from `helpers.go`. The "Load from Config" button in `ui.go` now calls `prefSvc.MergeConfig`, `applyPreferencesToWidgets`, and `prefSvc.Save` directly. `applyPreferencesToWidgets` gained guarded writes for `Format`, `Quality`, and `SavedPath` (skipped when empty to preserve platform-specific defaults at startup).*
 
 3. ~~**Remove the three inline `fyne.CurrentApp().Preferences().SetBool(...)` onChanged handlers**~~ — *Done. The `OnChanged` callbacks for `notify`, `autoRetry`, and `enablePostProcess` now call `app.savePreferences(app.ui.path.Text)`. A fourth handler (`saveLog`) that used a raw `"saveLog"` string rather than `prefSaveLog` was brought in line at the same time.*
+
+## GPUCapabilityService
+
+**Done:** `GPUCapabilityService` struct introduced in `gpu_capability.go`, following the same plain-struct-plus-cache pattern as the other extracted services. It owns `ffmpegPath` and a mutex-guarded cache keyed by `GPUBackend`, populated once per app run by `Detect(ctx) map[GPUBackend]BackendCapability` (checks `ffmpeg -encoders` output, then runs a short synthetic-frame probe per applicable backend) and read back via `Capability(backend) (BackendCapability, bool)`. `PlanEncoder(requested, capabilities, containerExt) EncoderPlan` is a pure function that always resolves to a runnable `-c:v` argument set, falling back to the CPU encoder when the requested/auto backend is unavailable. `GPUBackendOptions()`/`GPUBackendFromLabel()` map the UI selector's OS-filtered labels to `GPUBackend` values, and `FormatGPUDiagnostics()` renders per-backend availability lines for the session log and About window. `DownloaderApp` holds `gpuSvc *GPUCapabilityService`, constructed in `main.go`; `PreferenceService` owns the `gpuBackend` preference key/default; `UIWidgets` gained a `gpuBackend *widget.Select` field for the Post-Processing window's "Encoder Backend" selector. See [gpu-acceleration.md](gpu-acceleration.md) for the full design.
+
+**No open next steps** — the service itself is fully self-contained and requires no further extraction. Its *consumers* still have pending work: see PPEngine step 4 (the `runJob` GPU-lifecycle extraction) and UIManager step 2 (moving `showPostProcessing`, which will pull in `gpuSvc` as a named dependency) above.
+
+> **Coupling note:** Once UIManager step 2 lands, `UIManager` will hold a direct `gpuSvc *GPUCapabilityService` reference alongside `historySvc`, the same temporary dual-ownership compromise described under HistoryService above. See UIManager step 5 for the plan to replace all service fields on `UIManager` with injected callbacks.
 
 ## main.go
 
