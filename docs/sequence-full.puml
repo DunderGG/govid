@@ -127,7 +127,7 @@ group loop [for each URL in queue]
     end
 
     alt cmdErr == nil
-        App -> OS  : finalizeDownloadedFiles(savePath, downloadID)\n  — Glob(*downloadID*)\n  — strip token, uniquePath\n  — os.Rename(tmp → final)
+        App -> OS  : engine.FinalizeFiles(savePath, downloadID)\n  — Glob(*downloadID*)\n  — strip token, uniquePath\n  — os.Rename(tmp → final)
         OS  --> App : []finalPaths
     end
 

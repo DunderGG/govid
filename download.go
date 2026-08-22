@@ -282,7 +282,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	// Rename temp files to their clean, conflict-free names.
 	var finalPaths []string
 	if cmdErr == nil && downloadID != "" {
-		finalPaths = app.finalizeDownloadedFiles(savePath, downloadID)
+		finalPaths = engine.FinalizeFiles(savePath, downloadID, app.appendOutput)
 		postProcessed := app.ui.enablePostProcess.Checked
 		rec := DownloadRecord{
 			URL:           rawURL,

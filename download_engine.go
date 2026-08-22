@@ -2,7 +2,8 @@
 //
 // Responsibilities:
 //   - DownloadEngine: typed component holding tool paths, with methods for
-//     building yt-dlp arguments and executing downloads with retry logic.
+//     building yt-dlp arguments, executing downloads with retry logic, and
+//     finalizing output filenames once a download completes.
 //   - DownloadRequest: typed value object holding per-download inputs.
 //   - DownloadArgs: typed value object holding the resolved argument list
 //     and derived metadata (extension, downloadID, trim display strings).
@@ -15,6 +16,7 @@ import (
 	"image/color"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -248,4 +250,58 @@ func (engine *DownloadEngine) Execute(ctx context.Context, args []string, autoRe
 	}
 
 	return result, cmdErr
+}
+
+// FinalizeFiles finds all files written by yt-dlp under the given downloadID
+// token, strips the token from their names, and renames them to their final
+// conflict-free paths using uniquePath. It returns the list of final paths so
+// callers can apply further post-processing.
+func (engine *DownloadEngine) FinalizeFiles(savePath, downloadID string, onLog func(line string, col color.Color)) []string {
+	pattern := filepath.Join(savePath, "*"+downloadID+"*")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil
+	}
+	var finalPaths []string
+	for _, tmpPath := range matches {
+		cleanBase := strings.Replace(filepath.Base(tmpPath), "_"+downloadID, "", 1)
+		cleanPath := filepath.Join(savePath, cleanBase)
+		finalPath := uniquePath(cleanPath)
+		if finalPath != cleanPath {
+			onLog(
+				fmt.Sprintf("[SYSTEM] File already exists — saving as: %s", filepath.Base(finalPath)),
+				colSystem,
+			)
+		}
+		if err := os.Rename(tmpPath, finalPath); err != nil {
+			onLog(
+				fmt.Sprintf("[SYSTEM] Failed to rename file: %v", err),
+				colErrorSoft,
+			)
+		}
+		finalPaths = append(finalPaths, finalPath)
+	}
+	return finalPaths
+}
+
+// uniquePath returns path unchanged when no file exists at that location.
+// If the path is already taken, it appends an incrementing numeric suffix
+// to the base (e.g. "Video.mp4" → "Video 1.mp4" → "Video 2.mp4") until it
+// finds a name that does not conflict with an existing file.
+func uniquePath(path string) string {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return path
+	}
+	ext := filepath.Ext(path)
+	base := strings.TrimSuffix(path, ext)
+
+	// Loop until we find a filename that doesn't exist.
+	// Theoretically this could run indefinitely if there are always conflicting files,
+	// but in practice it's unlikely anyone will have dozens of duplicates in the same folder.
+	for i := 1; ; i++ {
+		candidate := fmt.Sprintf("%s %d%s", base, i, ext)
+		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			return candidate
+		}
+	}
 }

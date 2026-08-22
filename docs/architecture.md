@@ -116,10 +116,11 @@ Owns the five singleton secondary windows (About, Help, History, Preferences, Po
 ### 4.4 `DownloadEngine` — yt-dlp executor  
 *Defined in:* `download_engine.go`
 
-A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and provides two methods:
+A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and provides three methods:
 
 - **`BuildArgs(DownloadRequest) DownloadArgs`** — pure function; assembles the yt-dlp command-line arguments from a request value struct. No I/O.
 - **`Execute(ctx, args, autoRetry, index, total, ProcessCallbacks) (scanResult, error)`** — starts the process, streams stdout/stderr through its own private `watchOutput` method (defined in `logscanner.go`), and retries on transient errors with 1 s / 5 s / 30 s back-off.
+- **`FinalizeFiles(savePath, downloadID string, onLog func(string, color.Color)) []string`** — globs the temp files written under `downloadID`, strips the token, and renames each to its final conflict-free name via the private `uniquePath` helper. Reports rename events through `onLog` rather than touching the UI directly.
 
 The private `watchOutput(stdout, stderr, cb) scanResult` and `parseProgress(line, cb)` methods own all output-scanning; they hold no UI state and report every line and progress tick through `ProcessCallbacks`.
 

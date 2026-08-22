@@ -2,7 +2,6 @@
 //
 // Responsibilities:
 //   - Building the video/audio filter lists from the current UI state.
-//   - Renaming temp files to their clean, conflict-free final names.
 //   - Thin applyFFmpegFilters wrapper: collects binary paths and wires
 //     PPCallbacks before delegating to PPEngine.ApplyFilters.
 //   - Shared helpers called by pp_engine.go (same package): formatFFmpegProgress,
@@ -13,8 +12,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -157,60 +154,6 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 		OnStatus:  app.updateStatus,
 		OnFailure: func() { app.ppFailed.Store(1) },
 	})
-}
-
-// finalizeDownloadedFiles finds all files written by yt-dlp under the given
-// downloadID token, strips the token from their names, and renames them to
-// their final conflict-free paths using uniquePath. It returns the list of
-// final paths so callers can apply further post-processing.
-func (app *DownloaderApp) finalizeDownloadedFiles(savePath, downloadID string) []string {
-	pattern := filepath.Join(savePath, "*"+downloadID+"*")
-	matches, err := filepath.Glob(pattern)
-	if err != nil {
-		return nil
-	}
-	var finalPaths []string
-	for _, tmpPath := range matches {
-		cleanBase := strings.Replace(filepath.Base(tmpPath), "_"+downloadID, "", 1)
-		cleanPath := filepath.Join(savePath, cleanBase)
-		finalPath := uniquePath(cleanPath)
-		if finalPath != cleanPath {
-			app.appendOutput(
-				fmt.Sprintf("[SYSTEM] File already exists — saving as: %s", filepath.Base(finalPath)),
-				colSystem,
-			)
-		}
-		if err := os.Rename(tmpPath, finalPath); err != nil {
-			app.appendOutput(
-				fmt.Sprintf("[SYSTEM] Failed to rename file: %v", err),
-				colErrorSoft,
-			)
-		}
-		finalPaths = append(finalPaths, finalPath)
-	}
-	return finalPaths
-}
-
-// uniquePath returns path unchanged when no file exists at that location.
-// If the path is already taken, it appends an incrementing numeric suffix
-// to the base (e.g. "Video.mp4" → "Video 1.mp4" → "Video 2.mp4") until it
-// finds a name that does not conflict with an existing file.
-func uniquePath(path string) string {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return path
-	}
-	ext := filepath.Ext(path)
-	base := strings.TrimSuffix(path, ext)
-
-	// Loop until we find a filename that doesn't exist.
-	// Theoretically this could run indefinitely if there are always conflicting files,
-	// but in practice it's unlikely anyone will have dozens of duplicates in the same folder.
-	for i := 1; ; i++ {
-		candidate := fmt.Sprintf("%s %d%s", base, i, ext)
-		if _, err := os.Stat(candidate); os.IsNotExist(err) {
-			return candidate
-		}
-	}
 }
 
 // formatFFmpegProgress parses a FFmpeg stats line ("frame=X fps=X ... time=HH:MM:SS speed=Xx")
