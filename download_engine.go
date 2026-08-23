@@ -192,18 +192,26 @@ type ProcessCallbacks struct {
 	OnProgress func(pct float64, size string)
 }
 
+// DownloadOptions bundles the runtime options shared by Run and Execute:
+// the retry policy and this URL's position within a batch.
+type DownloadOptions struct {
+	AutoRetry bool
+	Index     int // 1-based position within a batch (1 for single downloads)
+	Total     int // total number of URLs in the batch (1 for single downloads)
+}
+
 // Execute runs yt-dlp with the given args, retrying on transient errors
-// when autoRetry is true (up to 3 attempts with 1 s / 5 s / 30 s backoff).
+// when opts.AutoRetry is true (up to 3 attempts with 1 s / 5 s / 30 s backoff).
 // It is free of UI or Fyne references; all event reporting goes through cb.
 // Returns the scan metadata and the final process error (nil on success).
-func (engine *DownloadEngine) Execute(ctx context.Context, args []string, autoRetry bool, index, total int, cb ProcessCallbacks) (scanResult, error) {
+func (engine *DownloadEngine) Execute(ctx context.Context, args []string, opts DownloadOptions, cb ProcessCallbacks) (scanResult, error) {
 	retryDelays := []time.Duration{time.Second, 5 * time.Second, 30 * time.Second}
 	var result scanResult
 	var cmdErr error
 
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
-			if !autoRetry || !result.hadTransientErr {
+			if !opts.AutoRetry || !result.hadTransientErr {
 				break
 			}
 			delay := retryDelays[attempt-1]
@@ -236,8 +244,8 @@ func (engine *DownloadEngine) Execute(ctx context.Context, args []string, autoRe
 			return result, err
 		}
 
-		if total > 1 {
-			cb.OnStatus(fmt.Sprintf("Status: Downloading (%d of %d)...", index, total))
+		if opts.Total > 1 {
+			cb.OnStatus(fmt.Sprintf("Status: Downloading (%d of %d)...", opts.Index, opts.Total))
 		} else {
 			cb.OnStatus("Status: Downloading...")
 		}
@@ -264,9 +272,9 @@ type DownloadResult struct {
 // Run composes BuildArgs, Execute, and FinalizeFiles into the full lifecycle
 // of a single URL: build the yt-dlp command, run it with retry handling, and
 // (on success) rename the output files to their final, conflict-free names.
-// It reads no UI state — all inputs come from req and the given parameters —
-// and reports every event through cb.
-func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, autoRetry bool, index, total int, cb ProcessCallbacks) DownloadResult {
+// It reads no UI state — all inputs come from req and opts — and reports
+// every event through cb.
+func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, opts DownloadOptions, cb ProcessCallbacks) DownloadResult {
 	built := engine.BuildArgs(req)
 	if built.HasTrim {
 		cb.OnLog(
@@ -275,7 +283,7 @@ func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, auto
 		)
 	}
 
-	scan, cmdErr := engine.Execute(ctx, built.Args, autoRetry, index, total, cb)
+	scan, cmdErr := engine.Execute(ctx, built.Args, opts, cb)
 
 	var finalPaths []string
 	if cmdErr == nil {

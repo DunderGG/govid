@@ -75,7 +75,7 @@ group loop [for each URL in queue]
 
     App -> App : runYtDlp(runCtx, url, …)
 
-    group engine.Run(ctx, req, autoRetry, index, total, cb)  — BuildArgs + Execute + FinalizeFiles
+    group engine.Run(ctx, req, opts, cb)  — BuildArgs + Execute + FinalizeFiles
         group Build yt-dlp arguments
             App -> App : select format flag (bestvideo+bestaudio / audio-only / WebM VP9…)
             App -> App : apply quality height filter if set

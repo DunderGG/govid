@@ -119,9 +119,11 @@ Owns the five singleton secondary windows (About, Help, History, Preferences, Po
 A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and provides four methods:
 
 - **`BuildArgs(DownloadRequest) DownloadArgs`** — pure function; assembles the yt-dlp command-line arguments from a request value struct. No I/O.
-- **`Execute(ctx, args, autoRetry, index, total, ProcessCallbacks) (scanResult, error)`** — starts the process, streams stdout/stderr through its own private `watchOutput` method (defined in `logscanner.go`), and retries on transient errors with 1 s / 5 s / 30 s back-off.
+- **`Execute(ctx, args []string, opts DownloadOptions, ProcessCallbacks) (scanResult, error)`** — starts the process, streams stdout/stderr through its own private `watchOutput` method (defined in `logscanner.go`), and retries on transient errors with 1 s / 5 s / 30 s back-off when `opts.AutoRetry` is set.
 - **`FinalizeFiles(savePath, downloadID string, onLog func(string, color.Color)) []string`** — globs the temp files written under `downloadID`, strips the token, and renames each to its final conflict-free name via the private `uniquePath` helper. Reports rename events through `onLog` rather than touching the UI directly.
-- **`Run(ctx, req DownloadRequest, autoRetry bool, index, total int, ProcessCallbacks) DownloadResult`** — composes the three methods above into the full lifecycle of a single URL download. Reads no UI state; `DownloaderApp.runYtDlp` builds the `DownloadRequest` from widget values, calls `Run`, then handles history recording and the UI completion report from the returned `DownloadResult{FinalPaths, Extension, Scan, Err}`.
+- **`Run(ctx, req DownloadRequest, opts DownloadOptions, ProcessCallbacks) DownloadResult`** — composes the three methods above into the full lifecycle of a single URL download. Reads no UI state; `DownloaderApp.runYtDlp` builds the `DownloadRequest` and `DownloadOptions` from widget values, calls `Run`, then handles history recording and the UI completion report from the returned `DownloadResult{FinalPaths, Extension, Scan, Err}`.
+
+`DownloadOptions{AutoRetry bool; Index, Total int}` bundles the retry policy and this URL's 1-based position within a batch (both 1 for single downloads) — the three runtime options shared by `Execute` and `Run`.
 
 The private `watchOutput(stdout, stderr, cb) scanResult` and `parseProgress(line, cb)` methods own all output-scanning; they hold no UI state and report every line and progress tick through `ProcessCallbacks`.
 

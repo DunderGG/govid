@@ -262,7 +262,11 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		TrimEnd:     trimEnd,
 		MaxSpeed:    limit,
 		CookiesPath: strings.TrimSpace(app.ui.cookies.Text),
-	}, app.ui.autoRetry.Checked, index, total, ProcessCallbacks{
+	}, DownloadOptions{
+		AutoRetry: app.ui.autoRetry.Checked,
+		Index:     index,
+		Total:     total,
+	}, ProcessCallbacks{
 		OnLog:      app.appendOutput,
 		OnStatus:   app.updateStatus,
 		OnProgress: app.updateProgress,
