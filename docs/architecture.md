@@ -48,7 +48,7 @@ govid/
 │
 ├── ── Orchestration ───────────────────────────────────────────────
 ├── download.go             DownloaderApp.startDownload / runYtDlp — UI orchestration for a download session
-├── postprocess.go          DownloaderApp.buildPostProcessFilters / applyFFmpegFilters — thin UI wrapper + utility functions
+├── postprocess.go          PostProcessSettings, buildPostProcessFilters / applyFFmpegFilters — value struct + thin UI wrapper
 ├── logscanner.go           DownloadEngine.watchOutput / parseProgress — yt-dlp stdout/stderr parsing goroutines
 │
 ├── ── UI ──────────────────────────────────────────────────────────

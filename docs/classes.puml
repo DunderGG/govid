@@ -41,7 +41,6 @@ package "Application Core" #F0F4F8 {
         +checkDependencies()
         +createUI()
         +createMainMenu()
-        +buildPostProcessFilters() : vf, af
         +applyFFmpegFilters(ctx, paths, vf, af)
     }
 
@@ -187,6 +186,26 @@ package "Post-Processing Engine" #F8F0FF {
         -threads : int
         -encodeMode : string
         -totalFrames : int64
+    }
+
+    class PostProcessSettings <<data>> {
+        +SmoothMotion : bool
+        +SmoothMotionMode : string
+        +SmoothMotionFPS : float64
+        +Sharpen : bool
+        +SharpenAmount : float64
+        +VividMode : bool
+        +Deband : bool
+        +HDRToSDR : bool
+        +Denoise : bool
+        +DenoiseMode : string
+        +Deinterlace : bool
+        +Stabilize : bool
+        +AutoCrop : bool
+        +UpscaleVideo : bool
+        +UpscaleTarget : string
+        +NormalizeAudio : bool
+        +NightMode : bool
     }
 
 }
@@ -439,6 +458,15 @@ note top of PPEngine
   Each worker calls runJob() for one file.
   cropdetect runs a silent FFmpeg pass
   before the main encode.
+end note
+
+note top of PostProcessSettings
+  Plain value struct — no Fyne widget
+  references. newPostProcessSettings(ui)
+  builds it from *UIWidgets. Consumed by
+  three free functions in postprocess.go:
+  buildPostProcessFilters(s), computeProcessingLoad(s),
+  checkPostProcessingEnabled(s).
 end note
 
 note top of PreferenceService

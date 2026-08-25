@@ -145,7 +145,7 @@ func (app *DownloaderApp) startDownload() {
 		// Skipped entirely when the master post-processing toggle is off.
 		var vfFilters, afFilters []string
 		if app.ui.enablePostProcess.Checked {
-			vfFilters, afFilters = app.buildPostProcessFilters()
+			vfFilters, afFilters = buildPostProcessFilters(newPostProcessSettings(app.ui))
 		}
 		hasPostProcess := len(vfFilters) > 0 || len(afFilters) > 0
 

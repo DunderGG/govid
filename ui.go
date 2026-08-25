@@ -150,7 +150,7 @@ func (app *DownloaderApp) showPostProcessing() {
 	sizeWarnLabel.Wrapping = fyne.TextWrapWord
 
 	refreshLoad := func() {
-		cost, desc := app.computeProcessingLoad()
+		cost, desc := computeProcessingLoad(newPostProcessSettings(app.ui))
 		loadDesc.Set(desc)
 		for idx, block := range blocks {
 			if cost > blockThresholds[idx] {
