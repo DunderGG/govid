@@ -61,6 +61,59 @@ func NewPPEngine(ffmpegPath, ffprobePath string) *PPEngine {
 	}
 }
 
+// gpuJobGuard owns the resource lifecycle a GPU-encoded job needs on top of a
+// plain ffmpeg run: a slot in engine.gpuSem and a stall watchdog. It is a
+// no-op for CPU jobs so runJob can use it unconditionally.
+type gpuJobGuard struct {
+	engine   *PPEngine
+	active   bool // true if this job uses the GPU semaphore/watchdog
+	acquired bool // true once the semaphore slot has been taken
+	released bool // idempotency guard for release()
+	watchdog *time.Timer
+}
+
+// newGPUJobGuard acquires a gpuSem slot when usedGPU is true, blocking until
+// one is free.
+func newGPUJobGuard(engine *PPEngine, usedGPU bool) *gpuJobGuard {
+	g := &gpuJobGuard{engine: engine, active: usedGPU}
+	if usedGPU {
+		engine.gpuSem <- struct{}{}
+		g.acquired = true
+	}
+	return g
+}
+
+// arm starts the stall watchdog, calling onStall if no output is seen within
+// gpuStallTimeout. No-op for non-GPU jobs.
+func (g *gpuJobGuard) arm(onStall func()) {
+	if !g.active {
+		return
+	}
+	g.watchdog = time.AfterFunc(gpuStallTimeout, onStall)
+}
+
+// pet resets the stall watchdog; call on every line of ffmpeg output received.
+func (g *gpuJobGuard) pet() {
+	if g.watchdog != nil {
+		g.watchdog.Reset(gpuStallTimeout)
+	}
+}
+
+// release stops the watchdog and frees the gpuSem slot. Safe to call more
+// than once — only the first call has any effect.
+func (g *gpuJobGuard) release() {
+	if g.released {
+		return
+	}
+	g.released = true
+	if g.watchdog != nil {
+		g.watchdog.Stop()
+	}
+	if g.acquired {
+		<-g.engine.gpuSem
+	}
+}
+
 // PPCallbacks lets PPEngine report events back to the UI layer.
 type PPCallbacks struct {
 	// OnLog is called for every message the engine wants to show in the log view.
@@ -164,6 +217,9 @@ func (engine *PPEngine) retryWithCPU(ctx context.Context, job PostProcessJob, cb
 // runJob executes a single PostProcessJob and streams FFmpeg's stderr to the UI
 // in real-time. Progress stats update the status bar; all other lines are
 // forwarded to the log. The original file is replaced only if FFmpeg succeeds.
+//
+// Phases: log/warn -> size-before -> acquire gpuJobGuard -> exec+stream ->
+// wait (retry on CPU if a GPU job failed) -> rename+report.
 func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCallbacks) {
 	cb.OnLog(
 		fmt.Sprintf("[SYSTEM] Post-processing: %s", filepath.Base(job.inputPath)),
@@ -184,29 +240,12 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		sizeBefore = info.Size()
 	}
 
-	// GPU jobs share a small semaphore since consumer GPUs cap concurrent
-	// hardware encoder sessions; CPU jobs are unaffected. releaseGPU is called
-	// explicitly before a CPU retry so the slot frees up immediately instead of
-	// staying held for the retry's duration, and is idempotent so the deferred
-	// call on every other exit path is a safe no-op if already released.
-	var watchdog *time.Timer
-	released := false
-	releaseGPU := func() {
-		if released {
-			return
-		}
-		released = true
-		if watchdog != nil {
-			watchdog.Stop()
-		}
-		if job.usedGPU {
-			<-engine.gpuSem
-		}
-	}
-	if job.usedGPU {
-		engine.gpuSem <- struct{}{}
-	}
-	defer releaseGPU()
+	// guard releases its gpuSem slot explicitly before every CPU retry so the
+	// slot frees up immediately instead of staying held for the retry's
+	// duration; release() is idempotent so the deferred call on every other
+	// exit path is a safe no-op if already released.
+	guard := newGPUJobGuard(engine, job.usedGPU)
+	defer guard.release()
 
 	start := time.Now()
 	cmd := exec.CommandContext(ctx, engine.FFmpegPath, job.ffmpegArgs...)
@@ -220,7 +259,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		// If FFmpeg fails, log the error and the captured output.
 		if err != nil {
 			if job.usedGPU {
-				releaseGPU()
+				guard.release()
 				engine.retryWithCPU(ctx, job, cb, lastLine(string(out)))
 				return
 			}
@@ -251,6 +290,11 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	}
 
 	if err := cmd.Start(); err != nil {
+		if job.usedGPU {
+			guard.release()
+			engine.retryWithCPU(ctx, job, cb, err.Error())
+			return
+		}
 		cb.OnLog(fmt.Sprintf("[ERROR] Could not start FFmpeg: %v", err), colError)
 		return
 	}
@@ -258,24 +302,20 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	// GPU jobs get a stall watchdog: if a hung driver stops producing any
 	// output, kill the process so the existing CPU retry can take over
 	// instead of the batch hanging indefinitely.
-	if job.usedGPU {
-		watchdog = time.AfterFunc(gpuStallTimeout, func() {
-			cb.OnLog(
-				fmt.Sprintf("[SYSTEM] GPU encode produced no output for %s, assuming a hung driver; terminating.", gpuStallTimeout),
-				colWarning,
-			)
-			_ = cmd.Process.Kill()
-		})
-	}
+	guard.arm(func() {
+		cb.OnLog(
+			fmt.Sprintf("[SYSTEM] GPU encode produced no output for %s, assuming a hung driver; terminating.", gpuStallTimeout),
+			colWarning,
+		)
+		_ = cmd.Process.Kill()
+	})
 
 	// Stream FFmpeg's stderr in real-time to the log and status bar.
 	var errLines []string
 	scanner := bufio.NewScanner(stderrPipe)
 	scanner.Split(scanCRLF)
 	for scanner.Scan() {
-		if watchdog != nil {
-			watchdog.Reset(gpuStallTimeout)
-		}
+		guard.pet()
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
@@ -300,7 +340,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 			if len(errLines) > 0 {
 				reason = errLines[len(errLines)-1]
 			}
-			releaseGPU()
+			guard.release()
 			engine.retryWithCPU(ctx, job, cb, reason)
 			return
 		}
@@ -556,6 +596,8 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 			encodeMode = plan.Label
 			usedGPU = plan.UsedGPU
 		}
+		frameCount := engine.probeFrameCount(ctx, inputPath)
+		totalFrames := engine.computeOutputFrameCount(ctx, inputPath, frameCount, activeVF)
 		jobs = append(jobs, PostProcessJob{
 			inputPath:   inputPath,
 			tmpOutput:   tmpOutput,
@@ -565,7 +607,7 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 			afFilters:   afFilters,
 			encodeMode:  encodeMode,
 			usedGPU:     usedGPU,
-			totalFrames: engine.computeOutputFrameCount(ctx, inputPath, engine.probeFrameCount(ctx, inputPath), activeVF),
+			totalFrames: totalFrames,
 		})
 	}
 

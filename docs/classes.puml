@@ -162,12 +162,24 @@ package "Post-Processing Engine" #F8F0FF {
         -detectCropFilter(ctx, input, cb) : string
         -resolveAutoCrop(ctx, input, filters, cb) : []string
         -runJob(ctx, job, cb)
+        -retryWithCPU(ctx, job, cb, reason)
         -probeFrameCount(ctx, input) : int64
         -probeDuration(ctx, input) : float64
         -computeOutputFrameCount(ctx, input,\n  frames, filters) : int64
         -parseRationalFPS(s) : float64
         -buildFFmpegArgs(input, tmpOutput,\n  vf, af) : []string
         -patchThreadCount(args, count) : []string
+    }
+
+    class gpuJobGuard <<helper>> {
+        -active : bool
+        -acquired : bool
+        -released : bool
+        -watchdog : *time.Timer
+        --
+        +arm(onStall func())
+        +pet()
+        +release()
     }
 
     class PPCallbacks <<bridge>> {
@@ -425,6 +437,7 @@ DownloadEngine ..> scanResult      : Execute output
 ' PPEngine internal flow
 PPEngine ..> PPCallbacks    : ApplyFilters bridge
 PPEngine ..> PostProcessJob : builds & runs
+PPEngine ..> gpuJobGuard    : runJob acquires/releases
 
 ' PreferenceService
 PreferenceService --> FynePreferences : store
@@ -458,6 +471,14 @@ note top of PPEngine
   Each worker calls runJob() for one file.
   cropdetect runs a silent FFmpeg pass
   before the main encode.
+end note
+
+note top of gpuJobGuard
+  Owns the GPU-only resource lifecycle
+  (gpuSem slot + stall watchdog) so
+  runJob() itself stays focused on the
+  plain ffmpeg exec/log/rename flow.
+  No-op when the job doesn't use GPU.
 end note
 
 note top of PostProcessSettings
