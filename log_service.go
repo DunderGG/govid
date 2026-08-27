@@ -11,6 +11,7 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"math"
 	"os"
 	"path/filepath"
@@ -146,6 +147,101 @@ func (svc *LogService) SetBufferLimit(limit int) {
 // BufferLimit returns the current UI line cap.
 func (svc *LogService) BufferLimit() int {
 	return svc.bufferLimit
+}
+
+// ── Session configuration logging ────────────────────────────────────────────
+
+// SessionConfig is a plain-value snapshot of the settings a download session
+// starts with. It has no widget references, so it can be built once from the
+// UI and passed anywhere (WriteSessionConfig, future structured logging, etc.).
+type SessionConfig struct {
+	URLs        []string
+	RawURLField string
+	SavePath    string
+	BatchMode   bool
+	Format      string
+	Quality     string
+	TrimStart   string
+	TrimEnd     string
+	MaxSpeed    string
+	CookiesPath string
+
+	SaveLog            bool
+	Notify             bool
+	AutoRetry          bool
+	PostProcessEnabled bool
+
+	SavePrefs bool
+	LogLimit  string
+	ThemeMode string
+
+	PP PostProcessSettings
+}
+
+// newSessionConfig snapshots the widgets relevant to a download session,
+// mirroring newPostProcessSettings.
+func newSessionConfig(ui *UIWidgets, urls []string, savePath, trimStart, trimEnd string) SessionConfig {
+	return SessionConfig{
+		URLs:        urls,
+		RawURLField: ui.entry.Text,
+		SavePath:    savePath,
+		BatchMode:   ui.batchMode.Checked,
+		Format:      ui.format.Selected,
+		Quality:     ui.quality.Selected,
+		TrimStart:   trimStart,
+		TrimEnd:     trimEnd,
+		MaxSpeed:    strings.TrimSpace(ui.maxSpeed.Text),
+		CookiesPath: strings.TrimSpace(ui.cookies.Text),
+
+		SaveLog:            ui.saveLog.Checked,
+		Notify:             ui.notify.Checked,
+		AutoRetry:          ui.autoRetry.Checked,
+		PostProcessEnabled: ui.enablePostProcess.Checked,
+
+		SavePrefs: ui.savePrefs.Checked,
+		LogLimit:  ui.logLimit.Selected,
+		ThemeMode: ui.themeMode.Selected,
+
+		PP: newPostProcessSettings(ui),
+	}
+}
+
+// WriteSessionConfig writes the session's starting configuration to the log
+// via writeFn, one line per setting, so a support request can be diagnosed
+// from the log file alone.
+func (svc *LogService) WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color)) {
+	maxSpeed := cfg.MaxSpeed
+	if maxSpeed == "" {
+		maxSpeed = "(none)"
+	}
+	cookiesPath := cfg.CookiesPath
+	if cookiesPath == "" {
+		cookiesPath = "(none)"
+	}
+	rawURLField := cfg.RawURLField
+	if strings.TrimSpace(rawURLField) == "" {
+		rawURLField = "(empty)"
+	}
+
+	writeFn("[SYSTEM] ===== Session Configuration =====", colSystem)
+	writeFn(fmt.Sprintf("[SYSTEM] Save path: %s", cfg.SavePath), colSystem)
+	writeFn(fmt.Sprintf("[SYSTEM] Mode: batch=%t, url_count=%d", cfg.BatchMode, len(cfg.URLs)), colSystem)
+	writeFn(fmt.Sprintf("[SYSTEM] Format/quality: %s / %s", cfg.Format, cfg.Quality), colSystem)
+	writeFn(fmt.Sprintf("[SYSTEM] Trim: start=%q, end=%q", cfg.TrimStart, cfg.TrimEnd), colSystem)
+	writeFn(fmt.Sprintf("[SYSTEM] Max speed: %s", maxSpeed), colSystem)
+	writeFn(fmt.Sprintf("[SYSTEM] Cookies file: %s", cookiesPath), colSystem)
+	writeFn(fmt.Sprintf("[SYSTEM] Runtime toggles: saveLog=%t, notify=%t, autoRetry=%t, postProcess=%t", cfg.SaveLog, cfg.Notify, cfg.AutoRetry, cfg.PostProcessEnabled), colSystem)
+	writeFn(fmt.Sprintf("[SYSTEM] Preferences: savePrefs=%t, logLimit=%s, theme=%s", cfg.SavePrefs, cfg.LogLimit, cfg.ThemeMode), colSystem)
+
+	writeFn(fmt.Sprintf("[SYSTEM] URL field (raw): %q", rawURLField), colSystem)
+	for i, url := range cfg.URLs {
+		writeFn(fmt.Sprintf("[SYSTEM] URL[%d]: %s", i+1, url), colSystem)
+	}
+
+	pp := cfg.PP
+	writeFn(fmt.Sprintf("[SYSTEM] Post-process toggles: smoothMotion=%t, sharpen=%t, normalizeAudio=%t, vividMode=%t, denoise=%t, hdrToSdr=%t, deband=%t, autoCrop=%t, stabilize=%t, deinterlace=%t, nightMode=%t, upscaleVideo=%t", pp.SmoothMotion, pp.Sharpen, pp.NormalizeAudio, pp.VividMode, pp.Denoise, pp.HDRToSDR, pp.Deband, pp.AutoCrop, pp.Stabilize, pp.Deinterlace, pp.NightMode, pp.UpscaleVideo), colSystem)
+	writeFn(fmt.Sprintf("[SYSTEM] Post-process values: smoothMotionMode=%s, smoothFPS=%.0f, sharpenAmount=%.1f, denoiseMode=%s, upscaleTarget=%s", pp.SmoothMotionMode, pp.SmoothMotionFPS, pp.SharpenAmount, pp.DenoiseMode, pp.UpscaleTarget), colSystem)
+	writeFn("[SYSTEM] =================================", colSystem)
 }
 
 // ── Package-level helpers ────────────────────────────────────────────────────

@@ -36,7 +36,7 @@ Phase 3 is independent of Phase 2 and can proceed in parallel.
 
 ### Phase 4 — LogService follow-on (after Phase 2 step 3)
 
-- **LogService step 2** — Introduce a `SessionConfig` plain struct and a `logSvc.WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))` method. Requires `engine.Run` to exist first so the caller has typed config data rather than reading widgets inline.
+- ~~**LogService step 2**~~ — *Done. `SessionConfig` plain struct and `newSessionConfig(ui *UIWidgets, urls []string, savePath, trimStart, trimEnd string) SessionConfig` added to `log_service.go`, embedding the existing `PostProcessSettings` for its post-process fields. `LogService.WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))` ports the exact line sequence from the removed `logSessionConfiguration`. `download.go`'s `startDownload` now builds the config via `newSessionConfig(app.ui, ...)` and calls `app.logSvc.WriteSessionConfig(cfg, app.appendOutput)`.*
 
 ### Phase 5 — UIManager migration (after Phases 2, 3, and 4)
 
@@ -170,13 +170,13 @@ Extracted from `helpers.go` and `download.go`:
 - `ParseBufferLimit(s string) int` — replaces `parseLogLimit` (package-level helper).
 - `SessionLogPath(dir string)` / `ErrorLogPath(dir string)` — replaces the `dateStamp` + `filepath.Join` inline logic in both `startDownload` and `dailyErrorLogPath`.
 
-`appendOutput()` and `logSessionConfiguration()` remain on `DownloaderApp` because they are tightly coupled to `UIWidgets` (they read widget state and mutate the log list). They now delegate all file I/O to `logSvc`.
+`appendOutput()` remains on `DownloaderApp` because it is tightly coupled to `UIWidgets` (it reads widget state and mutates the log list); it delegates all file I/O to `logSvc`. `logSessionConfiguration()` has been removed — its formatting logic now lives in `LogService.WriteSessionConfig`, driven by the plain `SessionConfig` struct.
 
 **Next steps:**
 
 1. ~~**Cache the active session dir on `LogService`**~~ — *Done. `LogService` now stores `sessionDir` (set at `OpenSessionLog`, cleared at `CloseSessionLog`). `WriteToErrorLog` resolves the directory internally; `appendOutput` no longer reads `app.ui.path.Text` outside `fyne.Do`.*
 
-2. **Extract `logSessionConfiguration` into a `SessionConfig` value struct** — `logSessionConfiguration` reads directly from ~15 `app.ui.*` fields (format, quality, trim, toggles, post-process settings). When `DownloadEngine.runYtDlp` eventually becomes `engine.Run(ctx, req, callbacks)`, its caller will pass config as data rather than reading widgets inline. At that point, introduce a `SessionConfig` plain struct (parallel to `AppPreferences`) and a `logSvc.WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))` method — completing the "structured log helper" described in the original roadmap item.
+2. ~~**Extract `logSessionConfiguration` into a `SessionConfig` value struct**~~ — *Done. See Phase 4 above.*
 
 3. **`appendOutput` UI part will need a callback when `UIManager` absorbs `createUI`** — the `fyne.Do` block in `appendOutput` directly mutates `app.ui.logList` and `app.ui.output`. When `UIManager` eventually takes ownership of widget lifecycle and rendering (UIManager step 4), the UI side of `appendOutput` will need to become a registered `OnLogLine func(line string, col color.Color)` callback — similar to how `PPCallbacks.OnLog` and `ProcessCallbacks.OnLog` already decouple the engines from the UI.
 

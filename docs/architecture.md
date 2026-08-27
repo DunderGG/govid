@@ -173,6 +173,7 @@ Owns the session log file handle, two mutexes, daily rotation policy, and the UI
 - **`WriteToFile(line string)`** — appends a timestamped line to the open session log.
 - **`WriteToErrorLog(line string)`** — appends a timestamped line to the daily `GoVid_errors_YYYY-MM-DD.txt`. Uses the session directory cached by `OpenSessionLog`; falls back to the executable directory when no session is active. Opens and closes the file on each call.
 - **`SetBufferLimit(n int)` / `BufferLimit() int`** — gets/sets the UI log line cap (replaces the former `logBufferLimit` global).
+- **`WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))`** — writes the session's starting configuration (save path, format/quality, trim, toggles, preferences, URL list, post-process settings) as one log line per setting via `writeFn`. Driven entirely by `SessionConfig`, a plain value struct with no widget references, built by `newSessionConfig(ui *UIWidgets, urls []string, savePath, trimStart, trimEnd string) SessionConfig` — it embeds the existing `PostProcessSettings` (§4.5) for its post-process fields rather than duplicating them.
 
 Package-level helpers: `IsErrorLine(line string) bool` (matches ERROR/FAILED), `ParseBufferLimit(s string) int` (converts the preference string to an integer), `SessionLogPath(dir string)`, `ErrorLogPath(dir string)`.
 

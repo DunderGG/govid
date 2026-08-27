@@ -80,7 +80,8 @@ func (app *DownloaderApp) startDownload() {
 	if app.ui.saveLog.Checked {
 		if logPath, err := app.logSvc.OpenSessionLog(savePath); err == nil {
 			app.appendOutput(fmt.Sprintf("[SYSTEM] Logging to: %s", logPath), colSystem)
-			app.logSessionConfiguration(urls, savePath, trimStart, trimEnd)
+			cfg := newSessionConfig(app.ui, urls, savePath, trimStart, trimEnd)
+			app.logSvc.WriteSessionConfig(cfg, app.appendOutput)
 		} else {
 			app.appendOutput(fmt.Sprintf("[ERROR] Failed to create log file: %v", err), colError)
 		}
@@ -394,38 +395,4 @@ func validateTimestamp(timestamp string) error {
 	return nil
 }
 
-// logSessionConfiguration writes the current run configuration to the log output
-// at the start of a session, including the raw URL field and parsed URL list.
-func (app *DownloaderApp) logSessionConfiguration(urls []string, savePath, trimStart, trimEnd string) {
-	maxSpeed := strings.TrimSpace(app.ui.maxSpeed.Text)
-	if maxSpeed == "" {
-		maxSpeed = "(none)"
-	}
-	cookiesPath := strings.TrimSpace(app.ui.cookies.Text)
-	if cookiesPath == "" {
-		cookiesPath = "(none)"
-	}
-	rawURLField := app.ui.entry.Text
-	if strings.TrimSpace(rawURLField) == "" {
-		rawURLField = "(empty)"
-	}
 
-	app.appendOutput("[SYSTEM] ===== Session Configuration =====", colSystem)
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Save path: %s", savePath), colSystem)
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Mode: batch=%t, url_count=%d", app.ui.batchMode.Checked, len(urls)), colSystem)
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Format/quality: %s / %s", app.ui.format.Selected, app.ui.quality.Selected), colSystem)
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Trim: start=%q, end=%q", trimStart, trimEnd), colSystem)
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Max speed: %s", maxSpeed), colSystem)
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Cookies file: %s", cookiesPath), colSystem)
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Runtime toggles: saveLog=%t, notify=%t, autoRetry=%t, postProcess=%t", app.ui.saveLog.Checked, app.ui.notify.Checked, app.ui.autoRetry.Checked, app.ui.enablePostProcess.Checked), colSystem)
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Preferences: savePrefs=%t, logLimit=%s, theme=%s", app.ui.savePrefs.Checked, app.ui.logLimit.Selected, app.ui.themeMode.Selected), colSystem)
-
-	app.appendOutput(fmt.Sprintf("[SYSTEM] URL field (raw): %q", rawURLField), colSystem)
-	for i, url := range urls {
-		app.appendOutput(fmt.Sprintf("[SYSTEM] URL[%d]: %s", i+1, url), colSystem)
-	}
-
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Post-process toggles: smoothMotion=%t, sharpen=%t, normalizeAudio=%t, vividMode=%t, denoise=%t, hdrToSdr=%t, deband=%t, autoCrop=%t, stabilize=%t, deinterlace=%t, nightMode=%t, upscaleVideo=%t", app.ui.smoothMotion.Checked, app.ui.sharpen.Checked, app.ui.normalizeAudio.Checked, app.ui.vividMode.Checked, app.ui.denoise.Checked, app.ui.hdrToSdr.Checked, app.ui.deband.Checked, app.ui.autoCrop.Checked, app.ui.stabilize.Checked, app.ui.deinterlace.Checked, app.ui.nightMode.Checked, app.ui.upscaleVideo.Checked), colSystem)
-	app.appendOutput(fmt.Sprintf("[SYSTEM] Post-process values: smoothMotionMode=%s, smoothFPS=%.0f, sharpenAmount=%.1f, denoiseMode=%s, upscaleTarget=%s", app.ui.smoothMotionMode.Selected, app.ui.smoothMotionFPS.Value, app.ui.sharpenAmount.Value, app.ui.denoiseMode.Selected, app.ui.upscaleTarget.Selected), colSystem)
-	app.appendOutput("[SYSTEM] =================================", colSystem)
-}
