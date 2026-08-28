@@ -4,11 +4,12 @@
 //   - UIManager: typed component that owns the secondary window references
 //     (About, Help, History, Preferences, Post-Processing) and ensures at
 //     most one window instance open at a time.
-//   - showAbout, showHistory, showConfigHelp: moved here because they are
-//     self-contained UI construction with no calls into business logic.
-//   - showPreferences, showPostProcessing, createMainMenu, createUI remain on
-//     DownloaderApp for now — they require a heavy callback surface that will
-//     be reduced once PreferenceService and DependencyService are extracted.
+//   - showAbout, showHistory, showConfigHelp, showPreferences: moved here
+//     because their dependencies (widgets, PreferenceService, LogService) are
+//     now directly available on UIManager.
+//   - showPostProcessing, createMainMenu, createUI remain on DownloaderApp for
+//     now — they require a heavier callback surface that will shrink as more
+//     of Phase 5 (see docs/refactor_roadmap.md) lands.
 package main
 
 import (
@@ -22,6 +23,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -33,9 +35,13 @@ type UIManager struct {
 	aboutWindow   fyne.Window
 	helpWindow    fyne.Window
 	historyWindow fyne.Window
-	prefsWindow   fyne.Window     // owned here for singleton tracking; opened by DownloaderApp
-	ppWindow      fyne.Window     // owned here for singleton tracking; opened by DownloaderApp
-	historySvc    *HistoryService // history persistence; set by newDownloaderApp after construction
+	prefsWindow   fyne.Window        // owned here for singleton tracking; opened by DownloaderApp
+	ppWindow      fyne.Window        // owned here for singleton tracking; opened by DownloaderApp
+	historySvc    *HistoryService    // history persistence; set by newDownloaderApp after construction
+	ui            *UIWidgets         // shared widget bag; set by newDownloaderApp after construction
+	prefSvc       *PreferenceService // preference load/save/reset; set by newDownloaderApp after construction
+	logSvc        *LogService        // log buffer-limit updates; set by newDownloaderApp after construction
+	onCreateUI    func()             // rebuilds the main window; temporary until createUI itself moves here
 }
 
 // NewUIManager returns a UIManager bound to the given primary window.
@@ -243,4 +249,172 @@ func (manager *UIManager) showConfigHelp() {
 	manager.helpWindow.Resize(fyne.NewSize(550, 500))
 	manager.helpWindow.SetOnClosed(onWindowClosed(&manager.helpWindow))
 	manager.helpWindow.Show()
+}
+
+// showPreferences opens a window for general application settings.
+// It is a singleton: if already open, the existing window is focused instead.
+func (manager *UIManager) showPreferences() {
+	if focusOrCreate(&manager.prefsWindow) {
+		return
+	}
+
+	ui := manager.ui
+	prefs := manager.prefSvc.Load()
+
+	// Log Buffer Limit
+	ui.logLimit.SetSelected(prefs.LogLimit)
+
+	// Speed Limit field
+	ui.maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
+	ui.maxSpeed.SetText(prefs.MaxSpeed)
+
+	// Theme Mode field — horizontal radio group for a simple two-option toggle.
+	ui.themeMode.Horizontal = true
+	ui.themeMode.SetSelected(prefs.ThemeMode)
+
+	// Cookies field
+	ui.cookies.SetPlaceHolder("Path to cookies.txt (optional)")
+	ui.cookies.SetText(prefs.CookiesPath)
+
+	cookiesBrowse := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
+		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if err != nil || reader == nil {
+				return
+			}
+			ui.cookies.SetText(reader.URI().Path())
+			reader.Close()
+		}, manager.prefsWindow)
+		// Filter for common cookie file extensions
+		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".cookies", ".dat"}))
+		fileDialog.Show()
+	})
+	cookiesClear := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
+		ui.cookies.SetText("")
+	})
+	cookiesRow := container.NewBorder(nil, nil, nil, container.NewHBox(cookiesBrowse, cookiesClear), ui.cookies)
+
+	// Save Preferences toggle.
+	ui.savePrefs.SetChecked(prefs.SavePrefs)
+
+	form := &widget.Form{
+		Items: []*widget.FormItem{
+			{Text: "Save Preferences", Widget: ui.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
+			{Text: "Log Buffer Limit", Widget: ui.logLimit, HintText: "Max lines kept in the log view; older entries are removed from the top"},
+			{Text: "Max Download Speed", Widget: ui.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
+			{Text: "Application Theme", Widget: ui.themeMode, HintText: "Restart may be required for some changes"},
+			{Text: "Cookies File", Widget: cookiesRow, HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
+		},
+		OnSubmit: func() {
+			manager.logSvc.SetBufferLimit(ParseBufferLimit(ui.logLimit.Selected))
+			manager.savePreferences(ui.path.Text)
+
+			// Apply theme change and rebuild the UI so canvas.Rectangle colors
+			// (which are snapshotted at construction time) get fresh theme values.
+			switch ui.themeMode.Selected {
+			case "Light":
+				fyne.CurrentApp().Settings().SetTheme(&lightTheme{})
+			default:
+				fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
+			}
+			manager.onCreateUI()
+		},
+	}
+
+	resetBtn := widget.NewButton("Restore Defaults", func() {
+		dialog.ShowConfirm("Restore Defaults", "Reset all preferences to their default values?", func(ok bool) {
+			if !ok {
+				return
+			}
+			manager.resetPreferences()
+			manager.rebuildUI()
+			ui.savePrefs.SetChecked(true)
+			ui.maxSpeed.SetText("")
+			ui.cookies.SetText("")
+			ui.themeMode.SetSelected("Dark")
+			ui.logLimit.SetSelected("200")
+		}, manager.prefsWindow)
+	})
+	resetBtn.Importance = widget.DangerImportance
+
+	loadConfigBtn := widget.NewButtonWithIcon("Load from Config (govid.json)", theme.SettingsIcon(), func() {
+		config, err := manager.prefSvc.LoadFromFile(configFileName)
+		if err != nil {
+			dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), manager.prefsWindow)
+			return
+		}
+		merged, errs := manager.prefSvc.MergeConfig(config, manager.prefSvc.Load(), ui.format.Options, ui.quality.Options)
+		applyPreferencesToWidgets(ui, merged)
+		manager.prefSvc.Save(merged)
+		if len(errs) > 0 {
+			dialog.ShowCustom("Config Loaded with Warnings", "OK",
+				widget.NewLabel(fmt.Sprintf("some settings were skipped:\n- %s", strings.Join(errs, "\n- "))),
+				manager.prefsWindow)
+		} else {
+			dialog.ShowInformation("Config Loaded", "Preferences updated from govid.json", manager.prefsWindow)
+		}
+	})
+
+	manager.prefsWindow = fyne.CurrentApp().NewWindow("Preferences")
+	manager.prefsWindow.SetContent(container.NewPadded(container.NewVBox(
+		form,
+		widget.NewSeparator(),
+		container.NewGridWithColumns(2, loadConfigBtn, resetBtn),
+	)))
+	manager.prefsWindow.Resize(fyne.NewSize(500, 360))
+	manager.prefsWindow.SetOnClosed(onWindowClosed(&manager.prefsWindow))
+	manager.prefsWindow.Show()
+}
+
+// savePreferences collects the current widget state into an AppPreferences
+// struct and delegates persistence to PreferenceService.Save.
+func (manager *UIManager) savePreferences(savePath string) {
+	ui := manager.ui
+	manager.prefSvc.Save(AppPreferences{
+		SavePrefs:         ui.savePrefs.Checked,
+		SavedPath:         savePath,
+		Format:            ui.format.Selected,
+		Quality:           ui.quality.Selected,
+		MaxSpeed:          strings.TrimSpace(ui.maxSpeed.Text),
+		ThemeMode:         ui.themeMode.Selected,
+		CookiesPath:       strings.TrimSpace(ui.cookies.Text),
+		LogLimit:          ui.logLimit.Selected,
+		BatchMode:         ui.batchMode.Checked,
+		SaveLog:           ui.saveLog.Checked,
+		Notify:            ui.notify.Checked,
+		AutoRetry:         ui.autoRetry.Checked,
+		EnablePostProcess: ui.enablePostProcess.Checked,
+		SmoothMotion:      ui.smoothMotion.Checked,
+		SmoothMotionMode:  ui.smoothMotionMode.Selected,
+		SmoothFPS:         ui.smoothMotionFPS.Value,
+		Sharpen:           ui.sharpen.Checked,
+		SharpenAmount:     ui.sharpenAmount.Value,
+		NormalizeAudio:    ui.normalizeAudio.Checked,
+		VividMode:         ui.vividMode.Checked,
+		Denoise:           ui.denoise.Checked,
+		DenoiseMode:       ui.denoiseMode.Selected,
+		HDRToSDR:          ui.hdrToSdr.Checked,
+		Deband:            ui.deband.Checked,
+		AutoCrop:          ui.autoCrop.Checked,
+		Stabilize:         ui.stabilize.Checked,
+		Deinterlace:       ui.deinterlace.Checked,
+		NightMode:         ui.nightMode.Checked,
+		UpscaleVideo:      ui.upscaleVideo.Checked,
+		UpscaleTarget:     ui.upscaleTarget.Selected,
+		GPUBackend:        ui.gpuBackend.Selected,
+	})
+}
+
+// resetPreferences clears the stored preference data and resets the log
+// buffer to its default limit. Call rebuildUI afterwards to complete the
+// visual reset.
+func (manager *UIManager) resetPreferences() {
+	manager.prefSvc.Reset()
+	manager.logSvc.SetBufferLimit(200)
+}
+
+// rebuildUI applies the default dark theme and recreates the main window
+// layout. Called after resetPreferences to complete a full application reset.
+func (manager *UIManager) rebuildUI() {
+	fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
+	manager.onCreateUI()
 }

@@ -3,7 +3,8 @@
 // Sections:
 //   - File I/O: save-folder launcher.
 //   - UI updates: status label, log output, status dot animation, progress bar.
-//   - Preference management: applyPreferencesToWidgets, resetPreferences, rebuildUI.
+//   - Preference management: applyPreferencesToWidgets (resetPreferences and
+//     rebuildUI moved to UIManager alongside showPreferences).
 //   - External tools: thin delegates to DependencyService.
 package main
 
@@ -215,8 +216,7 @@ func (app *DownloaderApp) setProgressNow(pct float64) {
 
 // applyPreferencesToWidgets writes the values from an AppPreferences struct
 // into the corresponding UI widgets. Called at startup and after a reset.
-func (app *DownloaderApp) applyPreferencesToWidgets(p AppPreferences) {
-	ui := app.ui
+func applyPreferencesToWidgets(ui *UIWidgets, p AppPreferences) {
 	if p.Format != "" {
 		ui.format.SetSelected(p.Format)
 	}
@@ -254,21 +254,6 @@ func (app *DownloaderApp) applyPreferencesToWidgets(p AppPreferences) {
 	ui.enablePostProcess.SetChecked(p.EnablePostProcess)
 	ui.logLimit.SetSelected(p.LogLimit)
 	ui.maxSpeed.SetText(p.MaxSpeed)
-}
-
-// resetPreferences clears the stored preference data and resets the log
-// buffer to its default limit. Call rebuildUI afterwards to complete the
-// visual reset.
-func (app *DownloaderApp) resetPreferences() {
-	app.prefSvc.Reset()
-	app.logSvc.SetBufferLimit(200)
-}
-
-// rebuildUI applies the default dark theme and recreates the main window
-// layout. Called after resetPreferences to complete a full application reset.
-func (app *DownloaderApp) rebuildUI() {
-	fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
-	app.createUI()
 }
 
 // ── External tools ───────────────────────────────────────────────────────────

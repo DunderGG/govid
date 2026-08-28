@@ -8,7 +8,6 @@
 package main
 
 import (
-	"fmt"
 	"image/color"
 	"os"
 	"path/filepath"
@@ -21,7 +20,6 @@ import (
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -336,117 +334,9 @@ func (app *DownloaderApp) showPostProcessing() {
 	app.uiManager.ppWindow.Show()
 }
 
-// showPreferences opens a window for general application settings.
+// showPreferences delegates to UIManager which owns the window state.
 func (app *DownloaderApp) showPreferences() {
-	if focusOrCreate(&app.uiManager.prefsWindow) {
-		return
-	}
-
-	ui := app.ui
-	prefs := app.prefSvc.Load()
-
-	// Log Buffer Limit
-	ui.logLimit.SetSelected(prefs.LogLimit)
-
-	// Speed Limit field
-	ui.maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
-	ui.maxSpeed.SetText(prefs.MaxSpeed)
-
-	// Theme Mode field — horizontal radio group for a simple two-option toggle.
-	ui.themeMode.Horizontal = true
-	ui.themeMode.SetSelected(prefs.ThemeMode)
-
-	// Cookies field
-	ui.cookies.SetPlaceHolder("Path to cookies.txt (optional)")
-	ui.cookies.SetText(prefs.CookiesPath)
-
-	cookiesBrowse := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
-		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			if err != nil || reader == nil {
-				return
-			}
-			ui.cookies.SetText(reader.URI().Path())
-			reader.Close()
-		}, app.uiManager.prefsWindow)
-		// Filter for common cookie file extensions
-		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".cookies", ".dat"}))
-		fileDialog.Show()
-	})
-	cookiesClear := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
-		ui.cookies.SetText("")
-	})
-	cookiesRow := container.NewBorder(nil, nil, nil, container.NewHBox(cookiesBrowse, cookiesClear), ui.cookies)
-
-	// Save Preferences toggle.
-	ui.savePrefs.SetChecked(prefs.SavePrefs)
-
-	form := &widget.Form{
-		Items: []*widget.FormItem{
-			{Text: "Save Preferences", Widget: ui.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
-			{Text: "Log Buffer Limit", Widget: ui.logLimit, HintText: "Max lines kept in the log view; older entries are removed from the top"},
-			{Text: "Max Download Speed", Widget: ui.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
-			{Text: "Application Theme", Widget: ui.themeMode, HintText: "Restart may be required for some changes"},
-			{Text: "Cookies File", Widget: cookiesRow, HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
-		},
-		OnSubmit: func() {
-			app.logSvc.SetBufferLimit(ParseBufferLimit(ui.logLimit.Selected))
-			app.savePreferences(ui.path.Text)
-
-			// Apply theme change and rebuild the UI so canvas.Rectangle colors
-			// (which are snapshotted at construction time) get fresh theme values.
-			switch ui.themeMode.Selected {
-			case "Light":
-				fyne.CurrentApp().Settings().SetTheme(&lightTheme{})
-			default:
-				fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
-			}
-			app.createUI()
-		},
-	}
-
-	resetBtn := widget.NewButton("Restore Defaults", func() {
-		dialog.ShowConfirm("Restore Defaults", "Reset all preferences to their default values?", func(ok bool) {
-			if !ok {
-				return
-			}
-			app.resetPreferences()
-			app.rebuildUI()
-			ui.savePrefs.SetChecked(true)
-			ui.maxSpeed.SetText("")
-			ui.cookies.SetText("")
-			ui.themeMode.SetSelected("Dark")
-			ui.logLimit.SetSelected("200")
-		}, app.uiManager.prefsWindow)
-	})
-	resetBtn.Importance = widget.DangerImportance
-
-	loadConfigBtn := widget.NewButtonWithIcon("Load from Config (govid.json)", theme.SettingsIcon(), func() {
-		config, err := app.prefSvc.LoadFromFile(configFileName)
-		if err != nil {
-			dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), app.uiManager.prefsWindow)
-			return
-		}
-		merged, errs := app.prefSvc.MergeConfig(config, app.prefSvc.Load(), app.ui.format.Options, app.ui.quality.Options)
-		app.applyPreferencesToWidgets(merged)
-		app.prefSvc.Save(merged)
-		if len(errs) > 0 {
-			dialog.ShowCustom("Config Loaded with Warnings", "OK",
-				widget.NewLabel(fmt.Sprintf("some settings were skipped:\n- %s", strings.Join(errs, "\n- "))),
-				app.uiManager.prefsWindow)
-		} else {
-			dialog.ShowInformation("Config Loaded", "Preferences updated from govid.json", app.uiManager.prefsWindow)
-		}
-	})
-
-	app.uiManager.prefsWindow = fyne.CurrentApp().NewWindow("Preferences")
-	app.uiManager.prefsWindow.SetContent(container.NewPadded(container.NewVBox(
-		form,
-		widget.NewSeparator(),
-		container.NewGridWithColumns(2, loadConfigBtn, resetBtn),
-	)))
-	app.uiManager.prefsWindow.Resize(fyne.NewSize(500, 360))
-	app.uiManager.prefsWindow.SetOnClosed(onWindowClosed(&app.uiManager.prefsWindow))
-	app.uiManager.prefsWindow.Show()
+	app.uiManager.showPreferences()
 }
 
 // showConfigHelp delegates to UIManager which owns the window state.

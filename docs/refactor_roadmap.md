@@ -42,7 +42,7 @@ Phase 3 is independent of Phase 2 and can proceed in parallel.
 
 All steps depend on the preceding phases. Execute in order; each step shrinks the callback surface for the next.
 
-1. **UIManager step 1** — Move `showPreferences` to `UIManager` (requires `PreferenceService`).
+1. ~~**UIManager step 1**~~ — *Done. `showPreferences`, `savePreferences`, `resetPreferences`, and `rebuildUI` moved to `UIManager` in `ui_manager.go`. `UIManager` gained `ui *UIWidgets`, `prefSvc *PreferenceService`, `logSvc *LogService`, and a temporary `onCreateUI func()` callback (removed again once `createUI` itself moves in step 4), all wired in `newDownloaderApp`. `applyPreferencesToWidgets` was converted from a `DownloaderApp` method into a package-level free function `applyPreferencesToWidgets(ui *UIWidgets, p AppPreferences)` since it only ever read `ui`. `DownloaderApp.showPreferences` and `DownloaderApp.savePreferences` are now one-line delegates to `UIManager`.*
 2. **UIManager step 2** — Move `showPostProcessing` to `UIManager` (requires `PreferenceService` + `PPEngine`).
 3. **UIManager step 3** — Move `createMainMenu` to `UIManager`; inline `DependencyService` step 1 to remove the `checkDependencies` / `runUpdateInUI` wrappers from `DownloaderApp`.
 4. **UIManager step 4** — Move `createUI` to `UIManager`. Largest single step; do last.
@@ -134,11 +134,11 @@ See the sections below for per-component details and open next steps.
 
 ## UIManager
 
-**Done:** `UIManager` struct introduced in `ui_manager.go`. It owns the five singleton window fields (`aboutWindow`, `helpWindow`, `historyWindow`, `prefsWindow`, `ppWindow`) previously scattered on `DownloaderApp`. The three self-contained show methods (`showAbout`, `showHistory`, `showConfigHelp`) have moved to `UIManager`; their counterparts on `DownloaderApp` are now one-line delegates.
+**Done:** `UIManager` struct introduced in `ui_manager.go`. It owns the five singleton window fields (`aboutWindow`, `helpWindow`, `historyWindow`, `prefsWindow`, `ppWindow`) previously scattered on `DownloaderApp`. The four self-contained show methods (`showAbout`, `showHistory`, `showConfigHelp`, `showPreferences`) have moved to `UIManager`; their counterparts on `DownloaderApp` are now one-line delegates. `UIManager` also gained `ui *UIWidgets`, `prefSvc *PreferenceService`, `logSvc *LogService`, and a temporary `onCreateUI func()` callback to support `showPreferences` (plus the `savePreferences`/`resetPreferences`/`rebuildUI` helpers it needs) — wired in `newDownloaderApp`.
 
 **Next steps — blocked until other services are extracted:**
 
-1. **Move `showPreferences` to UIManager** — currently calls `savePreferences`, `resetPreferences`, `loadConfigFromFile`, `applyConfig`, `createUI`. Once `PreferenceService` owns those, `showPreferences` needs only a `PreferenceService` reference and an `onThemeChange` callback, which is manageable.
+1. ~~**Move `showPreferences` to UIManager**~~ — *Done. See above.*
 
 2. **Move `showPostProcessing` to UIManager** — currently calls `computeProcessingLoad`, `buildPostProcessFilters`, `savePreferences`, and (via `applyFFmpegFilters`) reads `app.ui.gpuBackend.Selected` and calls `app.gpuSvc.Detect`. Once `PreferenceService`, `PPEngine`, and `GPUCapabilityService` are the named dependencies, the callback surface shrinks to three objects.
 
@@ -207,7 +207,7 @@ The package-level `UpdateYtDlpCLI()` replaces the old `updateYtDlp()` free funct
 
 **Next steps:**
 
-1. **Move `showPreferences` to UIManager** — now that `PreferenceService` owns all persistence, `showPreferences` only needs `app.prefSvc`, an `onThemeChange` callback, and `applyPreferencesToWidgets`. The dependency surface is small enough to pass through a constructor.
+1. ~~**Move `showPreferences` to UIManager**~~ — *Done. See Phase 5 UIManager step 1 above.*
 
 2. ~~**Move `loadConfigFromFile` / `applyConfig` to `PreferenceService`**~~ — *Done. `LoadFromFile(path) (*AppConfig, error)` and `MergeConfig(cfg, base, validFormats, validQualities) (AppPreferences, []string)` added to `preference_service.go`. `loadConfigFile` and `applyConfig` removed from `helpers.go`. The "Load from Config" button in `ui.go` now calls `prefSvc.MergeConfig`, `applyPreferencesToWidgets`, and `prefSvc.Save` directly. `applyPreferencesToWidgets` gained guarded writes for `Format`, `Quality`, and `SavedPath` (skipped when empty to preserve platform-specific defaults at startup).*
 

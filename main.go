@@ -92,12 +92,18 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	// Load saved preferences and apply them to all widgets.
 	dlApp.prefSvc = NewPreferenceService(fyne.CurrentApp().Preferences())
 	prefs := dlApp.prefSvc.Load()
-	dlApp.applyPreferencesToWidgets(prefs)
+	applyPreferencesToWidgets(dlApp.ui, prefs)
 	dlApp.logSvc.SetBufferLimit(ParseBufferLimit(prefs.LogLimit))
 
 	// Wire history service to both the app and the UIManager.
 	dlApp.historySvc = NewHistoryService()
 	dlApp.uiManager.historySvc = dlApp.historySvc
+
+	// Wire the widgets, preferences, and log service showPreferences needs.
+	dlApp.uiManager.ui = dlApp.ui
+	dlApp.uiManager.prefSvc = dlApp.prefSvc
+	dlApp.uiManager.logSvc = dlApp.logSvc
+	dlApp.uiManager.onCreateUI = dlApp.createUI
 	return dlApp
 }
 
