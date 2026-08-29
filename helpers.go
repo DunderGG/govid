@@ -3,8 +3,7 @@
 // Sections:
 //   - File I/O: save-folder launcher.
 //   - UI updates: status label, log output, status dot animation, progress bar.
-//   - Preference management: applyPreferencesToWidgets (resetPreferences and
-//     rebuildUI moved to UIManager alongside showPreferences).
+//   - Preference management: applyPreferencesToWidgets.
 //   - External tools: thin delegates to DependencyService.
 package main
 

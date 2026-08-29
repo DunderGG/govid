@@ -4,12 +4,15 @@
 //   - UIManager: typed component that owns the secondary window references
 //     (About, Help, History, Preferences, Post-Processing) and ensures at
 //     most one window instance open at a time.
-//   - showAbout, showHistory, showConfigHelp, showPreferences: moved here
-//     because their dependencies (widgets, PreferenceService, LogService) are
-//     now directly available on UIManager.
-//   - showPostProcessing, createMainMenu, createUI remain on DownloaderApp for
-//     now — they require a heavier callback surface that will shrink as more
-//     of Phase 5 (see docs/refactor_roadmap.md) lands.
+//   - showAbout, showHistory, showConfigHelp, showPreferences: self-contained
+//     window construction, built from UIManager's own widget and service
+//     fields.
+//   - savePreferences, resetPreferences, rebuildUI: preference persistence
+//     and UI-rebuild helpers used by showPreferences.
+//
+// showPostProcessing, createMainMenu, and createUI still live on
+// DownloaderApp (see docs/refactor_roadmap.md Phase 5 for the plan to move
+// them here).
 package main
 
 import (

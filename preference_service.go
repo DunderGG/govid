@@ -7,8 +7,7 @@
 //     applying fallbacks where appropriate. Has no dependency on any UI widget.
 //   - LoadFromFile / MergeConfig: load and merge a govid.json config override
 //     into AppPreferences without touching any widget.
-//   - savePreferences: thin DownloaderApp delegate to UIManager, which now
-//     owns the widget state needed to build the AppPreferences snapshot.
+//   - savePreferences: thin DownloaderApp delegate to UIManager.savePreferences.
 //   - Named constants for every preference key and default value.
 package main
 
