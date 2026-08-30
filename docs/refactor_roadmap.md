@@ -43,7 +43,7 @@ Phase 3 is independent of Phase 2 and can proceed in parallel.
 All steps depend on the preceding phases. Execute in order; each step shrinks the callback surface for the next.
 
 1. ~~**UIManager step 1**~~ — *Done. `showPreferences`, `savePreferences`, `resetPreferences`, and `rebuildUI` moved to `UIManager` in `ui_manager.go`. `UIManager` gained `ui *UIWidgets`, `prefSvc *PreferenceService`, `logSvc *LogService`, and a temporary `onCreateUI func()` callback (removed again once `createUI` itself moves in step 4), all wired in `newDownloaderApp`. `applyPreferencesToWidgets` was converted from a `DownloaderApp` method into a package-level free function `applyPreferencesToWidgets(ui *UIWidgets, p AppPreferences)` since it only ever read `ui`. `DownloaderApp.showPreferences` and `DownloaderApp.savePreferences` are now one-line delegates to `UIManager`.*
-2. **UIManager step 2** — Move `showPostProcessing` to `UIManager` (requires `PreferenceService` + `PPEngine`).
+2. ~~**UIManager step 2**~~ — *Done. `showPostProcessing` moved to `UIManager` in `ui_manager.go`, using the `ui` and `prefSvc` fields already added in step 1 — no new fields were needed since `computeProcessingLoad`/`newPostProcessSettings` were already free functions. `DownloaderApp.showPostProcessing` is now a one-line delegate to `UIManager`.*
 3. **UIManager step 3** — Move `createMainMenu` to `UIManager`; inline `DependencyService` step 1 to remove the `checkDependencies` / `runUpdateInUI` wrappers from `DownloaderApp`.
 4. **UIManager step 4** — Move `createUI` to `UIManager`. Largest single step; do last.
 5. **UIManager step 5** — Replace all direct service fields on `UIManager` with injected callbacks; redesign the `UIManager` constructor so it holds no service-type references.
@@ -134,13 +134,13 @@ See the sections below for per-component details and open next steps.
 
 ## UIManager
 
-**Done:** `UIManager` struct introduced in `ui_manager.go`. It owns the five singleton window fields (`aboutWindow`, `helpWindow`, `historyWindow`, `prefsWindow`, `ppWindow`) previously scattered on `DownloaderApp`. The four self-contained show methods (`showAbout`, `showHistory`, `showConfigHelp`, `showPreferences`) have moved to `UIManager`; their counterparts on `DownloaderApp` are now one-line delegates. `UIManager` also gained `ui *UIWidgets`, `prefSvc *PreferenceService`, `logSvc *LogService`, and a temporary `onCreateUI func()` callback to support `showPreferences` (plus the `savePreferences`/`resetPreferences`/`rebuildUI` helpers it needs) — wired in `newDownloaderApp`.
+**Done:** `UIManager` struct introduced in `ui_manager.go`. It owns the five singleton window fields (`aboutWindow`, `helpWindow`, `historyWindow`, `prefsWindow`, `ppWindow`) previously scattered on `DownloaderApp`. The five self-contained show methods (`showAbout`, `showHistory`, `showConfigHelp`, `showPreferences`, `showPostProcessing`) have moved to `UIManager`; their counterparts on `DownloaderApp` are now one-line delegates. `UIManager` also gained `ui *UIWidgets`, `prefSvc *PreferenceService`, `logSvc *LogService`, and a temporary `onCreateUI func()` callback to support `showPreferences` (plus the `savePreferences`/`resetPreferences`/`rebuildUI` helpers it needs) — wired in `newDownloaderApp`.
 
 **Next steps — blocked until other services are extracted:**
 
 1. ~~**Move `showPreferences` to UIManager**~~ — *Done. See above.*
 
-2. **Move `showPostProcessing` to UIManager** — currently calls `computeProcessingLoad`, `buildPostProcessFilters`, `savePreferences`, and (via `applyFFmpegFilters`) reads `app.ui.gpuBackend.Selected` and calls `app.gpuSvc.Detect`. Once `PreferenceService`, `PPEngine`, and `GPUCapabilityService` are the named dependencies, the callback surface shrinks to three objects.
+2. ~~**Move `showPostProcessing` to UIManager**~~ — *Done. See above.*
 
 3. **Move `createMainMenu` to UIManager** — menu item callbacks (`startDownload`, `runUpdateInUI`, `showPostProcessing`, etc.) become `UIManager` callback fields, wired at construction time. Depends on `DependencyService` for the updater action.
 
