@@ -56,15 +56,15 @@ func ErrorLogPath(dir string) string {
 // Returns the resolved path on success.
 func (svc *LogService) OpenSessionLog(dir string) (string, error) {
 	path := SessionLogPath(dir)
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return "", err
 	}
 	svc.mutex.Lock()
-	svc.file = f
+	svc.file = file
 	svc.sessionDir = dir
 	for _, line := range svc.preSession {
-		fmt.Fprintln(f, line)
+		fmt.Fprintln(file, line)
 	}
 	svc.preSession = nil
 	svc.mutex.Unlock()
@@ -129,12 +129,12 @@ func (svc *LogService) WriteToErrorLog(line string) {
 	svc.errorMutex.Lock()
 	defer svc.errorMutex.Unlock()
 	path := ErrorLogPath(dir)
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return
 	}
-	defer f.Close()
-	fmt.Fprintf(f, "[%s] %s\n", time.Now().Format("15:04:05"), line)
+	defer file.Close()
+	fmt.Fprintf(file, "[%s] %s\n", time.Now().Format("15:04:05"), line)
 }
 
 // ── Buffer-limit management ──────────────────────────────────────────────────

@@ -103,10 +103,10 @@ func newPostProcessSettings(ui *UIWidgets) PostProcessSettings {
 // buildPostProcessFilters returns the video filter (vfFilters) and audio
 // filter (afFilters) slices to be passed to applyFFmpegFilters for the given
 // settings.
-func buildPostProcessFilters(s PostProcessSettings) (vfFilters, afFilters []string) {
-	if s.SmoothMotion {
-		fps := int(s.SmoothMotionFPS)
-		switch s.SmoothMotionMode {
+func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilters []string) {
+	if ppSetting.SmoothMotion {
+		fps := int(ppSetting.SmoothMotionFPS)
+		switch ppSetting.SmoothMotionMode {
 		case "Fast":
 			// Frame blending — multi-threaded, much faster, slightly less precise.
 			vfFilters = append(vfFilters, fmt.Sprintf("minterpolate=fps=%d:mi_mode=blend", fps))
@@ -117,8 +117,8 @@ func buildPostProcessFilters(s PostProcessSettings) (vfFilters, afFilters []stri
 			vfFilters = append(vfFilters, fmt.Sprintf("minterpolate=fps=%d:mi_mode=mci", fps))
 		}
 	}
-	if s.Sharpen {
-		amount := s.SharpenAmount
+	if ppSetting.Sharpen {
+		amount := ppSetting.SharpenAmount
 		// CAS (Contrast Adaptive Sharpening) adaptively sharpens edges while
 		// leaving smooth areas untouched, avoiding the haloing and noise
 		// amplification that unsharp mask produces.
@@ -128,22 +128,22 @@ func buildPostProcessFilters(s PostProcessSettings) (vfFilters, afFilters []stri
 		strength := amount * 0.35
 		vfFilters = append(vfFilters, fmt.Sprintf("cas=strength=%.2f", strength))
 	}
-	if s.VividMode {
+	if ppSetting.VividMode {
 		// contrast=1.30 and saturation=1.50 give a strong "vivid" pop; brightness=0.02
 		// and gamma=1.05 lift overall midtones slightly to keep shadows from crushing.
 		// gamma_b=1.1 lifts the blue channel in midtones/highlights, counteracting
 		// the warm/yellow cast that boosted saturation introduces in white areas.
 		vfFilters = append(vfFilters, "eq=contrast=1.30:brightness=0.02:saturation=1.50:gamma=1.05:gamma_b=1.1")
 	}
-	if s.Deband {
+	if ppSetting.Deband {
 		vfFilters = append(vfFilters, "deband")
 	}
-	if s.HDRToSDR {
+	if ppSetting.HDRToSDR {
 		// Multi-step HDR-to-SDR pipeline: linearise → tonemap (Hable) → convert to BT.709.
 		vfFilters = append(vfFilters, "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:min=gbr:r=tv,format=yuv420p")
 	}
-	if s.Denoise {
-		switch s.DenoiseMode {
+	if ppSetting.Denoise {
+		switch ppSetting.DenoiseMode {
 		case "NLMeans (HQ, slow)":
 			// s=2.0 is noticeably more effective on compressed web video than the
 			// default s=1.0. Research size (15) must always exceed patch size (7).
@@ -154,22 +154,22 @@ func buildPostProcessFilters(s PostProcessSettings) (vfFilters, afFilters []stri
 			vfFilters = append(vfFilters, "hqdn3d=4:3:6:4.5")
 		}
 	}
-	if s.Deinterlace {
+	if ppSetting.Deinterlace {
 		vfFilters = append(vfFilters, "bwdif")
 	}
-	if s.Stabilize {
+	if ppSetting.Stabilize {
 		vfFilters = append(vfFilters, "deshake")
 	}
-	if s.AutoCrop {
+	if ppSetting.AutoCrop {
 		// The actual crop parameters are determined per-file in applyFFmpegFilters.
 		vfFilters = append(vfFilters, "__autocrop__")
 	}
-	if s.UpscaleVideo {
+	if ppSetting.UpscaleVideo {
 		// Use FFmpeg's if() expression to skip rescaling when the video is already
 		// at or above the target height, avoiding a pointless re-encode.
 		// -2 keeps width proportional and divisible by 2.
 		// if(gte(ih,TARGET),ih,TARGET) → keep original height when input >= target.
-		switch s.UpscaleTarget {
+		switch ppSetting.UpscaleTarget {
 		case "1080p":
 			vfFilters = append(vfFilters, "scale=-2:if(gte(ih\\,1080)\\,ih\\,1080):flags=lanczos")
 		case "1440p":
@@ -180,10 +180,10 @@ func buildPostProcessFilters(s PostProcessSettings) (vfFilters, afFilters []stri
 			vfFilters = append(vfFilters, "scale=iw*2:ih*2:flags=lanczos")
 		}
 	}
-	if s.NormalizeAudio {
+	if ppSetting.NormalizeAudio {
 		afFilters = append(afFilters, "loudnorm")
 	}
-	if s.NightMode {
+	if ppSetting.NightMode {
 		afFilters = append(afFilters, "dynaudnorm=f=300:g=5:p=0.95")
 	}
 	return
@@ -266,12 +266,12 @@ func scanCRLF(data []byte, atEOF bool) (advance int, token []byte, err error) {
 }
 
 // lastLine returns the last non-empty, trimmed line of s, or "" if s is empty.
-func lastLine(s string) string {
-	s = strings.TrimSpace(s)
-	if idx := strings.LastIndex(s, "\n"); idx != -1 {
-		return strings.TrimSpace(s[idx+1:])
+func lastLine(line string) string {
+	line = strings.TrimSpace(line)
+	if idx := strings.LastIndex(line, "\n"); idx != -1 {
+		return strings.TrimSpace(line[idx+1:])
 	}
-	return s
+	return line
 }
 
 // formatBytes formats a byte count as a human-readable string (e.g. "45.2 MiB").
@@ -290,12 +290,12 @@ func formatBytes(byteCount int64) string {
 
 // formatDuration formats a duration as a compact human-readable string,
 // always showing three decimal places on the seconds component for precision.
-func formatDuration(d time.Duration) string {
-	if d < time.Minute {
-		return fmt.Sprintf("%.3f seconds", d.Seconds())
+func formatDuration(duration time.Duration) string {
+	if duration < time.Minute {
+		return fmt.Sprintf("%.3f seconds", duration.Seconds())
 	}
-	minutes := int(d.Minutes())
-	seconds := d.Seconds() - float64(minutes)*60
+	minutes := int(duration.Minutes())
+	seconds := duration.Seconds() - float64(minutes)*60
 	return fmt.Sprintf("%d minutes and %.3f seconds", minutes, seconds)
 }
 

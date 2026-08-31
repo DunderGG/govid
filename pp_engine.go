@@ -75,42 +75,42 @@ type gpuJobGuard struct {
 // newGPUJobGuard acquires a gpuSem slot when usedGPU is true, blocking until
 // one is free.
 func newGPUJobGuard(engine *PPEngine, usedGPU bool) *gpuJobGuard {
-	g := &gpuJobGuard{engine: engine, active: usedGPU}
+	guard := &gpuJobGuard{engine: engine, active: usedGPU}
 	if usedGPU {
 		engine.gpuSem <- struct{}{}
-		g.acquired = true
+		guard.acquired = true
 	}
-	return g
+	return guard
 }
 
 // arm starts the stall watchdog, calling onStall if no output is seen within
 // gpuStallTimeout. No-op for non-GPU jobs.
-func (g *gpuJobGuard) arm(onStall func()) {
-	if !g.active {
+func (guard *gpuJobGuard) arm(onStall func()) {
+	if !guard.active {
 		return
 	}
-	g.watchdog = time.AfterFunc(gpuStallTimeout, onStall)
+	guard.watchdog = time.AfterFunc(gpuStallTimeout, onStall)
 }
 
 // pet resets the stall watchdog; call on every line of ffmpeg output received.
-func (g *gpuJobGuard) pet() {
-	if g.watchdog != nil {
-		g.watchdog.Reset(gpuStallTimeout)
+func (guard *gpuJobGuard) pet() {
+	if guard.watchdog != nil {
+		guard.watchdog.Reset(gpuStallTimeout)
 	}
 }
 
 // release stops the watchdog and frees the gpuSem slot. Safe to call more
 // than once — only the first call has any effect.
-func (g *gpuJobGuard) release() {
-	if g.released {
+func (guard *gpuJobGuard) release() {
+	if guard.released {
 		return
 	}
-	g.released = true
-	if g.watchdog != nil {
-		g.watchdog.Stop()
+	guard.released = true
+	if guard.watchdog != nil {
+		guard.watchdog.Stop()
 	}
-	if g.acquired {
-		<-g.engine.gpuSem
+	if guard.acquired {
+		<-guard.engine.gpuSem
 	}
 }
 
@@ -458,9 +458,9 @@ func (engine *PPEngine) probeFrameCount(ctx context.Context, inputPath string) i
 //   - bwdif: send_field mode (default) outputs one frame per field → inputFrames × 2
 func (engine *PPEngine) computeOutputFrameCount(ctx context.Context, inputPath string, inputFrames int64, vfFilters []string) int64 {
 	// minterpolate takes priority — its target fps determines the final count.
-	for _, f := range vfFilters {
-		if strings.HasPrefix(f, "minterpolate=fps=") {
-			rest := strings.TrimPrefix(f, "minterpolate=fps=")
+	for _, filter := range vfFilters {
+		if strings.HasPrefix(filter, "minterpolate=fps=") {
+			rest := strings.TrimPrefix(filter, "minterpolate=fps=")
 			if i := strings.IndexAny(rest, ":,"); i != -1 {
 				rest = rest[:i]
 			}
@@ -473,8 +473,8 @@ func (engine *PPEngine) computeOutputFrameCount(ctx context.Context, inputPath s
 		}
 	}
 	// bwdif send_field (default) outputs one frame per interlaced field.
-	for _, f := range vfFilters {
-		if f == "bwdif" {
+	for _, filter := range vfFilters {
+		if filter == "bwdif" {
 			return inputFrames * 2
 		}
 	}
