@@ -44,7 +44,7 @@ All steps depend on the preceding phases. Execute in order; each step shrinks th
 
 1. ~~**UIManager step 1**~~ — *Done. `showPreferences`, `savePreferences`, `resetPreferences`, and `rebuildUI` moved to `UIManager` in `ui_manager.go`. `UIManager` gained `ui *UIWidgets`, `prefSvc *PreferenceService`, `logSvc *LogService`, and a temporary `onCreateUI func()` callback (removed again once `createUI` itself moves in step 4), all wired in `newDownloaderApp`. `applyPreferencesToWidgets` was converted from a `DownloaderApp` method into a package-level free function `applyPreferencesToWidgets(ui *UIWidgets, p AppPreferences)` since it only ever read `ui`. `DownloaderApp.showPreferences` and `DownloaderApp.savePreferences` are now one-line delegates to `UIManager`.*
 2. ~~**UIManager step 2**~~ — *Done. `showPostProcessing` moved to `UIManager` in `ui_manager.go`, using the `ui` and `prefSvc` fields already added in step 1 — no new fields were needed since `computeProcessingLoad`/`newPostProcessSettings` were already free functions. `DownloaderApp.showPostProcessing` is now a one-line delegate to `UIManager`.*
-3. **UIManager step 3** — Move `createMainMenu` to `UIManager`; inline `DependencyService` step 1 to remove the `checkDependencies` / `runUpdateInUI` wrappers from `DownloaderApp`.
+3. ~~**UIManager step 3**~~ — *Done. `createMainMenu` moved to `UIManager` in `ui_manager.go`, using the `showHistory`/`showPreferences`/`showConfigHelp`/`showAbout`/`showPostProcessing` methods already living there and `manager.mainWindow` in place of `app.window`. `DependencyService` step 1 folded in: the `checkDependencies` / `runUpdateInUI` wrappers were removed from `DownloaderApp` and re-implemented directly as `UIManager` methods, backed by a new `depSvc *DependencyService` field (same dual-ownership pattern as `historySvc`) plus three injected callbacks (`onLog`, `onStatus`, `onSetStatusIndicator`) wired to `DownloaderApp.appendOutput`/`updateStatus`/`setStatusIndicator` in `newDownloaderApp`. `main.go`'s startup sequence now calls `dlApp.uiManager.createMainMenu()` and `dlApp.uiManager.checkDependencies()`.*
 4. **UIManager step 4** — Move `createUI` to `UIManager`. Largest single step; do last.
 5. **UIManager step 5** — Replace all direct service fields on `UIManager` with injected callbacks; redesign the `UIManager` constructor so it holds no service-type references.
 
@@ -59,7 +59,7 @@ All steps depend on the preceding phases. Execute in order; each step shrinks th
 
 ## High Priority
 
-- [ ] Refactor ui.go into smaller helpers — Split the large window construction into helpers for menus, dialogs, history, and preferences so the file is easier to scan and change. *(ui.go is 709 lines; `showAbout`, `showHistory`, `showConfigHelp` have moved to UIManager but `createUI`, `createMainMenu`, `showPreferences`, `showPostProcessing` remain. Blocked until more services are extracted.)*
+- [ ] Refactor ui.go into smaller helpers — Split the large window construction into helpers for menus, dialogs, history, and preferences so the file is easier to scan and change. *(`showAbout`, `showHistory`, `showConfigHelp`, `showPreferences`, `showPostProcessing`, and `createMainMenu` have all moved to UIManager; only `createUI` remains on `DownloaderApp` in ui.go. Blocked until `createUI` itself moves — see UIManager step 4.)*
 - [ ] Split download.go into phases — Separate yt-dlp argument building, process startup, output parsing, and retry handling into smaller functions. *(`BuildArgs`, the retry loop, `FinalizeFiles`, and their composition are all in `DownloadEngine` now ✓ (`engine.Run`). `download.go`'s `runYtDlp` is now a thin wrapper: build `DownloadRequest`/`DownloadOptions` from UI state, call `engine.Run`, handle history + UI report. `Execute()`'s argument count is also resolved ✓ (`DownloadOptions`). DownloadEngine has no further open steps.)*
 - [x] Break postprocess.go into smaller pipelines — Move FFmpeg option building, UI state handling, and feature-specific logic into smaller functions or separate files. *(`PPEngine` owns filter execution. Probe functions and `buildFFmpegArgs`/`patchThreadCount` moved to `pp_engine.go` ✓. `buildPostProcessFilters`, `computeProcessingLoad`, and `checkPostProcessingEnabled` decoupled from `*UIWidgets` via the `PostProcessSettings` value struct ✓. `postprocess.go` is now settings + pure functions + a thin `applyFFmpegFilters` wrapper + shared format helpers.)*
 - [x] Use context.Context consistently for cancellation — Pass context through the download pipeline so stopping a job does not leave background work running. *(Context flows correctly through `startDownload` → `runYtDlp` → `DownloadEngine.Execute` → `PPEngine.ApplyFilters`. Resolved as a side-effect of the service extractions.)*
@@ -134,7 +134,7 @@ See the sections below for per-component details and open next steps.
 
 ## UIManager
 
-**Done:** `UIManager` struct introduced in `ui_manager.go`. It owns the five singleton window fields (`aboutWindow`, `helpWindow`, `historyWindow`, `prefsWindow`, `ppWindow`) previously scattered on `DownloaderApp`. The five self-contained show methods (`showAbout`, `showHistory`, `showConfigHelp`, `showPreferences`, `showPostProcessing`) have moved to `UIManager`; their counterparts on `DownloaderApp` are now one-line delegates. `UIManager` also gained `ui *UIWidgets`, `prefSvc *PreferenceService`, `logSvc *LogService`, and a temporary `onCreateUI func()` callback to support `showPreferences` (plus the `savePreferences`/`resetPreferences`/`rebuildUI` helpers it needs) — wired in `newDownloaderApp`.
+**Done:** `UIManager` struct introduced in `ui_manager.go`. It owns the five singleton window fields (`aboutWindow`, `helpWindow`, `historyWindow`, `prefsWindow`, `ppWindow`) previously scattered on `DownloaderApp`. The five self-contained show methods (`showAbout`, `showHistory`, `showConfigHelp`, `showPreferences`, `showPostProcessing`) have moved to `UIManager`; their counterparts on `DownloaderApp` are now one-line delegates. `UIManager` also gained `ui *UIWidgets`, `prefSvc *PreferenceService`, `logSvc *LogService`, and a temporary `onCreateUI func()` callback to support `showPreferences` (plus the `savePreferences`/`resetPreferences`/`rebuildUI` helpers it needs) — wired in `newDownloaderApp`. `createMainMenu` has also moved here, along with `checkDependencies` and `runUpdateInUI` (previously thin `DownloaderApp` wrappers around `DependencyService`), backed by a new `depSvc *DependencyService` field and three injected callbacks (`onLog`, `onStatus`, `onSetStatusIndicator`).
 
 **Next steps — blocked until other services are extracted:**
 
@@ -142,7 +142,7 @@ See the sections below for per-component details and open next steps.
 
 2. ~~**Move `showPostProcessing` to UIManager**~~ — *Done. See above.*
 
-3. **Move `createMainMenu` to UIManager** — menu item callbacks (`startDownload`, `runUpdateInUI`, `showPostProcessing`, etc.) become `UIManager` callback fields, wired at construction time. Depends on `DependencyService` for the updater action.
+3. ~~**Move `createMainMenu` to UIManager**~~ — *Done. `createMainMenu`, `checkDependencies`, and `runUpdateInUI` are now `UIManager` methods, backed by a new `depSvc *DependencyService` field and the `onLog`/`onStatus`/`onSetStatusIndicator` callbacks described under DependencyService below.*
 
 4. **Move `createUI` to UIManager** — the largest step. The main window layout reads from `*UIWidgets` and calls back into almost every service. This should be last, after all other services exist, so callbacks are typed references rather than raw closures over `DownloaderApp`.
 
@@ -193,11 +193,11 @@ Extracted from `helpers.go` and `download.go`:
 
 The package-level `UpdateYtDlpCLI()` replaces the old `updateYtDlp()` free function used by the `--update` CLI flag.
 
-`getLocalBinPath` and `resolvedBinPath` have been removed from `download.go` along with their `os`, `filepath`, and `runtime` imports. All callers (`runYtDlp`, `applyFFmpegFilters`) now use `app.depSvc.Resolve(...)`. Thin wrappers `checkDependencies()` and `runUpdateInUI()` remain on `DownloaderApp` in `helpers.go` to minimise call-site changes.
+`getLocalBinPath` and `resolvedBinPath` have been removed from `download.go` along with their `os`, `filepath`, and `runtime` imports. All callers (`runYtDlp`, `applyFFmpegFilters`) now use `app.depSvc.Resolve(...)`. The `checkDependencies()` and `runUpdateInUI()` wrappers have moved off `DownloaderApp` entirely and are now `UIManager` methods (see UIManager step 3 above), backed by a `depSvc *DependencyService` field and `onLog`/`onStatus`/`onSetStatusIndicator` callbacks.
 
 **Next steps:**
 
-1. **Move `checkDependencies` and `runUpdateInUI` wrappers to `UIManager`** — both are currently thin one-call methods on `DownloaderApp`. Once `createMainMenu` migrates to `UIManager`, the update menu item callback and the startup dependency check can wire directly to `depSvc`, removing the wrappers entirely. `UIManager` would hold `depSvc *DependencyService` the same way it currently holds `historySvc`.
+1. ~~**Move `checkDependencies` and `runUpdateInUI` wrappers to `UIManager`**~~ — *Done. See UIManager step 3 above.*
 
 2. **Expose a `Version(toolName string) (string, error)` method** — needed when the "yt-dlp Auto-Update" roadmap feature is implemented (showing the installed version alongside the latest available). The method would run `yt-dlp --version` and return the trimmed output.
 

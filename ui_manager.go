@@ -4,18 +4,22 @@
 //   - UIManager: typed component that owns the secondary window references
 //     (About, Help, History, Preferences, Post-Processing) and ensures at
 //     most one window instance open at a time.
+//   - createMainMenu: builds the main window's menu bar.
 //   - showAbout, showHistory, showConfigHelp, showPreferences,
 //     showPostProcessing: self-contained window construction, built from
 //     UIManager's own widget and service fields.
 //   - savePreferences, resetPreferences, rebuildUI: preference persistence
 //     and UI-rebuild helpers used by showPreferences.
+//   - checkDependencies, runUpdateInUI: thin delegates to DependencyService
+//     for the startup tool check and the "Update yt-dlp" menu action.
 //
-// createMainMenu and createUI still live on DownloaderApp (see
-// docs/refactor_roadmap.md Phase 5 for the plan to move them here).
+// createUI still lives on DownloaderApp (see docs/refactor_roadmap.md
+// Phase 5 for the plan to move it here).
 package main
 
 import (
 	"fmt"
+	"image/color"
 	"net/url"
 	"slices"
 	"strings"
@@ -41,10 +45,17 @@ type UIManager struct {
 	prefsWindow   fyne.Window        // owned here for singleton tracking; opened by DownloaderApp
 	ppWindow      fyne.Window        // owned here for singleton tracking; opened by DownloaderApp
 	historySvc    *HistoryService    // history persistence; set by newDownloaderApp after construction
+	depSvc        *DependencyService // dependency checks and yt-dlp updater; set by newDownloaderApp after construction
 	ui            *UIWidgets         // shared widget bag; set by newDownloaderApp after construction
 	prefSvc       *PreferenceService // preference load/save/reset; set by newDownloaderApp after construction
 	logSvc        *LogService        // log buffer-limit updates; set by newDownloaderApp after construction
 	onCreateUI    func()             // rebuilds the main window; temporary until createUI itself moves here
+
+	// Callbacks bridging DependencyService progress into the main window; all
+	// set by newDownloaderApp after construction.
+	onLog                func(line string, col color.Color) // appends a line to the terminal output panel
+	onStatus             func(msg string)                   // updates the short status label
+	onSetStatusIndicator func(state string)                 // updates the status dot color
 }
 
 // NewUIManager returns a UIManager bound to the given primary window.
@@ -78,6 +89,68 @@ func onWindowClosed(window *fyne.Window) func() {
 func parseURL(rawURL string) *url.URL {
 	parsed, _ := url.Parse(rawURL)
 	return parsed
+}
+
+// ── Main menu ──────────────────────────────────────────────────────────────────
+
+// createMainMenu builds the application's top-level menu bar.
+func (manager *UIManager) createMainMenu() {
+	historyMenu := fyne.NewMenuItem("History", func() {
+		manager.showHistory()
+	})
+
+	updateMenu := fyne.NewMenuItem("Update yt-dlp", func() {
+		dialog.ShowConfirm("Update yt-dlp", "This will run 'yt-dlp -U' to update the tool. Continue?", func(ok bool) {
+			if ok {
+				manager.runUpdateInUI()
+			}
+		}, manager.mainWindow)
+	})
+
+	prefsMenu := fyne.NewMenuItem("Preferences", func() {
+		manager.showPreferences()
+	})
+
+	configHelpMenu := fyne.NewMenuItem("GoVid Guide", func() {
+		manager.showConfigHelp()
+	})
+
+	aboutMenu := fyne.NewMenuItem("About GoVid", func() {
+		manager.showAbout()
+	})
+
+	mainMenu := fyne.NewMainMenu(
+		fyne.NewMenu("File", historyMenu),
+		fyne.NewMenu("Tools", updateMenu, prefsMenu, fyne.NewMenuItem("Post-Processing", func() {
+			manager.showPostProcessing()
+		})),
+		fyne.NewMenu("Help", configHelpMenu, fyne.NewMenuItemSeparator(), aboutMenu),
+	)
+	manager.mainWindow.SetMainMenu(mainMenu)
+}
+
+// checkDependencies verifies that the required external tools — yt-dlp and
+// ffmpeg — are available either in the 'bin' folder beside the executable or
+// in the system PATH. Warnings are printed to the log panel.
+func (manager *UIManager) checkDependencies() {
+	manager.depSvc.Check(func(msg string) {
+		manager.onLog(msg, colWarning)
+	})
+}
+
+// runUpdateInUI sets the initial UI state for an update and delegates
+// execution to DependencyService, which runs yt-dlp -U in a background
+// goroutine and reports progress via UpdateCallbacks.
+func (manager *UIManager) runUpdateInUI() {
+	manager.onLog("[SYSTEM] Starting yt-dlp update...", colSystem)
+	manager.onSetStatusIndicator("active")
+	manager.onStatus("Status: Updating yt-dlp...")
+	manager.depSvc.RunUpdate(UpdateCallbacks{
+		OnLog:     manager.onLog,
+		OnStatus:  manager.onStatus,
+		OnSuccess: func() { manager.onSetStatusIndicator("success") },
+		OnFailure: func() { manager.onSetStatusIndicator("failed") },
+	})
 }
 
 // showAbout opens a small window with information about the creator and the app.

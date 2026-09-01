@@ -3,9 +3,8 @@
 // Responsibilities:
 //   - Main window layout: URL input, format/quality selectors, trim fields,
 //     speed limit, checkboxes, progress bar, and scrollable log view.
-//   - Menu bar: File, Tools, and Help menus with all their actions.
 //   - Thin delegates to UIManager for secondary windows (History, About,
-//     Preferences, Post-Processing, GoVid Guide).
+//     Preferences, Post-Processing, GoVid Guide) and the main menu bar.
 package main
 
 import (
@@ -23,42 +22,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
-
-// createMainMenu builds the application's top-level menu bar.
-func (app *DownloaderApp) createMainMenu() {
-	historyMenu := fyne.NewMenuItem("History", func() {
-		app.showHistory()
-	})
-
-	updateMenu := fyne.NewMenuItem("Update yt-dlp", func() {
-		dialog.ShowConfirm("Update yt-dlp", "This will run 'yt-dlp -U' to update the tool. Continue?", func(ok bool) {
-			if ok {
-				app.runUpdateInUI()
-			}
-		}, app.window)
-	})
-
-	prefsMenu := fyne.NewMenuItem("Preferences", func() {
-		app.showPreferences()
-	})
-
-	configHelpMenu := fyne.NewMenuItem("GoVid Guide", func() {
-		app.showConfigHelp()
-	})
-
-	aboutMenu := fyne.NewMenuItem("About GoVid", func() {
-		app.showAbout()
-	})
-
-	mainMenu := fyne.NewMainMenu(
-		fyne.NewMenu("File", historyMenu),
-		fyne.NewMenu("Tools", updateMenu, prefsMenu, fyne.NewMenuItem("Post-Processing", func() {
-			app.showPostProcessing()
-		})),
-		fyne.NewMenu("Help", configHelpMenu, fyne.NewMenuItemSeparator(), aboutMenu),
-	)
-	app.window.SetMainMenu(mainMenu)
-}
 
 // showHistory delegates to UIManager which owns the window state.
 func (app *DownloaderApp) showHistory() {

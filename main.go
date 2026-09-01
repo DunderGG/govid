@@ -104,6 +104,13 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.prefSvc = dlApp.prefSvc
 	dlApp.uiManager.logSvc = dlApp.logSvc
 	dlApp.uiManager.onCreateUI = dlApp.createUI
+
+	// Wire the dependency service and its log/status callbacks for
+	// checkDependencies and the "Update yt-dlp" menu action.
+	dlApp.uiManager.depSvc = depSvc
+	dlApp.uiManager.onLog = dlApp.appendOutput
+	dlApp.uiManager.onStatus = dlApp.updateStatus
+	dlApp.uiManager.onSetStatusIndicator = dlApp.setStatusIndicator
 	return dlApp
 }
 
@@ -142,9 +149,9 @@ func main() {
 	mainWindow.SetIcon(resourceAppiconPng)
 
 	dlApp := newDownloaderApp(mainWindow)
-	dlApp.createMainMenu()
+	dlApp.uiManager.createMainMenu()
 	dlApp.createUI()
-	dlApp.checkDependencies()
+	dlApp.uiManager.checkDependencies()
 	dlApp.startGPUDetection()
 
 	// Show a confirmation dialog if a download or post-processing job is active.

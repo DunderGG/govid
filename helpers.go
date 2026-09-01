@@ -4,7 +4,7 @@
 //   - File I/O: save-folder launcher.
 //   - UI updates: status label, log output, status dot animation, progress bar.
 //   - Preference management: applyPreferencesToWidgets.
-//   - External tools: thin delegates to DependencyService.
+//   - External tools: background GPU capability detection.
 package main
 
 import (
@@ -257,15 +257,6 @@ func applyPreferencesToWidgets(ui *UIWidgets, p AppPreferences) {
 
 // ── External tools ───────────────────────────────────────────────────────────
 
-// checkDependencies verifies that the required external tools — yt-dlp and
-// ffmpeg — are available either in the 'bin' folder beside the executable or
-// in the system PATH. Warnings are printed to the log panel.
-func (app *DownloaderApp) checkDependencies() {
-	app.depSvc.Check(func(msg string) {
-		app.appendOutput(msg, colWarning)
-	})
-}
-
 // startGPUDetection runs GPU backend capability detection in the background
 // so results are cached before post-processing needs them, logging a summary
 // once detection completes so it's captured in the session log for bug reports.
@@ -276,19 +267,4 @@ func (app *DownloaderApp) startGPUDetection() {
 			app.appendOutput("[SYSTEM] GPU: "+line, colSystem)
 		}
 	}()
-}
-
-// runUpdateInUI sets the initial UI state for an update and delegates
-// execution to DependencyService, which runs yt-dlp -U in a background
-// goroutine and reports progress via UpdateCallbacks.
-func (app *DownloaderApp) runUpdateInUI() {
-	app.appendOutput("[SYSTEM] Starting yt-dlp update...", colSystem)
-	app.setStatusIndicator("active")
-	app.updateStatus("Status: Updating yt-dlp...")
-	app.depSvc.RunUpdate(UpdateCallbacks{
-		OnLog:     app.appendOutput,
-		OnStatus:  app.updateStatus,
-		OnSuccess: func() { app.setStatusIndicator("success") },
-		OnFailure: func() { app.setStatusIndicator("failed") },
-	})
 }
