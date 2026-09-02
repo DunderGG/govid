@@ -99,11 +99,10 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.historySvc = NewHistoryService()
 	dlApp.uiManager.historySvc = dlApp.historySvc
 
-	// Wire the widgets, preferences, and log service showPreferences needs.
+	// Wire the widgets, preferences, and log service showPreferences/createUI need.
 	dlApp.uiManager.ui = dlApp.ui
 	dlApp.uiManager.prefSvc = dlApp.prefSvc
 	dlApp.uiManager.logSvc = dlApp.logSvc
-	dlApp.uiManager.onCreateUI = dlApp.createUI
 
 	// Wire the dependency service and its log/status callbacks for
 	// checkDependencies and the "Update yt-dlp" menu action.
@@ -111,6 +110,11 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onLog = dlApp.appendOutput
 	dlApp.uiManager.onStatus = dlApp.updateStatus
 	dlApp.uiManager.onSetStatusIndicator = dlApp.setStatusIndicator
+
+	// Wire the main window's action callbacks (download, open folder, cancel).
+	dlApp.uiManager.onStartDownload = dlApp.startDownload
+	dlApp.uiManager.onOpenFolder = dlApp.openDownloadFolder
+	dlApp.uiManager.onRequestCancel = dlApp.RequestCancel
 	return dlApp
 }
 
@@ -150,7 +154,7 @@ func main() {
 
 	dlApp := newDownloaderApp(mainWindow)
 	dlApp.uiManager.createMainMenu()
-	dlApp.createUI()
+	dlApp.uiManager.createUI()
 	dlApp.uiManager.checkDependencies()
 	dlApp.startGPUDetection()
 

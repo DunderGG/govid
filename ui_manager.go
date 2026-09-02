@@ -1,9 +1,11 @@
-// ui_manager.go — Singleton window management.
+// ui_manager.go — Main window layout and singleton secondary window management.
 //
 // Responsibilities:
-//   - UIManager: typed component that owns the secondary window references
-//     (About, Help, History, Preferences, Post-Processing) and ensures at
-//     most one window instance open at a time.
+//   - UIManager: typed component that owns the primary window reference and
+//     the secondary window references (About, Help, History, Preferences,
+//     Post-Processing), ensuring at most one instance of each is open at a time.
+//   - createUI: builds the main window layout (header, input tools, status,
+//     logs, and footer) and wires its widget event handlers.
 //   - createMainMenu: builds the main window's menu bar.
 //   - showAbout, showHistory, showConfigHelp, showPreferences,
 //     showPostProcessing: self-contained window construction, built from
@@ -12,15 +14,15 @@
 //     and UI-rebuild helpers used by showPreferences.
 //   - checkDependencies, runUpdateInUI: thin delegates to DependencyService
 //     for the startup tool check and the "Update yt-dlp" menu action.
-//
-// createUI still lives on DownloaderApp (see docs/refactor_roadmap.md
-// Phase 5 for the plan to move it here).
 package main
 
 import (
 	"fmt"
 	"image/color"
 	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -38,7 +40,7 @@ import (
 // UIManager owns references to all (non-main, for now) windows and ensures
 // each is a singleton — at most one window instance open at a time.
 type UIManager struct {
-	mainWindow    fyne.Window // reference to the primary window for dialog parenting
+	mainWindow    fyne.Window // primary application window; content is built by createUI
 	aboutWindow   fyne.Window
 	helpWindow    fyne.Window
 	historyWindow fyne.Window
@@ -49,13 +51,15 @@ type UIManager struct {
 	ui            *UIWidgets         // shared widget bag; set by newDownloaderApp after construction
 	prefSvc       *PreferenceService // preference load/save/reset; set by newDownloaderApp after construction
 	logSvc        *LogService        // log buffer-limit updates; set by newDownloaderApp after construction
-	onCreateUI    func()             // rebuilds the main window; temporary until createUI itself moves here
 
-	// Callbacks bridging DependencyService progress into the main window; all
-	// set by newDownloaderApp after construction.
+	// Callbacks bridging DownloaderApp actions into the main window; all set
+	// by newDownloaderApp after construction.
 	onLog                func(line string, col color.Color) // appends a line to the terminal output panel
 	onStatus             func(msg string)                   // updates the short status label
 	onSetStatusIndicator func(state string)                 // updates the status dot color
+	onStartDownload      func()                             // begins a download/batch run
+	onOpenFolder         func()                             // opens the save destination in the system file manager
+	onRequestCancel      func() bool                        // cancels the active download or post-process job
 }
 
 // NewUIManager returns a UIManager bound to the given primary window.
@@ -392,7 +396,7 @@ func (manager *UIManager) showPreferences() {
 			default:
 				fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
 			}
-			manager.onCreateUI()
+			manager.createUI()
 		},
 	}
 
@@ -492,7 +496,7 @@ func (manager *UIManager) resetPreferences() {
 // layout. Called after resetPreferences to complete a full application reset.
 func (manager *UIManager) rebuildUI() {
 	fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
-	manager.onCreateUI()
+	manager.createUI()
 }
 
 // showPostProcessing opens a window for specialized hardware/software filters.
@@ -763,4 +767,223 @@ func (manager *UIManager) showPostProcessing() {
 	manager.ppWindow.SetFixedSize(false)
 	manager.ppWindow.SetOnClosed(onWindowClosed(&manager.ppWindow))
 	manager.ppWindow.Show()
+}
+
+// ── Main window ────────────────────────────────────────────────────────────────
+
+// createUI constructs the graphical user interface by organizing widgets into
+// cards and containers. It sets up the layout (header, input tools, status,
+// logs, and footer) and attaches event handlers to buttons.
+func (manager *UIManager) createUI() {
+	ui := manager.ui
+
+	// Load the logo from the bundled resources.
+	image := canvas.NewImageFromResource(resourceAppiconPng)
+	image.FillMode = canvas.ImageFillContain
+	image.SetMinSize(fyne.NewSize(128, 128))
+	brandLogo := image
+
+	// Configure the URL entry for single or batch mode.
+	if ui.batchMode.Checked {
+		ui.entry.MultiLine = true
+		ui.entry.SetMinRowsVisible(4)
+		ui.entry.SetPlaceHolder("One URL per line...\nhttps://...\nhttps://...")
+	} else {
+		ui.entry.MultiLine = false
+		ui.entry.SetMinRowsVisible(1)
+		ui.entry.SetPlaceHolder("https://www.youtube.com/watch?v=...")
+	}
+	ui.batchMode.OnChanged = func(checked bool) {
+		fyne.CurrentApp().Preferences().SetBool("batchMode", checked)
+		if !checked {
+			// Switching back to single mode: keep only the first non-empty URL.
+			first := ""
+			for _, line := range strings.Split(ui.entry.Text, "\n") {
+				if trimmed := strings.TrimSpace(line); trimmed != "" {
+					first = trimmed
+					break
+				}
+			}
+			ui.entry.SetText(first)
+		}
+		manager.createUI()
+	}
+	ui.saveLog.OnChanged = func(_ bool) {
+		manager.savePreferences(ui.path.Text)
+	}
+	ui.notify.OnChanged = func(_ bool) {
+		manager.savePreferences(ui.path.Text)
+	}
+	ui.autoRetry.OnChanged = func(_ bool) {
+		manager.savePreferences(ui.path.Text)
+	}
+	ui.enablePostProcess.OnChanged = func(_ bool) {
+		manager.savePreferences(ui.path.Text)
+	}
+	ui.path.SetPlaceHolder("Download folder...")
+	ui.path.OnChanged = func(text string) {
+		if ui.savePrefs.Checked {
+			fyne.CurrentApp().Preferences().SetString(prefSavedPath, strings.TrimSpace(text))
+		}
+	}
+
+	// Load previously saved path from preferences.
+	prefs := manager.prefSvc.Load()
+	savedPath := prefs.SavedPath
+	if savedPath != "" {
+		ui.path.SetText(savedPath)
+	} else {
+		exePath, err := os.Executable()
+		if err == nil {
+			ui.path.SetText(filepath.Dir(exePath))
+		} else {
+			if cwd, err := os.Getwd(); err == nil {
+				ui.path.SetText(cwd)
+			}
+		}
+	}
+
+	browseBtn := widget.NewButtonWithIcon("", themedIcon(IconFolderOpen), func() {
+		dialog.ShowFolderOpen(func(list fyne.ListableURI, err error) {
+			if err != nil || list == nil {
+				return
+			}
+			ui.path.SetText(filepath.FromSlash(list.Path()))
+		}, manager.mainWindow)
+	})
+
+	ui.downloadBtn.Icon = themedIcon(IconDownload)
+	ui.downloadBtn.Text = "Download Now!"
+	ui.downloadBtn.OnTapped = func() {
+		manager.onStartDownload()
+	}
+	ui.downloadBtn.Importance = widget.HighImportance
+	ui.downloadBtn.Refresh()
+
+	ui.format.Options = []string{"MP4", "MKV", "WebM", "MP3", "M4A"}
+
+	savedFormat := prefs.Format
+	savedQuality := prefs.Quality
+
+	if savedFormat != "" {
+		ui.format.SetSelected(savedFormat)
+	} else if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		ui.format.SetSelected("MP4")
+	} else {
+		ui.format.SetSelected("MKV")
+	}
+
+	ui.quality.Options = []string{"Best Quality", "1080p", "720p", "480p", "360p"}
+
+	if savedQuality != "" {
+		ui.quality.SetSelected(savedQuality)
+	} else {
+		ui.quality.SetSelected("Best Quality")
+	}
+
+	openFolderBtn := widget.NewButtonWithIcon("Open Folder", themedIcon(IconFolder), func() {
+		manager.onOpenFolder()
+	})
+
+	ui.cancelBtn.Icon = themedIcon(IconCancel)
+	ui.cancelBtn.Text = "Cancel"
+	ui.cancelBtn.OnTapped = func() {
+		if manager.onRequestCancel() {
+			manager.onLog("Download canceled by user.", colWarning)
+		}
+	}
+
+	titleText := canvas.NewText("GoVid", accentCyan)
+	titleText.TextSize = 38
+	titleText.TextStyle = fyne.TextStyle{Bold: true}
+
+	subtitleText := canvas.NewText("Video Downloader", theme.Color(theme.ColorNameDisabled))
+	subtitleText.TextSize = 23
+	subtitleText.TextStyle = fyne.TextStyle{Italic: true}
+
+	headerLeft := container.NewVBox(titleText, subtitleText)
+	header := container.NewHBox(headerLeft, layout.NewSpacer(), brandLogo)
+
+	ui.trimStart.SetPlaceHolder("e.g. 00:01:30  (optional)")
+	ui.trimEnd.SetPlaceHolder("e.g. 00:05:00  (optional)")
+	ui.trimStart.Validator = validateTimestamp
+	ui.trimEnd.Validator = validateTimestamp
+
+	// accentBar returns a 4px wide rectangle in the theme's primary colour,
+	// used as a decorative left-edge bar on cards.
+	accentBar := func() *canvas.Rectangle {
+		bar := canvas.NewRectangle(accentCyan)
+		bar.SetMinSize(fyne.NewSize(4, 0))
+		return bar
+	}
+
+	inputCard := roundedCard("Specify the source and destination",
+		container.NewVBox(
+			container.NewHBox(
+				widget.NewLabelWithStyle("Video URL:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+				layout.NewSpacer(),
+				ui.batchMode,
+			),
+			container.NewBorder(nil, nil, nil, widget.NewButtonWithIcon("", theme.ContentClearIcon(), func() {
+				ui.entry.SetText("")
+			}), ui.entry),
+			widget.NewLabelWithStyle("Save Destination:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			container.NewBorder(nil, nil, nil, browseBtn, ui.path),
+			container.NewGridWithColumns(2,
+				container.NewVBox(
+					widget.NewLabelWithStyle("Output Format:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+					ui.format,
+				),
+				container.NewVBox(
+					widget.NewLabelWithStyle("Max Quality:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+					ui.quality,
+				),
+			),
+			container.NewGridWithColumns(2,
+				container.NewVBox(
+					widget.NewLabelWithStyle("Trim Start: (optional)", fyne.TextAlignLeading, fyne.TextStyle{}),
+					ui.trimStart,
+				),
+				container.NewVBox(
+					widget.NewLabelWithStyle("Trim End: (optional)", fyne.TextAlignLeading, fyne.TextStyle{}),
+					ui.trimEnd,
+				),
+			),
+			container.NewHBox(ui.saveLog, ui.notify, ui.autoRetry, ui.enablePostProcess),
+			container.NewGridWithColumns(3, ui.downloadBtn, openFolderBtn, ui.cancelBtn),
+		),
+	)
+	inputCardAccented := container.NewBorder(nil, nil, accentBar(), nil, inputCard)
+
+	// Wrap the status dot in a fixed-size container so the circle renders at 18×18.
+	dotContainer := container.New(layout.NewGridWrapLayout(fyne.NewSize(18, 18)), ui.statusDot)
+	statusCard := roundedCard("",
+		container.NewVBox(
+			ui.progress,
+			container.NewHBox(dotContainer, ui.status),
+		),
+	)
+	statusCardAccented := container.NewBorder(nil, nil, accentBar(), nil, statusCard)
+
+	ui.logList = container.NewVBox()
+	spacer := canvas.NewRectangle(color.Transparent)
+	spacer.SetMinSize(fyne.NewSize(0, 10))
+	ui.output = container.NewScroll(container.NewVBox(ui.logList, spacer))
+	ui.output.SetMinSize(fyne.NewSize(0, 200))
+
+	copyright := canvas.NewText("GoVid • By David Bennehag (dunder.gg) • Built with ❤️, 🤖 and ☕", theme.Color(theme.ColorNameDisabled))
+	copyright.TextSize = 14
+	copyright.Alignment = fyne.TextAlignCenter
+	footer := container.NewCenter(copyright)
+
+	topContent := container.NewVBox(
+		header,
+		inputCardAccented,
+		statusCardAccented,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Terminal Output:", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
+	)
+
+	content := container.NewBorder(topContent, footer, nil, nil, ui.output)
+	manager.mainWindow.SetContent(container.NewPadded(content))
 }
