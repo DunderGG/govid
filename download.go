@@ -1,4 +1,4 @@
-﻿// download.go — Drives the yt-dlp download pipeline.
+// download.go — Drives the yt-dlp download pipeline.
 //
 // Responsibilities:
 //   - Validates user inputs (URL, timestamps, speed limit).
@@ -394,5 +394,3 @@ func validateTimestamp(timestamp string) error {
 	}
 	return nil
 }
-
-
