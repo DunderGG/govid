@@ -95,18 +95,25 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	applyPreferencesToWidgets(dlApp.ui, prefs)
 	dlApp.logSvc.SetBufferLimit(ParseBufferLimit(prefs.LogLimit))
 
-	// Wire history service to both the app and the UIManager.
+	// Wire history service to both the app and the UIManager's callbacks.
 	dlApp.historySvc = NewHistoryService()
-	dlApp.uiManager.historySvc = dlApp.historySvc
+	dlApp.uiManager.onLoadHistory = dlApp.historySvc.Load
+	dlApp.uiManager.onClearHistory = dlApp.historySvc.Clear
 
-	// Wire the widgets, preferences, and log service showPreferences/createUI need.
+	// Wire the widgets and preference/log-service callbacks showPreferences
+	// and createUI need.
 	dlApp.uiManager.ui = dlApp.ui
-	dlApp.uiManager.prefSvc = dlApp.prefSvc
-	dlApp.uiManager.logSvc = dlApp.logSvc
+	dlApp.uiManager.onLoadPreferences = dlApp.prefSvc.Load
+	dlApp.uiManager.onSavePreferences = dlApp.prefSvc.Save
+	dlApp.uiManager.onResetPreferences = dlApp.prefSvc.Reset
+	dlApp.uiManager.onLoadConfigFile = dlApp.prefSvc.LoadFromFile
+	dlApp.uiManager.onMergeConfig = dlApp.prefSvc.MergeConfig
+	dlApp.uiManager.onSetLogBufferLimit = dlApp.logSvc.SetBufferLimit
 
-	// Wire the dependency service and its log/status callbacks for
+	// Wire the dependency-service callbacks and log/status callbacks for
 	// checkDependencies and the "Update yt-dlp" menu action.
-	dlApp.uiManager.depSvc = depSvc
+	dlApp.uiManager.onCheckDependencies = depSvc.Check
+	dlApp.uiManager.onRunUpdate = depSvc.RunUpdate
 	dlApp.uiManager.onLog = dlApp.appendOutput
 	dlApp.uiManager.onStatus = dlApp.updateStatus
 	dlApp.uiManager.onSetStatusIndicator = dlApp.setStatusIndicator

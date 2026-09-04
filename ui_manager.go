@@ -9,11 +9,12 @@
 //   - createMainMenu: builds the main window's menu bar.
 //   - showAbout, showHistory, showConfigHelp, showPreferences,
 //     showPostProcessing: self-contained window construction, built from
-//     UIManager's own widget and service fields.
+//     UIManager's own widget field and injected service callbacks.
 //   - savePreferences, resetPreferences, rebuildUI: preference persistence
 //     and UI-rebuild helpers used by showPreferences.
-//   - checkDependencies, runUpdateInUI: thin delegates to DependencyService
-//     for the startup tool check and the "Update yt-dlp" menu action.
+//   - checkDependencies, runUpdateInUI: thin delegates to the injected
+//     dependency-service callbacks for the startup tool check and the
+//     "Update yt-dlp" menu action.
 package main
 
 import (
@@ -38,28 +39,37 @@ import (
 )
 
 // UIManager owns references to all (non-main, for now) windows and ensures
-// each is a singleton — at most one window instance open at a time.
+// each is a singleton — at most one window instance open at a time. It holds
+// no service-type references directly; all service access is bridged in via
+// callbacks so UIManager stays decoupled from the service implementations.
 type UIManager struct {
 	mainWindow    fyne.Window // primary application window; content is built by createUI
 	aboutWindow   fyne.Window
 	helpWindow    fyne.Window
 	historyWindow fyne.Window
-	prefsWindow   fyne.Window        // owned here for singleton tracking; opened by DownloaderApp
-	ppWindow      fyne.Window        // owned here for singleton tracking; opened by DownloaderApp
-	historySvc    *HistoryService    // history persistence; set by newDownloaderApp after construction
-	depSvc        *DependencyService // dependency checks and yt-dlp updater; set by newDownloaderApp after construction
-	ui            *UIWidgets         // shared widget bag; set by newDownloaderApp after construction
-	prefSvc       *PreferenceService // preference load/save/reset; set by newDownloaderApp after construction
-	logSvc        *LogService        // log buffer-limit updates; set by newDownloaderApp after construction
+	prefsWindow   fyne.Window // owned here for singleton tracking; opened by DownloaderApp
+	ppWindow      fyne.Window // owned here for singleton tracking; opened by DownloaderApp
+	ui            *UIWidgets  // shared widget bag; set by newDownloaderApp after construction
 
-	// Callbacks bridging DownloaderApp actions into the main window; all set
-	// by newDownloaderApp after construction.
-	onLog                func(line string, col color.Color) // appends a line to the terminal output panel
-	onStatus             func(msg string)                   // updates the short status label
-	onSetStatusIndicator func(state string)                 // updates the status dot color
-	onStartDownload      func()                             // begins a download/batch run
-	onOpenFolder         func()                             // opens the save destination in the system file manager
-	onRequestCancel      func() bool                        // cancels the active download or post-process job
+	// Callbacks bridging DownloaderApp actions and services into the main
+	// window and secondary windows; all set by newDownloaderApp after
+	// construction.
+	onLog                func(line string, col color.Color)                                                                          // appends a line to the terminal output panel
+	onStatus             func(msg string)                                                                                            // updates the short status label
+	onSetStatusIndicator func(state string)                                                                                          // updates the status dot color
+	onStartDownload      func()                                                                                                      // begins a download/batch run
+	onOpenFolder         func()                                                                                                      // opens the save destination in the system file manager
+	onRequestCancel      func() bool                                                                                                 // cancels the active download or post-process job
+	onLoadHistory        func() ([]DownloadHistoryEntry, error)                                                                      // HistoryService.Load
+	onClearHistory       func() error                                                                                                // HistoryService.Clear
+	onCheckDependencies  func(onWarning func(msg string))                                                                            // DependencyService.Check
+	onRunUpdate          func(cb UpdateCallbacks)                                                                                    // DependencyService.RunUpdate
+	onLoadPreferences    func() AppPreferences                                                                                       // PreferenceService.Load
+	onSavePreferences    func(AppPreferences)                                                                                        // PreferenceService.Save
+	onResetPreferences   func()                                                                                                      // PreferenceService.Reset
+	onLoadConfigFile     func(path string) (*AppConfig, error)                                                                       // PreferenceService.LoadFromFile
+	onMergeConfig        func(cfg *AppConfig, base AppPreferences, validFormats, validQualities []string) (AppPreferences, []string) // PreferenceService.MergeConfig
+	onSetLogBufferLimit  func(limit int)                                                                                             // LogService.SetBufferLimit
 }
 
 // NewUIManager returns a UIManager bound to the given primary window.
@@ -137,7 +147,7 @@ func (manager *UIManager) createMainMenu() {
 // ffmpeg — are available either in the 'bin' folder beside the executable or
 // in the system PATH. Warnings are printed to the log panel.
 func (manager *UIManager) checkDependencies() {
-	manager.depSvc.Check(func(msg string) {
+	manager.onCheckDependencies(func(msg string) {
 		manager.onLog(msg, colWarning)
 	})
 }
@@ -149,7 +159,7 @@ func (manager *UIManager) runUpdateInUI() {
 	manager.onLog("[SYSTEM] Starting yt-dlp update...", colSystem)
 	manager.onSetStatusIndicator("active")
 	manager.onStatus("Status: Updating yt-dlp...")
-	manager.depSvc.RunUpdate(UpdateCallbacks{
+	manager.onRunUpdate(UpdateCallbacks{
 		OnLog:     manager.onLog,
 		OnStatus:  manager.onStatus,
 		OnSuccess: func() { manager.onSetStatusIndicator("success") },
@@ -207,7 +217,7 @@ func (manager *UIManager) showHistory() {
 	}
 
 	// Load the download history from disk. If it fails, show an error dialog and abort.
-	entries, err := manager.historySvc.Load()
+	entries, err := manager.onLoadHistory()
 	if err != nil {
 		dialog.ShowError(fmt.Errorf("failed to load download history: %v", err), manager.mainWindow)
 		return
@@ -249,7 +259,7 @@ func (manager *UIManager) showHistory() {
 				if !ok {
 					return
 				}
-				if err := manager.historySvc.Clear(); err != nil {
+				if err := manager.onClearHistory(); err != nil {
 					dialog.ShowError(fmt.Errorf("failed to clear history: %v", err), manager.historyWindow)
 					return
 				}
@@ -339,7 +349,7 @@ func (manager *UIManager) showPreferences() {
 	}
 
 	ui := manager.ui
-	prefs := manager.prefSvc.Load()
+	prefs := manager.onLoadPreferences()
 
 	// Log Buffer Limit
 	ui.logLimit.SetSelected(prefs.LogLimit)
@@ -385,7 +395,7 @@ func (manager *UIManager) showPreferences() {
 			{Text: "Cookies File", Widget: cookiesRow, HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
 		},
 		OnSubmit: func() {
-			manager.logSvc.SetBufferLimit(ParseBufferLimit(ui.logLimit.Selected))
+			manager.onSetLogBufferLimit(ParseBufferLimit(ui.logLimit.Selected))
 			manager.savePreferences(ui.path.Text)
 
 			// Apply theme change and rebuild the UI so canvas.Rectangle colors
@@ -417,14 +427,14 @@ func (manager *UIManager) showPreferences() {
 	resetBtn.Importance = widget.DangerImportance
 
 	loadConfigBtn := widget.NewButtonWithIcon("Load from Config (govid.json)", theme.SettingsIcon(), func() {
-		config, err := manager.prefSvc.LoadFromFile(configFileName)
+		config, err := manager.onLoadConfigFile(configFileName)
 		if err != nil {
 			dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), manager.prefsWindow)
 			return
 		}
-		merged, errs := manager.prefSvc.MergeConfig(config, manager.prefSvc.Load(), ui.format.Options, ui.quality.Options)
+		merged, errs := manager.onMergeConfig(config, manager.onLoadPreferences(), ui.format.Options, ui.quality.Options)
 		applyPreferencesToWidgets(ui, merged)
-		manager.prefSvc.Save(merged)
+		manager.onSavePreferences(merged)
 		if len(errs) > 0 {
 			dialog.ShowCustom("Config Loaded with Warnings", "OK",
 				widget.NewLabel(fmt.Sprintf("some settings were skipped:\n- %s", strings.Join(errs, "\n- "))),
@@ -449,7 +459,7 @@ func (manager *UIManager) showPreferences() {
 // struct and delegates persistence to PreferenceService.Save.
 func (manager *UIManager) savePreferences(savePath string) {
 	ui := manager.ui
-	manager.prefSvc.Save(AppPreferences{
+	manager.onSavePreferences(AppPreferences{
 		SavePrefs:         ui.savePrefs.Checked,
 		SavedPath:         savePath,
 		Format:            ui.format.Selected,
@@ -488,8 +498,8 @@ func (manager *UIManager) savePreferences(savePath string) {
 // buffer to its default limit. Call rebuildUI afterwards to complete the
 // visual reset.
 func (manager *UIManager) resetPreferences() {
-	manager.prefSvc.Reset()
-	manager.logSvc.SetBufferLimit(200)
+	manager.onResetPreferences()
+	manager.onSetLogBufferLimit(200)
 }
 
 // rebuildUI applies the default dark theme and recreates the main window
@@ -507,7 +517,7 @@ func (manager *UIManager) showPostProcessing() {
 	}
 
 	ui := manager.ui
-	prefs := manager.prefSvc.Load()
+	prefs := manager.onLoadPreferences()
 
 	// Reload all post-processing prefs so the window always shows persisted state.
 	ui.smoothMotion.SetChecked(prefs.SmoothMotion)
@@ -828,7 +838,7 @@ func (manager *UIManager) createUI() {
 	}
 
 	// Load previously saved path from preferences.
-	prefs := manager.prefSvc.Load()
+	prefs := manager.onLoadPreferences()
 	savedPath := prefs.SavedPath
 	if savedPath != "" {
 		ui.path.SetText(savedPath)
