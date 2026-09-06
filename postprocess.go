@@ -122,10 +122,12 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 		// CAS (Contrast Adaptive Sharpening) adaptively sharpens edges while
 		// leaving smooth areas untouched, avoiding the haloing and noise
 		// amplification that unsharp mask produces.
-		// AMD recommends 0.3–0.5 for typical content; cap at 0.5 to prevent
-		// over-sharpening artifacts and excessive encoder bitrate.
-		// Maps slider 0–2 → CAS strength 0.0–0.5.
-		strength := amount * 0.35
+		// AMD recommends 0.3–0.5 for typical content; slider midpoint (1.0)
+		// lands at 0.4 for a visible but clean result, while full slider
+		// (2.0) reaches 0.8 — strong sharpening without the ringing
+		// artifacts that CAS produces near its maximum (1.0).
+		// Maps slider 0–2 → CAS strength 0.0–0.8.
+		strength := amount * 0.40
 		vfFilters = append(vfFilters, fmt.Sprintf("cas=strength=%.2f", strength))
 	}
 	if ppSetting.VividMode {

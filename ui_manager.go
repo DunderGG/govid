@@ -689,7 +689,7 @@ func (manager *UIManager) showPostProcessing() {
 	// sectionDivider creates a very thin, subtle line with extra vertical padding.
 	sectionDivider := func() fyne.CanvasObject {
 		line := canvas.NewRectangle(accentCyan)
-		line.SetMinSize(fyne.NewSize(100, 1))
+		line.SetMinSize(fyne.NewSize(500, 1))
 		return container.NewPadded(container.NewCenter(line))
 	}
 
@@ -705,19 +705,19 @@ func (manager *UIManager) showPostProcessing() {
 		Items: []*widget.FormItem{
 			// ── GPU ACCELERATION ─────────────────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("GPU ACCELERATION")},
-			{Text: "Encoder Backend", Widget: ui.gpuBackend, HintText: "Accelerates the final re-encode step (only applies when at least one video filter above is enabled); falls back to CPU automatically if unavailable"},
+			{Text: "Encoder Backend", Widget: container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.gpuBackend.MinSize().Height)), ui.gpuBackend), HintText: "GPU-accelerated re-encoding; falls back to CPU if unavailable"},
 			{Text: "", Widget: sectionDivider()},
 			// ── MOTION ─────────────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("MOTION ENHANCEMENT")},
 			{Text: "Smooth Motion", Widget: ui.smoothMotion, HintText: "Interpolate frames for fluid playback (slow)"},
 			{Text: "Smoothing Mode", Widget: ui.smoothMotionMode, HintText: "Precise/Balanced use motion vectors, Fast uses blending"},
-			{Text: "Target FPS", Widget: container.NewBorder(nil, nil, nil, fpsLabel, ui.smoothMotionFPS), HintText: "Standard is 60, cinematic is 24, high-refresh is 120"},
+			{Text: "Target FPS", Widget: container.NewHBox(container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.smoothMotionFPS.MinSize().Height)), ui.smoothMotionFPS), fpsLabel), HintText: "Standard is 60, cinematic is 24, high-refresh is 120"},
 			{Text: "", Widget: sectionDivider()},
 			// ── VIDEO ──────────────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("VIDEO ENHANCEMENT")},
 			{Text: "Vivid Mode", Widget: ui.vividMode, HintText: "Boost brightness, contrast, and saturation"},
 			{Text: "Sharpen Video", Widget: ui.sharpen, HintText: "CAS (Contrast Adaptive Sharpening) — sharpens edges without haloing or noise amplification"},
-			{Text: "Sharpen Intensity", Widget: container.NewBorder(nil, nil, nil, sharpenLabel, ui.sharpenAmount), HintText: "1.0x is gentle, 1.5x is moderate, 2.0x is strong"},
+			{Text: "Sharpen Intensity", Widget: container.NewHBox(container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.sharpenAmount.MinSize().Height)), ui.sharpenAmount), sharpenLabel), HintText: "1.0x is gentle, 1.5x is moderate, 2.0x is strong"},
 			{Text: "Fix Banding", Widget: ui.deband, HintText: "Remove gradient banding steps in skies and dark scenes (deband)"},
 			{Text: "HDR to SDR", Widget: ui.hdrToSdr, HintText: "Tone-map 4K HDR content for standard monitors (zscale + Hable tonemap)"},
 			{Text: "", Widget: sectionDivider()},
@@ -732,7 +732,7 @@ func (manager *UIManager) showPostProcessing() {
 			// ── UPSCALING ────────────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("UPSCALING")},
 			{Text: "Upscale Video", Widget: ui.upscaleVideo, HintText: "Enlarge the video using a high-quality Lanczos resampler"},
-			{Text: "Target Resolution", Widget: ui.upscaleTarget, HintText: "2× doubles both dimensions; fixed targets set a specific height"},
+			{Text: "Target Resolution", Widget: container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.upscaleTarget.MinSize().Height)), ui.upscaleTarget), HintText: "2× doubles both dimensions; fixed targets set a specific height"},
 			{Text: "", Widget: sectionDivider()},
 			// ── AUDIO ──────────────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("AUDIO ENHANCEMENT")},
