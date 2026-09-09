@@ -15,9 +15,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/widget"
 )
 
 const (
@@ -42,51 +40,11 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp := &DownloaderApp{
 		window:    window,
 		uiManager: NewUIManager(window),
-		ui: &UIWidgets{
-			entry:             widget.NewEntry(),
-			path:              widget.NewEntry(),
-			format:            widget.NewSelect(nil, nil),
-			quality:           widget.NewSelect(nil, nil),
-			saveLog:           widget.NewCheck("Save output to log file", nil),
-			notify:            widget.NewCheck("Notify on Completion", nil),
-			autoRetry:         widget.NewCheck("Auto-retry", nil),
-			enablePostProcess: widget.NewCheck("Post-Processing", nil),
-			downloadBtn:       widget.NewButtonWithIcon("Download Now!", nil, nil),
-			cancelBtn:         widget.NewButton("", nil),
-			statusDot:         canvas.NewCircle(colDotIdle),
-			progress:          widget.NewProgressBar(),
-			status:            widget.NewLabel("Status: Idle"),
-			trimStart:         widget.NewEntry(),
-			trimEnd:           widget.NewEntry(),
-			maxSpeed:          widget.NewEntry(),
-			themeMode:         widget.NewRadioGroup([]string{"Dark", "Light"}, nil),
-			cookies:           widget.NewEntry(),
-			savePrefs:         widget.NewCheck("Save preferences between sessions", nil),
-			logLimit:          widget.NewSelect([]string{"100", "200", "500", "1000", "5000", "Unlimited"}, nil),
-			batchMode:         widget.NewCheck("Batch Mode", nil),
-			smoothMotion:      widget.NewCheck("Enabled", nil),
-			smoothMotionMode:  widget.NewRadioGroup([]string{"Precise (slow)", "Balanced", "Fast"}, nil),
-			smoothMotionFPS:   widget.NewSlider(24, 120),
-			sharpen:           widget.NewCheck("Sharpen Video", nil),
-			sharpenAmount:     widget.NewSlider(0, 2),
-			normalizeAudio:    widget.NewCheck("Normalize Audio", nil),
-			vividMode:         widget.NewCheck("Vivid Mode", nil),
-			denoise:           widget.NewCheck("Denoise", nil),
-			denoiseMode:       widget.NewRadioGroup([]string{"NLMeans (HQ, slow)", "hqdn3d (Balanced)"}, nil),
-			hdrToSdr:          widget.NewCheck("HDR to SDR", nil),
-			deband:            widget.NewCheck("Fix Banding", nil),
-			autoCrop:          widget.NewCheck("Auto-Crop", nil),
-			stabilize:         widget.NewCheck("Stabilize", nil),
-			deinterlace:       widget.NewCheck("Deinterlace", nil),
-			nightMode:         widget.NewCheck("Night Mode", nil),
-			upscaleVideo:      widget.NewCheck("Upscale Video", nil),
-			upscaleTarget:     widget.NewSelect([]string{"2× (Double)", "1080p", "1440p", "4K (2160p)"}, nil),
-			gpuBackend:        widget.NewSelect(GPUBackendOptions(), nil),
-		},
-		stats:  &DownloadStats{},
-		logSvc: NewLogService(),
-		depSvc: depSvc,
-		gpuSvc: NewGPUCapabilityService(depSvc.Resolve("ffmpeg")),
+		ui:        NewUIWidgets(),
+		stats:     &DownloadStats{},
+		logSvc:    NewLogService(),
+		depSvc:    depSvc,
+		gpuSvc:    NewGPUCapabilityService(depSvc.Resolve("ffmpeg")),
 	}
 
 	// Load saved preferences and apply them to all widgets.

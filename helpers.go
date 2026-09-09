@@ -64,7 +64,7 @@ const configFileName = "govid.json"
 // openDownloadFolder launches the system file manager pointing at the current
 // save destination. The platform-specific command is provided by openFolderCommand.
 func (app *DownloaderApp) openDownloadFolder() {
-	savePath := strings.TrimSpace(app.ui.path.Text)
+	savePath := strings.TrimSpace(app.ui.download.path.Text)
 	if savePath == "" {
 		dialog.ShowError(fmt.Errorf("no save path set"), app.window)
 		return
@@ -79,7 +79,7 @@ func (app *DownloaderApp) openDownloadFolder() {
 // updateStatus sets the short status label text thread-safely.
 func (app *DownloaderApp) updateStatus(msg string) {
 	fyne.Do(func() {
-		app.ui.status.SetText(msg)
+		app.ui.download.status.SetText(msg)
 	})
 }
 
@@ -91,14 +91,14 @@ func (app *DownloaderApp) appendOutput(line string, col color.Color) {
 		label := canvas.NewText(line, col)
 		label.TextSize = theme.TextSize()
 
-		app.ui.logList.Add(label)
+		app.ui.download.logList.Add(label)
 
-		if len(app.ui.logList.Objects) > app.logSvc.BufferLimit() {
-			app.ui.logList.Objects = app.ui.logList.Objects[len(app.ui.logList.Objects)-app.logSvc.BufferLimit():]
+		if len(app.ui.download.logList.Objects) > app.logSvc.BufferLimit() {
+			app.ui.download.logList.Objects = app.ui.download.logList.Objects[len(app.ui.download.logList.Objects)-app.logSvc.BufferLimit():]
 		}
 
-		app.ui.logList.Refresh()
-		app.ui.output.ScrollToBottom()
+		app.ui.download.logList.Refresh()
+		app.ui.download.output.ScrollToBottom()
 	})
 
 	app.logSvc.WriteToFile(line)
@@ -149,8 +149,8 @@ func (app *DownloaderApp) setStatusIndicator(state string) {
 						t += 0.1
 						alpha := uint8(128 + 127*math.Sin(t))
 						fyne.Do(func() {
-							app.ui.statusDot.FillColor = color.RGBA{R: accentCyan.R, G: accentCyan.G, B: accentCyan.B, A: alpha}
-							app.ui.statusDot.Refresh()
+							app.ui.download.statusDot.FillColor = color.RGBA{R: accentCyan.R, G: accentCyan.G, B: accentCyan.B, A: alpha}
+							app.ui.download.statusDot.Refresh()
 						})
 					}
 				}
@@ -171,22 +171,22 @@ func (app *DownloaderApp) setStatusIndicator(state string) {
 						t += 0.1
 						alpha := uint8(128 + 127*math.Sin(t))
 						fyne.Do(func() {
-							app.ui.statusDot.FillColor = color.RGBA{R: colDotProcessing.R, G: colDotProcessing.G, B: colDotProcessing.B, A: alpha}
-							app.ui.statusDot.Refresh()
+							app.ui.download.statusDot.FillColor = color.RGBA{R: colDotProcessing.R, G: colDotProcessing.G, B: colDotProcessing.B, A: alpha}
+							app.ui.download.statusDot.Refresh()
 						})
 					}
 				}
 			}()
 		case "success":
-			app.ui.statusDot.FillColor = colDotSuccess
+			app.ui.download.statusDot.FillColor = colDotSuccess
 		case "failed":
-			app.ui.statusDot.FillColor = colDotFailed
+			app.ui.download.statusDot.FillColor = colDotFailed
 		case "canceled":
-			app.ui.statusDot.FillColor = colDotCanceled
+			app.ui.download.statusDot.FillColor = colDotCanceled
 		default: // "idle"
-			app.ui.statusDot.FillColor = colDotIdle
+			app.ui.download.statusDot.FillColor = colDotIdle
 		}
-		app.ui.statusDot.Refresh()
+		app.ui.download.statusDot.Refresh()
 	})
 }
 
@@ -206,7 +206,7 @@ func (app *DownloaderApp) setProgress(pct float64) {
 // bypassing the smooth interpolation. Use for resets or completion snaps.
 func (app *DownloaderApp) setProgressNow(pct float64) {
 	fyne.Do(func() {
-		app.ui.progress.SetValue(pct)
+		app.ui.download.progress.SetValue(pct)
 	})
 	app.stats.targetPct = pct
 }
@@ -217,42 +217,42 @@ func (app *DownloaderApp) setProgressNow(pct float64) {
 // into the corresponding UI widgets. Called at startup and after a reset.
 func applyPreferencesToWidgets(ui *UIWidgets, p AppPreferences) {
 	if p.Format != "" {
-		ui.format.SetSelected(p.Format)
+		ui.download.format.SetSelected(p.Format)
 	}
 	if p.Quality != "" {
-		ui.quality.SetSelected(p.Quality)
+		ui.download.quality.SetSelected(p.Quality)
 	}
 	if p.SavedPath != "" {
-		ui.path.SetText(p.SavedPath)
+		ui.download.path.SetText(p.SavedPath)
 	}
-	ui.themeMode.SetSelected(p.ThemeMode)
-	ui.savePrefs.SetChecked(p.SavePrefs)
-	ui.smoothMotion.SetChecked(p.SmoothMotion)
-	ui.smoothMotionMode.SetSelected(p.SmoothMotionMode)
-	ui.smoothMotionFPS.SetValue(p.SmoothFPS)
-	ui.sharpen.SetChecked(p.Sharpen)
-	ui.sharpenAmount.SetValue(p.SharpenAmount)
-	ui.normalizeAudio.SetChecked(p.NormalizeAudio)
-	ui.vividMode.SetChecked(p.VividMode)
-	ui.denoise.SetChecked(p.Denoise)
-	ui.denoiseMode.SetSelected(p.DenoiseMode)
-	ui.hdrToSdr.SetChecked(p.HDRToSDR)
-	ui.deband.SetChecked(p.Deband)
-	ui.autoCrop.SetChecked(p.AutoCrop)
-	ui.stabilize.SetChecked(p.Stabilize)
-	ui.deinterlace.SetChecked(p.Deinterlace)
-	ui.nightMode.SetChecked(p.NightMode)
-	ui.upscaleVideo.SetChecked(p.UpscaleVideo)
-	ui.upscaleTarget.SetSelected(p.UpscaleTarget)
-	ui.gpuBackend.SetSelected(p.GPUBackend)
-	ui.cookies.SetText(p.CookiesPath)
-	ui.batchMode.SetChecked(p.BatchMode)
-	ui.saveLog.SetChecked(p.SaveLog)
-	ui.notify.SetChecked(p.Notify)
-	ui.autoRetry.SetChecked(p.AutoRetry)
-	ui.enablePostProcess.SetChecked(p.EnablePostProcess)
-	ui.logLimit.SetSelected(p.LogLimit)
-	ui.maxSpeed.SetText(p.MaxSpeed)
+	ui.prefs.themeMode.SetSelected(p.ThemeMode)
+	ui.prefs.savePrefs.SetChecked(p.SavePrefs)
+	ui.postProcess.smoothMotion.SetChecked(p.SmoothMotion)
+	ui.postProcess.smoothMotionMode.SetSelected(p.SmoothMotionMode)
+	ui.postProcess.smoothMotionFPS.SetValue(p.SmoothFPS)
+	ui.postProcess.sharpen.SetChecked(p.Sharpen)
+	ui.postProcess.sharpenAmount.SetValue(p.SharpenAmount)
+	ui.postProcess.normalizeAudio.SetChecked(p.NormalizeAudio)
+	ui.postProcess.vividMode.SetChecked(p.VividMode)
+	ui.postProcess.denoise.SetChecked(p.Denoise)
+	ui.postProcess.denoiseMode.SetSelected(p.DenoiseMode)
+	ui.postProcess.hdrToSdr.SetChecked(p.HDRToSDR)
+	ui.postProcess.deband.SetChecked(p.Deband)
+	ui.postProcess.autoCrop.SetChecked(p.AutoCrop)
+	ui.postProcess.stabilize.SetChecked(p.Stabilize)
+	ui.postProcess.deinterlace.SetChecked(p.Deinterlace)
+	ui.postProcess.nightMode.SetChecked(p.NightMode)
+	ui.postProcess.upscaleVideo.SetChecked(p.UpscaleVideo)
+	ui.postProcess.upscaleTarget.SetSelected(p.UpscaleTarget)
+	ui.postProcess.gpuBackend.SetSelected(p.GPUBackend)
+	ui.prefs.cookies.SetText(p.CookiesPath)
+	ui.download.batchMode.SetChecked(p.BatchMode)
+	ui.download.saveLog.SetChecked(p.SaveLog)
+	ui.download.notify.SetChecked(p.Notify)
+	ui.download.autoRetry.SetChecked(p.AutoRetry)
+	ui.postProcess.enablePostProcess.SetChecked(p.EnablePostProcess)
+	ui.prefs.logLimit.SetSelected(p.LogLimit)
+	ui.prefs.maxSpeed.SetText(p.MaxSpeed)
 }
 
 // ── External tools ───────────────────────────────────────────────────────────

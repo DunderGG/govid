@@ -24,14 +24,14 @@ import (
 // inputs, resets metrics/visuals, initializes log files if requested, and
 // launches the background goroutines for progress interpolation and yt-dlp execution.
 func (app *DownloaderApp) startDownload() {
-	savePath := strings.TrimSpace(app.ui.path.Text)
-	trimStart := strings.TrimSpace(app.ui.trimStart.Text)
-	trimEnd := strings.TrimSpace(app.ui.trimEnd.Text)
+	savePath := strings.TrimSpace(app.ui.download.path.Text)
+	trimStart := strings.TrimSpace(app.ui.download.trimStart.Text)
+	trimEnd := strings.TrimSpace(app.ui.download.trimEnd.Text)
 
 	// Collect the URL(s) to download.
 	var urls []string
-	if app.ui.batchMode.Checked {
-		for _, line := range strings.Split(app.ui.entry.Text, "\n") {
+	if app.ui.download.batchMode.Checked {
+		for _, line := range strings.Split(app.ui.download.entry.Text, "\n") {
 			if url := strings.TrimSpace(line); url != "" {
 				urls = append(urls, url)
 			}
@@ -41,7 +41,7 @@ func (app *DownloaderApp) startDownload() {
 			return
 		}
 	} else {
-		rawURL := strings.TrimSpace(app.ui.entry.Text)
+		rawURL := strings.TrimSpace(app.ui.download.entry.Text)
 		if rawURL == "" {
 			dialog.ShowError(fmt.Errorf("URL cannot be empty"), app.window)
 			return
@@ -67,17 +67,17 @@ func (app *DownloaderApp) startDownload() {
 	app.updateStatus("Status: Initializing...")
 	app.setProgressNow(0)
 	app.stats.targetPct = 0
-	app.ui.logList.Objects = nil
-	app.ui.logList.Refresh()
-	app.ui.cancelBtn.Enable()
-	app.ui.downloadBtn.Disable()
-	app.ui.downloadBtn.SetText("Download Now!")
+	app.ui.download.logList.Objects = nil
+	app.ui.download.logList.Refresh()
+	app.ui.download.cancelBtn.Enable()
+	app.ui.download.downloadBtn.Disable()
+	app.ui.download.downloadBtn.SetText("Download Now!")
 	app.setStatusIndicator("active")
 	app.ppFailed.Store(0)
 	app.isRunning.Store(true)
 
 	// Initialize logging to file if the option is checked.
-	if app.ui.saveLog.Checked {
+	if app.ui.download.saveLog.Checked {
 		if logPath, err := app.logSvc.OpenSessionLog(savePath); err == nil {
 			app.appendOutput(fmt.Sprintf("[SYSTEM] Logging to: %s", logPath), colSystem)
 			cfg := newSessionConfig(app.ui, urls, savePath, trimStart, trimEnd)
@@ -106,7 +106,7 @@ func (app *DownloaderApp) startDownload() {
 			case <-queueCtx.Done():
 				return
 			case <-ticker.C:
-				current := app.ui.progress.Value
+				current := app.ui.download.progress.Value
 				target := app.stats.targetPct
 				if current < target {
 					step := (target - current) * 0.05
@@ -118,7 +118,7 @@ func (app *DownloaderApp) startDownload() {
 						newVal = target
 					}
 					fyne.Do(func() {
-						app.ui.progress.SetValue(newVal)
+						app.ui.download.progress.SetValue(newVal)
 					})
 				}
 			}
@@ -137,15 +137,15 @@ func (app *DownloaderApp) startDownload() {
 		defer app.isRunning.Store(false)
 		defer fyne.Do(func() {
 			if app.ppFailed.Load() > 0 {
-				app.ui.downloadBtn.SetText("Retry")
+				app.ui.download.downloadBtn.SetText("Retry")
 			}
-			app.ui.downloadBtn.Enable()
+			app.ui.download.downloadBtn.Enable()
 		})
 
 		// Build filters once — they come from UI state and are the same for every URL.
 		// Skipped entirely when the master post-processing toggle is off.
 		var vfFilters, afFilters []string
-		if app.ui.enablePostProcess.Checked {
+		if app.ui.postProcess.enablePostProcess.Checked {
 			vfFilters, afFilters = buildPostProcessFilters(newPostProcessSettings(app.ui))
 		}
 		hasPostProcess := len(vfFilters) > 0 || len(afFilters) > 0
@@ -176,7 +176,7 @@ func (app *DownloaderApp) startDownload() {
 				// Reset progress UI between URLs.
 				app.setProgressNow(0)
 				app.stats.targetPct = 0
-				fyne.Do(func() { app.ui.cancelBtn.Enable() })
+				fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
 			}
 
 			paths := app.runYtDlp(runCtx, url, savePath, trimStart, trimEnd, index+1, len(urls))
@@ -193,11 +193,11 @@ func (app *DownloaderApp) startDownload() {
 			// Re-enable cancel and point it at the queue context so the user can
 			// abort all running FFmpeg jobs at once.
 			app.SetCancelFunc(stopQueue)
-			fyne.Do(func() { app.ui.cancelBtn.Enable() })
+			fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
 			app.updateStatus("Status: Post-processing...")
 			app.setStatusIndicator("processing")
 			app.applyFFmpegFilters(queueCtx, allFinalPaths, vfFilters, afFilters)
-			fyne.Do(func() { app.ui.cancelBtn.Disable() })
+			fyne.Do(func() { app.ui.download.cancelBtn.Disable() })
 			if queueCtx.Err() == context.Canceled {
 				app.updateStatus("Status: Canceled.")
 				app.setStatusIndicator("canceled")
@@ -205,14 +205,14 @@ func (app *DownloaderApp) startDownload() {
 			} else {
 				app.updateStatus("Status: Done.")
 				app.setStatusIndicator("success")
-				if app.ui.notify.Checked {
+				if app.ui.download.notify.Checked {
 					fyne.CurrentApp().SendNotification(&fyne.Notification{
 						Title:   "GoVid — All Done",
 						Content: fmt.Sprintf("%d file(s) downloaded and processed.", len(allFinalPaths)),
 					})
 				}
 			}
-		} else if queueCtx.Err() == nil && len(allFinalPaths) > 0 && app.ui.notify.Checked {
+		} else if queueCtx.Err() == nil && len(allFinalPaths) > 0 && app.ui.download.notify.Checked {
 			// No post-processing — notify now that all downloads are finished.
 			count := len(urls)
 			msg := "Your download is ready."
@@ -241,7 +241,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	startTime := time.Now()
 
 	// Resolve speed limit: prefer current UI value, fall back to saved preference.
-	limit := strings.TrimSpace(app.ui.maxSpeed.Text)
+	limit := strings.TrimSpace(app.ui.prefs.maxSpeed.Text)
 	if limit == "" {
 		limit = fyne.CurrentApp().Preferences().String("maxSpeed")
 	}
@@ -251,8 +251,8 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		app.depSvc.Resolve("ffmpeg"),
 	)
 
-	selection := app.ui.format.Selected
-	quality := app.ui.quality.Selected
+	selection := app.ui.download.format.Selected
+	quality := app.ui.download.quality.Selected
 
 	dl := engine.Run(ctx, DownloadRequest{
 		URL:         rawURL,
@@ -262,9 +262,9 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		TrimStart:   trimStart,
 		TrimEnd:     trimEnd,
 		MaxSpeed:    limit,
-		CookiesPath: strings.TrimSpace(app.ui.cookies.Text),
+		CookiesPath: strings.TrimSpace(app.ui.prefs.cookies.Text),
 	}, DownloadOptions{
-		AutoRetry: app.ui.autoRetry.Checked,
+		AutoRetry: app.ui.download.autoRetry.Checked,
 		Index:     index,
 		Total:     total,
 	}, ProcessCallbacks{
@@ -279,7 +279,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	finalPaths := dl.FinalPaths
 
 	if cmdErr == nil {
-		postProcessed := app.ui.enablePostProcess.Checked
+		postProcessed := app.ui.postProcess.enablePostProcess.Checked
 		rec := DownloadRecord{
 			URL:           rawURL,
 			FinalPaths:    finalPaths,
@@ -312,7 +312,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	// rendered before the caller starts post-processing and overwrites the status.
 	uiDone := make(chan struct{})
 	fyne.Do(func() {
-		app.ui.cancelBtn.Disable()
+		app.ui.download.cancelBtn.Disable()
 		if cmdErr != nil {
 			if ctx.Err() == context.Canceled {
 				app.appendOutput("────────────────────────────────────────", colAbortedBorder)
@@ -327,7 +327,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 				app.updateStatus("Status: Failed. Check output below.")
 				app.setStatusIndicator("failed")
 				app.ppFailed.Store(1)
-				if app.ui.notify.Checked {
+				if app.ui.download.notify.Checked {
 					fyne.CurrentApp().SendNotification(&fyne.Notification{
 						Title:   "GoVid — Download Failed",
 						Content: "The download encountered an error. Check the log for details.",

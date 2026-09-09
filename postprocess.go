@@ -80,23 +80,23 @@ type PostProcessSettings struct {
 // PostProcessSettings value.
 func newPostProcessSettings(ui *UIWidgets) PostProcessSettings {
 	return PostProcessSettings{
-		SmoothMotion:     ui.smoothMotion.Checked,
-		SmoothMotionMode: ui.smoothMotionMode.Selected,
-		SmoothMotionFPS:  ui.smoothMotionFPS.Value,
-		Sharpen:          ui.sharpen.Checked,
-		SharpenAmount:    ui.sharpenAmount.Value,
-		VividMode:        ui.vividMode.Checked,
-		Deband:           ui.deband.Checked,
-		HDRToSDR:         ui.hdrToSdr.Checked,
-		Denoise:          ui.denoise.Checked,
-		DenoiseMode:      ui.denoiseMode.Selected,
-		Deinterlace:      ui.deinterlace.Checked,
-		Stabilize:        ui.stabilize.Checked,
-		AutoCrop:         ui.autoCrop.Checked,
-		UpscaleVideo:     ui.upscaleVideo.Checked,
-		UpscaleTarget:    ui.upscaleTarget.Selected,
-		NormalizeAudio:   ui.normalizeAudio.Checked,
-		NightMode:        ui.nightMode.Checked,
+		SmoothMotion:     ui.postProcess.smoothMotion.Checked,
+		SmoothMotionMode: ui.postProcess.smoothMotionMode.Selected,
+		SmoothMotionFPS:  ui.postProcess.smoothMotionFPS.Value,
+		Sharpen:          ui.postProcess.sharpen.Checked,
+		SharpenAmount:    ui.postProcess.sharpenAmount.Value,
+		VividMode:        ui.postProcess.vividMode.Checked,
+		Deband:           ui.postProcess.deband.Checked,
+		HDRToSDR:         ui.postProcess.hdrToSdr.Checked,
+		Denoise:          ui.postProcess.denoise.Checked,
+		DenoiseMode:      ui.postProcess.denoiseMode.Selected,
+		Deinterlace:      ui.postProcess.deinterlace.Checked,
+		Stabilize:        ui.postProcess.stabilize.Checked,
+		AutoCrop:         ui.postProcess.autoCrop.Checked,
+		UpscaleVideo:     ui.postProcess.upscaleVideo.Checked,
+		UpscaleTarget:    ui.postProcess.upscaleTarget.Selected,
+		NormalizeAudio:   ui.postProcess.normalizeAudio.Checked,
+		NightMode:        ui.postProcess.nightMode.Checked,
 	}
 }
 
@@ -198,7 +198,7 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 // to PPEngine.ApplyFilters, wiring the app's log/status/failure callbacks.
 func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfFilters, afFilters []string) {
 	engine := NewPPEngine(app.depSvc.Resolve("ffmpeg"), app.depSvc.Resolve("ffprobe"))
-	engine.GPUBackend = GPUBackendFromLabel(app.ui.gpuBackend.Selected)
+	engine.GPUBackend = GPUBackendFromLabel(app.ui.postProcess.gpuBackend.Selected)
 	engine.GPUCapabilities = app.gpuSvc.Detect(ctx)
 	engine.ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks{
 		OnLog:     app.appendOutput,

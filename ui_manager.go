@@ -352,26 +352,26 @@ func (manager *UIManager) showPreferences() {
 	prefs := manager.onLoadPreferences()
 
 	// Log Buffer Limit
-	ui.logLimit.SetSelected(prefs.LogLimit)
+	ui.prefs.logLimit.SetSelected(prefs.LogLimit)
 
 	// Speed Limit field
-	ui.maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
-	ui.maxSpeed.SetText(prefs.MaxSpeed)
+	ui.prefs.maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
+	ui.prefs.maxSpeed.SetText(prefs.MaxSpeed)
 
 	// Theme Mode field — horizontal radio group for a simple two-option toggle.
-	ui.themeMode.Horizontal = true
-	ui.themeMode.SetSelected(prefs.ThemeMode)
+	ui.prefs.themeMode.Horizontal = true
+	ui.prefs.themeMode.SetSelected(prefs.ThemeMode)
 
 	// Cookies field
-	ui.cookies.SetPlaceHolder("Path to cookies.txt (optional)")
-	ui.cookies.SetText(prefs.CookiesPath)
+	ui.prefs.cookies.SetPlaceHolder("Path to cookies.txt (optional)")
+	ui.prefs.cookies.SetText(prefs.CookiesPath)
 
 	cookiesBrowse := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
 		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if err != nil || reader == nil {
 				return
 			}
-			ui.cookies.SetText(reader.URI().Path())
+			ui.prefs.cookies.SetText(reader.URI().Path())
 			reader.Close()
 		}, manager.prefsWindow)
 		// Filter for common cookie file extensions
@@ -379,28 +379,28 @@ func (manager *UIManager) showPreferences() {
 		fileDialog.Show()
 	})
 	cookiesClear := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
-		ui.cookies.SetText("")
+		ui.prefs.cookies.SetText("")
 	})
-	cookiesRow := container.NewBorder(nil, nil, nil, container.NewHBox(cookiesBrowse, cookiesClear), ui.cookies)
+	cookiesRow := container.NewBorder(nil, nil, nil, container.NewHBox(cookiesBrowse, cookiesClear), ui.prefs.cookies)
 
 	// Save Preferences toggle.
-	ui.savePrefs.SetChecked(prefs.SavePrefs)
+	ui.prefs.savePrefs.SetChecked(prefs.SavePrefs)
 
 	form := &widget.Form{
 		Items: []*widget.FormItem{
-			{Text: "Save Preferences", Widget: ui.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
-			{Text: "Log Buffer Limit", Widget: ui.logLimit, HintText: "Max lines kept in the log view; older entries are removed from the top"},
-			{Text: "Max Download Speed", Widget: ui.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
-			{Text: "Application Theme", Widget: ui.themeMode, HintText: "Restart may be required for some changes"},
+			{Text: "Save Preferences", Widget: ui.prefs.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
+			{Text: "Log Buffer Limit", Widget: ui.prefs.logLimit, HintText: "Max lines kept in the log view; older entries are removed from the top"},
+			{Text: "Max Download Speed", Widget: ui.prefs.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
+			{Text: "Application Theme", Widget: ui.prefs.themeMode, HintText: "Restart may be required for some changes"},
 			{Text: "Cookies File", Widget: cookiesRow, HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
 		},
 		OnSubmit: func() {
-			manager.onSetLogBufferLimit(ParseBufferLimit(ui.logLimit.Selected))
-			manager.savePreferences(ui.path.Text)
+			manager.onSetLogBufferLimit(ParseBufferLimit(ui.prefs.logLimit.Selected))
+			manager.savePreferences(ui.download.path.Text)
 
 			// Apply theme change and rebuild the UI so canvas.Rectangle colors
 			// (which are snapshotted at construction time) get fresh theme values.
-			switch ui.themeMode.Selected {
+			switch ui.prefs.themeMode.Selected {
 			case "Light":
 				fyne.CurrentApp().Settings().SetTheme(&lightTheme{})
 			default:
@@ -417,11 +417,11 @@ func (manager *UIManager) showPreferences() {
 			}
 			manager.resetPreferences()
 			manager.rebuildUI()
-			ui.savePrefs.SetChecked(true)
-			ui.maxSpeed.SetText("")
-			ui.cookies.SetText("")
-			ui.themeMode.SetSelected("Dark")
-			ui.logLimit.SetSelected("200")
+			ui.prefs.savePrefs.SetChecked(true)
+			ui.prefs.maxSpeed.SetText("")
+			ui.prefs.cookies.SetText("")
+			ui.prefs.themeMode.SetSelected("Dark")
+			ui.prefs.logLimit.SetSelected("200")
 		}, manager.prefsWindow)
 	})
 	resetBtn.Importance = widget.DangerImportance
@@ -432,7 +432,7 @@ func (manager *UIManager) showPreferences() {
 			dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), manager.prefsWindow)
 			return
 		}
-		merged, errs := manager.onMergeConfig(config, manager.onLoadPreferences(), ui.format.Options, ui.quality.Options)
+		merged, errs := manager.onMergeConfig(config, manager.onLoadPreferences(), ui.download.format.Options, ui.download.quality.Options)
 		applyPreferencesToWidgets(ui, merged)
 		manager.onSavePreferences(merged)
 		if len(errs) > 0 {
@@ -460,37 +460,37 @@ func (manager *UIManager) showPreferences() {
 func (manager *UIManager) savePreferences(savePath string) {
 	ui := manager.ui
 	manager.onSavePreferences(AppPreferences{
-		SavePrefs:         ui.savePrefs.Checked,
+		SavePrefs:         ui.prefs.savePrefs.Checked,
 		SavedPath:         savePath,
-		Format:            ui.format.Selected,
-		Quality:           ui.quality.Selected,
-		MaxSpeed:          strings.TrimSpace(ui.maxSpeed.Text),
-		ThemeMode:         ui.themeMode.Selected,
-		CookiesPath:       strings.TrimSpace(ui.cookies.Text),
-		LogLimit:          ui.logLimit.Selected,
-		BatchMode:         ui.batchMode.Checked,
-		SaveLog:           ui.saveLog.Checked,
-		Notify:            ui.notify.Checked,
-		AutoRetry:         ui.autoRetry.Checked,
-		EnablePostProcess: ui.enablePostProcess.Checked,
-		SmoothMotion:      ui.smoothMotion.Checked,
-		SmoothMotionMode:  ui.smoothMotionMode.Selected,
-		SmoothFPS:         ui.smoothMotionFPS.Value,
-		Sharpen:           ui.sharpen.Checked,
-		SharpenAmount:     ui.sharpenAmount.Value,
-		NormalizeAudio:    ui.normalizeAudio.Checked,
-		VividMode:         ui.vividMode.Checked,
-		Denoise:           ui.denoise.Checked,
-		DenoiseMode:       ui.denoiseMode.Selected,
-		HDRToSDR:          ui.hdrToSdr.Checked,
-		Deband:            ui.deband.Checked,
-		AutoCrop:          ui.autoCrop.Checked,
-		Stabilize:         ui.stabilize.Checked,
-		Deinterlace:       ui.deinterlace.Checked,
-		NightMode:         ui.nightMode.Checked,
-		UpscaleVideo:      ui.upscaleVideo.Checked,
-		UpscaleTarget:     ui.upscaleTarget.Selected,
-		GPUBackend:        ui.gpuBackend.Selected,
+		Format:            ui.download.format.Selected,
+		Quality:           ui.download.quality.Selected,
+		MaxSpeed:          strings.TrimSpace(ui.prefs.maxSpeed.Text),
+		ThemeMode:         ui.prefs.themeMode.Selected,
+		CookiesPath:       strings.TrimSpace(ui.prefs.cookies.Text),
+		LogLimit:          ui.prefs.logLimit.Selected,
+		BatchMode:         ui.download.batchMode.Checked,
+		SaveLog:           ui.download.saveLog.Checked,
+		Notify:            ui.download.notify.Checked,
+		AutoRetry:         ui.download.autoRetry.Checked,
+		EnablePostProcess: ui.postProcess.enablePostProcess.Checked,
+		SmoothMotion:      ui.postProcess.smoothMotion.Checked,
+		SmoothMotionMode:  ui.postProcess.smoothMotionMode.Selected,
+		SmoothFPS:         ui.postProcess.smoothMotionFPS.Value,
+		Sharpen:           ui.postProcess.sharpen.Checked,
+		SharpenAmount:     ui.postProcess.sharpenAmount.Value,
+		NormalizeAudio:    ui.postProcess.normalizeAudio.Checked,
+		VividMode:         ui.postProcess.vividMode.Checked,
+		Denoise:           ui.postProcess.denoise.Checked,
+		DenoiseMode:       ui.postProcess.denoiseMode.Selected,
+		HDRToSDR:          ui.postProcess.hdrToSdr.Checked,
+		Deband:            ui.postProcess.deband.Checked,
+		AutoCrop:          ui.postProcess.autoCrop.Checked,
+		Stabilize:         ui.postProcess.stabilize.Checked,
+		Deinterlace:       ui.postProcess.deinterlace.Checked,
+		NightMode:         ui.postProcess.nightMode.Checked,
+		UpscaleVideo:      ui.postProcess.upscaleVideo.Checked,
+		UpscaleTarget:     ui.postProcess.upscaleTarget.Selected,
+		GPUBackend:        ui.postProcess.gpuBackend.Selected,
 	})
 }
 
@@ -520,49 +520,49 @@ func (manager *UIManager) showPostProcessing() {
 	prefs := manager.onLoadPreferences()
 
 	// Reload all post-processing prefs so the window always shows persisted state.
-	ui.smoothMotion.SetChecked(prefs.SmoothMotion)
-	ui.smoothMotionMode.Horizontal = true
-	ui.smoothMotionMode.SetSelected(prefs.SmoothMotionMode)
-	ui.sharpen.SetChecked(prefs.Sharpen)
-	ui.sharpenAmount.SetValue(prefs.SharpenAmount)
-	ui.vividMode.SetChecked(prefs.VividMode)
-	ui.deband.SetChecked(prefs.Deband)
-	ui.hdrToSdr.SetChecked(prefs.HDRToSDR)
-	ui.denoise.SetChecked(prefs.Denoise)
-	ui.denoiseMode.Horizontal = true
-	ui.denoiseMode.SetSelected(prefs.DenoiseMode)
-	ui.deinterlace.SetChecked(prefs.Deinterlace)
-	ui.stabilize.SetChecked(prefs.Stabilize)
-	ui.autoCrop.SetChecked(prefs.AutoCrop)
-	ui.upscaleVideo.SetChecked(prefs.UpscaleVideo)
-	ui.upscaleTarget.SetSelected(prefs.UpscaleTarget)
-	ui.normalizeAudio.SetChecked(prefs.NormalizeAudio)
-	ui.nightMode.SetChecked(prefs.NightMode)
-	ui.gpuBackend.SetSelected(prefs.GPUBackend)
+	ui.postProcess.smoothMotion.SetChecked(prefs.SmoothMotion)
+	ui.postProcess.smoothMotionMode.Horizontal = true
+	ui.postProcess.smoothMotionMode.SetSelected(prefs.SmoothMotionMode)
+	ui.postProcess.sharpen.SetChecked(prefs.Sharpen)
+	ui.postProcess.sharpenAmount.SetValue(prefs.SharpenAmount)
+	ui.postProcess.vividMode.SetChecked(prefs.VividMode)
+	ui.postProcess.deband.SetChecked(prefs.Deband)
+	ui.postProcess.hdrToSdr.SetChecked(prefs.HDRToSDR)
+	ui.postProcess.denoise.SetChecked(prefs.Denoise)
+	ui.postProcess.denoiseMode.Horizontal = true
+	ui.postProcess.denoiseMode.SetSelected(prefs.DenoiseMode)
+	ui.postProcess.deinterlace.SetChecked(prefs.Deinterlace)
+	ui.postProcess.stabilize.SetChecked(prefs.Stabilize)
+	ui.postProcess.autoCrop.SetChecked(prefs.AutoCrop)
+	ui.postProcess.upscaleVideo.SetChecked(prefs.UpscaleVideo)
+	ui.postProcess.upscaleTarget.SetSelected(prefs.UpscaleTarget)
+	ui.postProcess.normalizeAudio.SetChecked(prefs.NormalizeAudio)
+	ui.postProcess.nightMode.SetChecked(prefs.NightMode)
+	ui.postProcess.gpuBackend.SetSelected(prefs.GPUBackend)
 
 	// FPS slider for smooth motion — use a bound float so the label updates live.
 	fpsBinding := binding.NewFloat()
-	fpsBinding.Set(ui.smoothMotionFPS.Value)
+	fpsBinding.Set(ui.postProcess.smoothMotionFPS.Value)
 	fpsLabel := widget.NewLabelWithData(binding.FloatToStringWithFormat(fpsBinding, "%.0f FPS"))
-	ui.smoothMotionFPS.Step = 1
-	ui.smoothMotionFPS.OnChanged = func(v float64) {
+	ui.postProcess.smoothMotionFPS.Step = 1
+	ui.postProcess.smoothMotionFPS.OnChanged = func(v float64) {
 		fpsBinding.Set(v)
 	}
-	if !ui.smoothMotion.Checked {
-		ui.smoothMotionMode.Disable()
-		ui.smoothMotionFPS.Disable()
+	if !ui.postProcess.smoothMotion.Checked {
+		ui.postProcess.smoothMotionMode.Disable()
+		ui.postProcess.smoothMotionFPS.Disable()
 	}
 
 	// Sharpening slider — bind to float for live label updates.
 	sharpenBinding := binding.NewFloat()
-	sharpenBinding.Set(ui.sharpenAmount.Value)
+	sharpenBinding.Set(ui.postProcess.sharpenAmount.Value)
 	sharpenLabel := widget.NewLabelWithData(binding.FloatToStringWithFormat(sharpenBinding, "%.1fx"))
-	ui.sharpenAmount.Step = 0.1
-	ui.sharpenAmount.OnChanged = func(v float64) {
+	ui.postProcess.sharpenAmount.Step = 0.1
+	ui.postProcess.sharpenAmount.OnChanged = func(v float64) {
 		sharpenBinding.Set(v)
 	}
-	if !ui.sharpen.Checked {
-		ui.sharpenAmount.Disable()
+	if !ui.postProcess.sharpen.Checked {
+		ui.postProcess.sharpenAmount.Disable()
 	}
 
 	// Live processing-load indicator — 5 colored blocks, each lighting up at a
@@ -603,8 +603,8 @@ func (manager *UIManager) showPostProcessing() {
 			}
 			block.Refresh()
 		}
-		upscale := ui.upscaleVideo.Checked
-		smooth := ui.smoothMotion.Checked
+		upscale := ui.postProcess.upscaleVideo.Checked
+		smooth := ui.postProcess.smoothMotion.Checked
 		switch {
 		case upscale && smooth:
 			sizeWarn.Set("⚠ Upscaling + Smooth Motion will greatly increase file size")
@@ -621,68 +621,68 @@ func (manager *UIManager) showPostProcessing() {
 		blocks[0], blocks[1], blocks[2], blocks[3], blocks[4],
 	)
 
-	ui.smoothMotion.OnChanged = func(checked bool) {
+	ui.postProcess.smoothMotion.OnChanged = func(checked bool) {
 		if checked {
-			ui.smoothMotionMode.Enable()
-			ui.smoothMotionFPS.Enable()
+			ui.postProcess.smoothMotionMode.Enable()
+			ui.postProcess.smoothMotionFPS.Enable()
 		} else {
-			ui.smoothMotionMode.Disable()
-			ui.smoothMotionFPS.Disable()
+			ui.postProcess.smoothMotionMode.Disable()
+			ui.postProcess.smoothMotionFPS.Disable()
 		}
 		refreshLoad()
 	}
-	ui.smoothMotionMode.OnChanged = func(_ string) { refreshLoad() }
+	ui.postProcess.smoothMotionMode.OnChanged = func(_ string) { refreshLoad() }
 
 	// Denoise mode is only relevant when denoise is enabled.
-	if !ui.denoise.Checked {
-		ui.denoiseMode.Disable()
+	if !ui.postProcess.denoise.Checked {
+		ui.postProcess.denoiseMode.Disable()
 	}
-	ui.denoise.OnChanged = func(checked bool) {
+	ui.postProcess.denoise.OnChanged = func(checked bool) {
 		if checked {
-			ui.denoiseMode.Enable()
+			ui.postProcess.denoiseMode.Enable()
 		} else {
-			ui.denoiseMode.Disable()
+			ui.postProcess.denoiseMode.Disable()
 		}
 		refreshLoad()
 	}
-	ui.denoiseMode.OnChanged = func(_ string) { refreshLoad() }
+	ui.postProcess.denoiseMode.OnChanged = func(_ string) { refreshLoad() }
 
-	ui.sharpen.OnChanged = func(checked bool) {
+	ui.postProcess.sharpen.OnChanged = func(checked bool) {
 		if checked {
-			ui.sharpenAmount.Enable()
+			ui.postProcess.sharpenAmount.Enable()
 		} else {
-			ui.sharpenAmount.Disable()
+			ui.postProcess.sharpenAmount.Disable()
 		}
 		refreshLoad()
 	}
-	ui.sharpenAmount.OnChanged = func(v float64) {
+	ui.postProcess.sharpenAmount.OnChanged = func(v float64) {
 		sharpenBinding.Set(v)
 		refreshLoad()
 	}
 
 	// Upscale target is only relevant when upscale is enabled.
-	if !ui.upscaleVideo.Checked {
-		ui.upscaleTarget.Disable()
+	if !ui.postProcess.upscaleVideo.Checked {
+		ui.postProcess.upscaleTarget.Disable()
 	}
-	ui.upscaleVideo.OnChanged = func(checked bool) {
+	ui.postProcess.upscaleVideo.OnChanged = func(checked bool) {
 		if checked {
-			ui.upscaleTarget.Enable()
+			ui.postProcess.upscaleTarget.Enable()
 		} else {
-			ui.upscaleTarget.Disable()
+			ui.postProcess.upscaleTarget.Disable()
 		}
 		refreshLoad()
 	}
-	ui.upscaleTarget.OnChanged = func(_ string) { refreshLoad() }
+	ui.postProcess.upscaleTarget.OnChanged = func(_ string) { refreshLoad() }
 
 	// Simple toggles — just refresh the load indicator.
-	ui.vividMode.OnChanged = func(_ bool) { refreshLoad() }
-	ui.deband.OnChanged = func(_ bool) { refreshLoad() }
-	ui.hdrToSdr.OnChanged = func(_ bool) { refreshLoad() }
-	ui.deinterlace.OnChanged = func(_ bool) { refreshLoad() }
-	ui.stabilize.OnChanged = func(_ bool) { refreshLoad() }
-	ui.autoCrop.OnChanged = func(_ bool) { refreshLoad() }
-	ui.normalizeAudio.OnChanged = func(_ bool) { refreshLoad() }
-	ui.nightMode.OnChanged = func(_ bool) { refreshLoad() }
+	ui.postProcess.vividMode.OnChanged = func(_ bool) { refreshLoad() }
+	ui.postProcess.deband.OnChanged = func(_ bool) { refreshLoad() }
+	ui.postProcess.hdrToSdr.OnChanged = func(_ bool) { refreshLoad() }
+	ui.postProcess.deinterlace.OnChanged = func(_ bool) { refreshLoad() }
+	ui.postProcess.stabilize.OnChanged = func(_ bool) { refreshLoad() }
+	ui.postProcess.autoCrop.OnChanged = func(_ bool) { refreshLoad() }
+	ui.postProcess.normalizeAudio.OnChanged = func(_ bool) { refreshLoad() }
+	ui.postProcess.nightMode.OnChanged = func(_ bool) { refreshLoad() }
 
 	refreshLoad() // seed with the current state
 
@@ -705,48 +705,48 @@ func (manager *UIManager) showPostProcessing() {
 		Items: []*widget.FormItem{
 			// ── GPU ACCELERATION ─────────────────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("GPU ACCELERATION")},
-			{Text: "Encoder Backend", Widget: container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.gpuBackend.MinSize().Height)), ui.gpuBackend), HintText: "GPU-accelerated re-encoding; falls back to CPU if unavailable"},
+			{Text: "Encoder Backend", Widget: container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.postProcess.gpuBackend.MinSize().Height)), ui.postProcess.gpuBackend), HintText: "GPU-accelerated re-encoding; falls back to CPU if unavailable"},
 			{Text: "", Widget: sectionDivider()},
 			// ── MOTION ─────────────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("MOTION ENHANCEMENT")},
-			{Text: "Smooth Motion", Widget: ui.smoothMotion, HintText: "Interpolate frames for fluid playback (slow)"},
-			{Text: "Smoothing Mode", Widget: ui.smoothMotionMode, HintText: "Precise/Balanced use motion vectors, Fast uses blending"},
-			{Text: "Target FPS", Widget: container.NewHBox(container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.smoothMotionFPS.MinSize().Height)), ui.smoothMotionFPS), fpsLabel), HintText: "Standard is 60, cinematic is 24, high-refresh is 120"},
+			{Text: "Smooth Motion", Widget: ui.postProcess.smoothMotion, HintText: "Interpolate frames for fluid playback (slow)"},
+			{Text: "Smoothing Mode", Widget: ui.postProcess.smoothMotionMode, HintText: "Precise/Balanced use motion vectors, Fast uses blending"},
+			{Text: "Target FPS", Widget: container.NewHBox(container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.postProcess.smoothMotionFPS.MinSize().Height)), ui.postProcess.smoothMotionFPS), fpsLabel), HintText: "Standard is 60, cinematic is 24, high-refresh is 120"},
 			{Text: "", Widget: sectionDivider()},
 			// ── VIDEO ──────────────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("VIDEO ENHANCEMENT")},
-			{Text: "Vivid Mode", Widget: ui.vividMode, HintText: "Boost brightness, contrast, and saturation"},
-			{Text: "Sharpen Video", Widget: ui.sharpen, HintText: "CAS (Contrast Adaptive Sharpening) — sharpens edges without haloing or noise amplification"},
-			{Text: "Sharpen Intensity", Widget: container.NewHBox(container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.sharpenAmount.MinSize().Height)), ui.sharpenAmount), sharpenLabel), HintText: "1.0x is gentle, 1.5x is moderate, 2.0x is strong"},
-			{Text: "Fix Banding", Widget: ui.deband, HintText: "Remove gradient banding steps in skies and dark scenes (deband)"},
-			{Text: "HDR to SDR", Widget: ui.hdrToSdr, HintText: "Tone-map 4K HDR content for standard monitors (zscale + Hable tonemap)"},
+			{Text: "Vivid Mode", Widget: ui.postProcess.vividMode, HintText: "Boost brightness, contrast, and saturation"},
+			{Text: "Sharpen Video", Widget: ui.postProcess.sharpen, HintText: "CAS (Contrast Adaptive Sharpening) — sharpens edges without haloing or noise amplification"},
+			{Text: "Sharpen Intensity", Widget: container.NewHBox(container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.postProcess.sharpenAmount.MinSize().Height)), ui.postProcess.sharpenAmount), sharpenLabel), HintText: "1.0x is gentle, 1.5x is moderate, 2.0x is strong"},
+			{Text: "Fix Banding", Widget: ui.postProcess.deband, HintText: "Remove gradient banding steps in skies and dark scenes (deband)"},
+			{Text: "HDR to SDR", Widget: ui.postProcess.hdrToSdr, HintText: "Tone-map 4K HDR content for standard monitors (zscale + Hable tonemap)"},
 			{Text: "", Widget: sectionDivider()},
 			// ── NOISE & ARTIFACTS ───────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("NOISE & ARTIFACTS")},
-			{Text: "Denoise", Widget: ui.denoise, HintText: "HQ noise reduction for low-quality or grainy footage"},
-			{Text: "Denoise Mode", Widget: ui.denoiseMode, HintText: "NLMeans: highest quality, very slow | hqdn3d: spatial + temporal denoising, fast and effective"},
-			{Text: "Deinterlace", Widget: ui.deinterlace, HintText: "Remove combing artifacts from archival or TV-rip content (bwdif)"},
-			{Text: "Stabilize", Widget: ui.stabilize, HintText: "Smooth out shaky handheld footage (deshake)"},
-			{Text: "Auto-Crop", Widget: ui.autoCrop, HintText: "Detect and remove black letterbox/pillarbox bars automatically"},
+			{Text: "Denoise", Widget: ui.postProcess.denoise, HintText: "HQ noise reduction for low-quality or grainy footage"},
+			{Text: "Denoise Mode", Widget: ui.postProcess.denoiseMode, HintText: "NLMeans: highest quality, very slow | hqdn3d: spatial + temporal denoising, fast and effective"},
+			{Text: "Deinterlace", Widget: ui.postProcess.deinterlace, HintText: "Remove combing artifacts from archival or TV-rip content (bwdif)"},
+			{Text: "Stabilize", Widget: ui.postProcess.stabilize, HintText: "Smooth out shaky handheld footage (deshake)"},
+			{Text: "Auto-Crop", Widget: ui.postProcess.autoCrop, HintText: "Detect and remove black letterbox/pillarbox bars automatically"},
 			{Text: "", Widget: sectionDivider()},
 			// ── UPSCALING ────────────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("UPSCALING")},
-			{Text: "Upscale Video", Widget: ui.upscaleVideo, HintText: "Enlarge the video using a high-quality Lanczos resampler"},
-			{Text: "Target Resolution", Widget: container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.upscaleTarget.MinSize().Height)), ui.upscaleTarget), HintText: "2× doubles both dimensions; fixed targets set a specific height"},
+			{Text: "Upscale Video", Widget: ui.postProcess.upscaleVideo, HintText: "Enlarge the video using a high-quality Lanczos resampler"},
+			{Text: "Target Resolution", Widget: container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.postProcess.upscaleTarget.MinSize().Height)), ui.postProcess.upscaleTarget), HintText: "2× doubles both dimensions; fixed targets set a specific height"},
 			{Text: "", Widget: sectionDivider()},
 			// ── AUDIO ──────────────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("AUDIO ENHANCEMENT")},
-			{Text: "Normalize Audio", Widget: ui.normalizeAudio, HintText: "Loudness normalization via the loudnorm filter"},
-			{Text: "Night Mode", Widget: ui.nightMode, HintText: "Dynamic compression to balance quiet dialogue and loud effects (dynaudnorm)"},
+			{Text: "Normalize Audio", Widget: ui.postProcess.normalizeAudio, HintText: "Loudness normalization via the loudnorm filter"},
+			{Text: "Night Mode", Widget: ui.postProcess.nightMode, HintText: "Dynamic compression to balance quiet dialogue and loud effects (dynaudnorm)"},
 		},
 	}
 
 	applyBtn := widget.NewButtonWithIcon("Apply", theme.ConfirmIcon(), func() {
-		manager.savePreferences(ui.path.Text)
+		manager.savePreferences(ui.download.path.Text)
 	})
 
 	applyCloseBtn := widget.NewButtonWithIcon("Apply & Close", theme.ConfirmIcon(), func() {
-		manager.savePreferences(ui.path.Text)
+		manager.savePreferences(ui.download.path.Text)
 		manager.ppWindow.Close()
 	})
 	applyCloseBtn.Importance = widget.HighImportance
@@ -794,45 +794,45 @@ func (manager *UIManager) createUI() {
 	brandLogo := image
 
 	// Configure the URL entry for single or batch mode.
-	if ui.batchMode.Checked {
-		ui.entry.MultiLine = true
-		ui.entry.SetMinRowsVisible(4)
-		ui.entry.SetPlaceHolder("One URL per line...\nhttps://...\nhttps://...")
+	if ui.download.batchMode.Checked {
+		ui.download.entry.MultiLine = true
+		ui.download.entry.SetMinRowsVisible(4)
+		ui.download.entry.SetPlaceHolder("One URL per line...\nhttps://...\nhttps://...")
 	} else {
-		ui.entry.MultiLine = false
-		ui.entry.SetMinRowsVisible(1)
-		ui.entry.SetPlaceHolder("https://www.youtube.com/watch?v=...")
+		ui.download.entry.MultiLine = false
+		ui.download.entry.SetMinRowsVisible(1)
+		ui.download.entry.SetPlaceHolder("https://www.youtube.com/watch?v=...")
 	}
-	ui.batchMode.OnChanged = func(checked bool) {
+	ui.download.batchMode.OnChanged = func(checked bool) {
 		fyne.CurrentApp().Preferences().SetBool("batchMode", checked)
 		if !checked {
 			// Switching back to single mode: keep only the first non-empty URL.
 			first := ""
-			for _, line := range strings.Split(ui.entry.Text, "\n") {
+			for _, line := range strings.Split(ui.download.entry.Text, "\n") {
 				if trimmed := strings.TrimSpace(line); trimmed != "" {
 					first = trimmed
 					break
 				}
 			}
-			ui.entry.SetText(first)
+			ui.download.entry.SetText(first)
 		}
 		manager.createUI()
 	}
-	ui.saveLog.OnChanged = func(_ bool) {
-		manager.savePreferences(ui.path.Text)
+	ui.download.saveLog.OnChanged = func(_ bool) {
+		manager.savePreferences(ui.download.path.Text)
 	}
-	ui.notify.OnChanged = func(_ bool) {
-		manager.savePreferences(ui.path.Text)
+	ui.download.notify.OnChanged = func(_ bool) {
+		manager.savePreferences(ui.download.path.Text)
 	}
-	ui.autoRetry.OnChanged = func(_ bool) {
-		manager.savePreferences(ui.path.Text)
+	ui.download.autoRetry.OnChanged = func(_ bool) {
+		manager.savePreferences(ui.download.path.Text)
 	}
-	ui.enablePostProcess.OnChanged = func(_ bool) {
-		manager.savePreferences(ui.path.Text)
+	ui.postProcess.enablePostProcess.OnChanged = func(_ bool) {
+		manager.savePreferences(ui.download.path.Text)
 	}
-	ui.path.SetPlaceHolder("Download folder...")
-	ui.path.OnChanged = func(text string) {
-		if ui.savePrefs.Checked {
+	ui.download.path.SetPlaceHolder("Download folder...")
+	ui.download.path.OnChanged = func(text string) {
+		if ui.prefs.savePrefs.Checked {
 			fyne.CurrentApp().Preferences().SetString(prefSavedPath, strings.TrimSpace(text))
 		}
 	}
@@ -841,14 +841,14 @@ func (manager *UIManager) createUI() {
 	prefs := manager.onLoadPreferences()
 	savedPath := prefs.SavedPath
 	if savedPath != "" {
-		ui.path.SetText(savedPath)
+		ui.download.path.SetText(savedPath)
 	} else {
 		exePath, err := os.Executable()
 		if err == nil {
-			ui.path.SetText(filepath.Dir(exePath))
+			ui.download.path.SetText(filepath.Dir(exePath))
 		} else {
 			if cwd, err := os.Getwd(); err == nil {
-				ui.path.SetText(cwd)
+				ui.download.path.SetText(cwd)
 			}
 		}
 	}
@@ -858,46 +858,46 @@ func (manager *UIManager) createUI() {
 			if err != nil || list == nil {
 				return
 			}
-			ui.path.SetText(filepath.FromSlash(list.Path()))
+			ui.download.path.SetText(filepath.FromSlash(list.Path()))
 		}, manager.mainWindow)
 	})
 
-	ui.downloadBtn.Icon = themedIcon(IconDownload)
-	ui.downloadBtn.Text = "Download Now!"
-	ui.downloadBtn.OnTapped = func() {
+	ui.download.downloadBtn.Icon = themedIcon(IconDownload)
+	ui.download.downloadBtn.Text = "Download Now!"
+	ui.download.downloadBtn.OnTapped = func() {
 		manager.onStartDownload()
 	}
-	ui.downloadBtn.Importance = widget.HighImportance
-	ui.downloadBtn.Refresh()
+	ui.download.downloadBtn.Importance = widget.HighImportance
+	ui.download.downloadBtn.Refresh()
 
-	ui.format.Options = []string{"MP4", "MKV", "WebM", "MP3", "M4A"}
+	ui.download.format.Options = []string{"MP4", "MKV", "WebM", "MP3", "M4A"}
 
 	savedFormat := prefs.Format
 	savedQuality := prefs.Quality
 
 	if savedFormat != "" {
-		ui.format.SetSelected(savedFormat)
+		ui.download.format.SetSelected(savedFormat)
 	} else if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-		ui.format.SetSelected("MP4")
+		ui.download.format.SetSelected("MP4")
 	} else {
-		ui.format.SetSelected("MKV")
+		ui.download.format.SetSelected("MKV")
 	}
 
-	ui.quality.Options = []string{"Best Quality", "1080p", "720p", "480p", "360p"}
+	ui.download.quality.Options = []string{"Best Quality", "1080p", "720p", "480p", "360p"}
 
 	if savedQuality != "" {
-		ui.quality.SetSelected(savedQuality)
+		ui.download.quality.SetSelected(savedQuality)
 	} else {
-		ui.quality.SetSelected("Best Quality")
+		ui.download.quality.SetSelected("Best Quality")
 	}
 
 	openFolderBtn := widget.NewButtonWithIcon("Open Folder", themedIcon(IconFolder), func() {
 		manager.onOpenFolder()
 	})
 
-	ui.cancelBtn.Icon = themedIcon(IconCancel)
-	ui.cancelBtn.Text = "Cancel"
-	ui.cancelBtn.OnTapped = func() {
+	ui.download.cancelBtn.Icon = themedIcon(IconCancel)
+	ui.download.cancelBtn.Text = "Cancel"
+	ui.download.cancelBtn.OnTapped = func() {
 		if manager.onRequestCancel() {
 			manager.onLog("Download canceled by user.", colWarning)
 		}
@@ -914,10 +914,10 @@ func (manager *UIManager) createUI() {
 	headerLeft := container.NewVBox(titleText, subtitleText)
 	header := container.NewHBox(headerLeft, layout.NewSpacer(), brandLogo)
 
-	ui.trimStart.SetPlaceHolder("e.g. 00:01:30  (optional)")
-	ui.trimEnd.SetPlaceHolder("e.g. 00:05:00  (optional)")
-	ui.trimStart.Validator = validateTimestamp
-	ui.trimEnd.Validator = validateTimestamp
+	ui.download.trimStart.SetPlaceHolder("e.g. 00:01:30  (optional)")
+	ui.download.trimEnd.SetPlaceHolder("e.g. 00:05:00  (optional)")
+	ui.download.trimStart.Validator = validateTimestamp
+	ui.download.trimEnd.Validator = validateTimestamp
 
 	// accentBar returns a 4px wide rectangle in the theme's primary colour,
 	// used as a decorative left-edge bar on cards.
@@ -932,54 +932,54 @@ func (manager *UIManager) createUI() {
 			container.NewHBox(
 				widget.NewLabelWithStyle("Video URL:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 				layout.NewSpacer(),
-				ui.batchMode,
+				ui.download.batchMode,
 			),
 			container.NewBorder(nil, nil, nil, widget.NewButtonWithIcon("", theme.ContentClearIcon(), func() {
-				ui.entry.SetText("")
-			}), ui.entry),
+				ui.download.entry.SetText("")
+			}), ui.download.entry),
 			widget.NewLabelWithStyle("Save Destination:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-			container.NewBorder(nil, nil, nil, browseBtn, ui.path),
+			container.NewBorder(nil, nil, nil, browseBtn, ui.download.path),
 			container.NewGridWithColumns(2,
 				container.NewVBox(
 					widget.NewLabelWithStyle("Output Format:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-					ui.format,
+					ui.download.format,
 				),
 				container.NewVBox(
 					widget.NewLabelWithStyle("Max Quality:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-					ui.quality,
+					ui.download.quality,
 				),
 			),
 			container.NewGridWithColumns(2,
 				container.NewVBox(
 					widget.NewLabelWithStyle("Trim Start: (optional)", fyne.TextAlignLeading, fyne.TextStyle{}),
-					ui.trimStart,
+					ui.download.trimStart,
 				),
 				container.NewVBox(
 					widget.NewLabelWithStyle("Trim End: (optional)", fyne.TextAlignLeading, fyne.TextStyle{}),
-					ui.trimEnd,
+					ui.download.trimEnd,
 				),
 			),
-			container.NewHBox(ui.saveLog, ui.notify, ui.autoRetry, ui.enablePostProcess),
-			container.NewGridWithColumns(3, ui.downloadBtn, openFolderBtn, ui.cancelBtn),
+			container.NewHBox(ui.download.saveLog, ui.download.notify, ui.download.autoRetry, ui.postProcess.enablePostProcess),
+			container.NewGridWithColumns(3, ui.download.downloadBtn, openFolderBtn, ui.download.cancelBtn),
 		),
 	)
 	inputCardAccented := container.NewBorder(nil, nil, accentBar(), nil, inputCard)
 
 	// Wrap the status dot in a fixed-size container so the circle renders at 18×18.
-	dotContainer := container.New(layout.NewGridWrapLayout(fyne.NewSize(18, 18)), ui.statusDot)
+	dotContainer := container.New(layout.NewGridWrapLayout(fyne.NewSize(18, 18)), ui.download.statusDot)
 	statusCard := roundedCard("",
 		container.NewVBox(
-			ui.progress,
-			container.NewHBox(dotContainer, ui.status),
+			ui.download.progress,
+			container.NewHBox(dotContainer, ui.download.status),
 		),
 	)
 	statusCardAccented := container.NewBorder(nil, nil, accentBar(), nil, statusCard)
 
-	ui.logList = container.NewVBox()
+	ui.download.logList = container.NewVBox()
 	spacer := canvas.NewRectangle(color.Transparent)
 	spacer.SetMinSize(fyne.NewSize(0, 10))
-	ui.output = container.NewScroll(container.NewVBox(ui.logList, spacer))
-	ui.output.SetMinSize(fyne.NewSize(0, 200))
+	ui.download.output = container.NewScroll(container.NewVBox(ui.download.logList, spacer))
+	ui.download.output.SetMinSize(fyne.NewSize(0, 200))
 
 	copyright := canvas.NewText("GoVid • By David Bennehag (dunder.gg) • Built with ❤️, 🤖 and ☕", theme.Color(theme.ColorNameDisabled))
 	copyright.TextSize = 14
@@ -994,6 +994,6 @@ func (manager *UIManager) createUI() {
 		widget.NewLabelWithStyle("Terminal Output:", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
 	)
 
-	content := container.NewBorder(topContent, footer, nil, nil, ui.output)
+	content := container.NewBorder(topContent, footer, nil, nil, ui.download.output)
 	manager.mainWindow.SetContent(container.NewPadded(content))
 }
