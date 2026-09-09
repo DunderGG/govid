@@ -63,3 +63,11 @@ func roundedCard(subtitle string, content fyne.CanvasObject) fyne.CanvasObject {
 	inner := container.NewVBox(sub, content)
 	return container.NewStack(bg, container.NewPadded(inner))
 }
+
+// accentBar returns a 4px wide rectangle in the theme's primary colour, used
+// as a decorative left-edge bar on cards.
+func accentBar() *canvas.Rectangle {
+	bar := canvas.NewRectangle(accentCyan)
+	bar.SetMinSize(fyne.NewSize(4, 0))
+	return bar
+}

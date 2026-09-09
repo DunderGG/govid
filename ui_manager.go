@@ -4,8 +4,8 @@
 //   - UIManager: typed component that owns the primary window reference and
 //     the secondary window references (About, Help, History, Preferences,
 //     Post-Processing), ensuring at most one instance of each is open at a time.
-//   - createUI: builds the main window layout (header, input tools, status,
-//     logs, and footer) and wires its widget event handlers.
+//   - createUI: composes the main window layout (header, input card, status
+//     card, log pane, footer) from focused builder/wiring helpers below it.
 //   - createMainMenu: builds the main window's menu bar.
 //   - showAbout, showHistory, showConfigHelp, showPreferences,
 //     showPostProcessing: self-contained window construction, built from
@@ -785,15 +785,54 @@ func (manager *UIManager) showPostProcessing() {
 // cards and containers. It sets up the layout (header, input tools, status,
 // logs, and footer) and attaches event handlers to buttons.
 func (manager *UIManager) createUI() {
+	prefs := manager.onLoadPreferences()
+
+	manager.configureEntryMode()
+	manager.wireToggleHandlers()
+	manager.loadMainWindowState(prefs)
+	manager.wireActionButtons()
+
+	header := buildHeader()
+	inputCard := manager.buildInputCard()
+	statusCard := manager.buildStatusCard()
+	logPane := manager.buildLogPane()
+	footer := buildFooter()
+
+	topContent := container.NewVBox(
+		header,
+		inputCard,
+		statusCard,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Terminal Output:", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
+	)
+
+	content := container.NewBorder(topContent, footer, nil, nil, logPane)
+	manager.mainWindow.SetContent(container.NewPadded(content))
+}
+
+// buildHeader constructs the app logo/title header shown atop the main window.
+func buildHeader() fyne.CanvasObject {
+	logo := canvas.NewImageFromResource(resourceAppiconPng)
+	logo.FillMode = canvas.ImageFillContain
+	logo.SetMinSize(fyne.NewSize(128, 128))
+
+	titleText := canvas.NewText("GoVid", accentCyan)
+	titleText.TextSize = 38
+	titleText.TextStyle = fyne.TextStyle{Bold: true}
+
+	subtitleText := canvas.NewText("Video Downloader", theme.Color(theme.ColorNameDisabled))
+	subtitleText.TextSize = 23
+	subtitleText.TextStyle = fyne.TextStyle{Italic: true}
+
+	headerLeft := container.NewVBox(titleText, subtitleText)
+	return container.NewHBox(headerLeft, layout.NewSpacer(), logo)
+}
+
+// configureEntryMode switches the URL entry between single-line and
+// multi-line batch mode, and wires the batch-mode toggle's OnChanged handler.
+func (manager *UIManager) configureEntryMode() {
 	ui := manager.ui
 
-	// Load the logo from the bundled resources.
-	image := canvas.NewImageFromResource(resourceAppiconPng)
-	image.FillMode = canvas.ImageFillContain
-	image.SetMinSize(fyne.NewSize(128, 128))
-	brandLogo := image
-
-	// Configure the URL entry for single or batch mode.
 	if ui.download.batchMode.Checked {
 		ui.download.entry.MultiLine = true
 		ui.download.entry.SetMinRowsVisible(4)
@@ -818,6 +857,13 @@ func (manager *UIManager) createUI() {
 		}
 		manager.createUI()
 	}
+}
+
+// wireToggleHandlers attaches the OnChanged handlers for the main window's
+// checkboxes and path field; all of them simply persist the current preferences.
+func (manager *UIManager) wireToggleHandlers() {
+	ui := manager.ui
+
 	ui.download.saveLog.OnChanged = func(_ bool) {
 		manager.savePreferences(ui.download.path.Text)
 	}
@@ -836,22 +882,65 @@ func (manager *UIManager) createUI() {
 			fyne.CurrentApp().Preferences().SetString(prefSavedPath, strings.TrimSpace(text))
 		}
 	}
+}
 
-	// Load previously saved path from preferences.
-	prefs := manager.onLoadPreferences()
-	savedPath := prefs.SavedPath
-	if savedPath != "" {
-		ui.download.path.SetText(savedPath)
+// loadMainWindowState applies the saved path, format, and quality preferences
+// to their widgets, falling back to platform/OS defaults when unset.
+func (manager *UIManager) loadMainWindowState(prefs AppPreferences) {
+	ui := manager.ui
+
+	if prefs.SavedPath != "" {
+		ui.download.path.SetText(prefs.SavedPath)
+	} else if exePath, err := os.Executable(); err == nil {
+		ui.download.path.SetText(filepath.Dir(exePath))
+	} else if cwd, err := os.Getwd(); err == nil {
+		ui.download.path.SetText(cwd)
+	}
+
+	ui.download.format.Options = []string{"MP4", "MKV", "WebM", "MP3", "M4A"}
+	if prefs.Format != "" {
+		ui.download.format.SetSelected(prefs.Format)
+	} else if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		ui.download.format.SetSelected("MP4")
 	} else {
-		exePath, err := os.Executable()
-		if err == nil {
-			ui.download.path.SetText(filepath.Dir(exePath))
-		} else {
-			if cwd, err := os.Getwd(); err == nil {
-				ui.download.path.SetText(cwd)
-			}
+		ui.download.format.SetSelected("MKV")
+	}
+
+	ui.download.quality.Options = []string{"Best Quality", "1080p", "720p", "480p", "360p"}
+	if prefs.Quality != "" {
+		ui.download.quality.SetSelected(prefs.Quality)
+	} else {
+		ui.download.quality.SetSelected("Best Quality")
+	}
+}
+
+// wireActionButtons configures the download and cancel buttons' icons, text,
+// and tap handlers.
+func (manager *UIManager) wireActionButtons() {
+	ui := manager.ui
+
+	ui.download.downloadBtn.Icon = themedIcon(IconDownload)
+	ui.download.downloadBtn.Text = "Download Now!"
+	ui.download.downloadBtn.OnTapped = func() {
+		manager.onStartDownload()
+	}
+	ui.download.downloadBtn.Importance = widget.HighImportance
+	ui.download.downloadBtn.Refresh()
+
+	ui.download.cancelBtn.Icon = themedIcon(IconCancel)
+	ui.download.cancelBtn.Text = "Cancel"
+	ui.download.cancelBtn.OnTapped = func() {
+		if manager.onRequestCancel() {
+			manager.onLog("Download canceled by user.", colWarning)
 		}
 	}
+}
+
+// buildInputCard assembles the "Specify the source and destination" card:
+// URL/path entry, format/quality selectors, trim range, and the toggle/action
+// button rows. Returns the card wrapped with its decorative accent bar.
+func (manager *UIManager) buildInputCard() fyne.CanvasObject {
+	ui := manager.ui
 
 	browseBtn := widget.NewButtonWithIcon("", themedIcon(IconFolderOpen), func() {
 		dialog.ShowFolderOpen(func(list fyne.ListableURI, err error) {
@@ -862,70 +951,14 @@ func (manager *UIManager) createUI() {
 		}, manager.mainWindow)
 	})
 
-	ui.download.downloadBtn.Icon = themedIcon(IconDownload)
-	ui.download.downloadBtn.Text = "Download Now!"
-	ui.download.downloadBtn.OnTapped = func() {
-		manager.onStartDownload()
-	}
-	ui.download.downloadBtn.Importance = widget.HighImportance
-	ui.download.downloadBtn.Refresh()
-
-	ui.download.format.Options = []string{"MP4", "MKV", "WebM", "MP3", "M4A"}
-
-	savedFormat := prefs.Format
-	savedQuality := prefs.Quality
-
-	if savedFormat != "" {
-		ui.download.format.SetSelected(savedFormat)
-	} else if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-		ui.download.format.SetSelected("MP4")
-	} else {
-		ui.download.format.SetSelected("MKV")
-	}
-
-	ui.download.quality.Options = []string{"Best Quality", "1080p", "720p", "480p", "360p"}
-
-	if savedQuality != "" {
-		ui.download.quality.SetSelected(savedQuality)
-	} else {
-		ui.download.quality.SetSelected("Best Quality")
-	}
-
 	openFolderBtn := widget.NewButtonWithIcon("Open Folder", themedIcon(IconFolder), func() {
 		manager.onOpenFolder()
 	})
-
-	ui.download.cancelBtn.Icon = themedIcon(IconCancel)
-	ui.download.cancelBtn.Text = "Cancel"
-	ui.download.cancelBtn.OnTapped = func() {
-		if manager.onRequestCancel() {
-			manager.onLog("Download canceled by user.", colWarning)
-		}
-	}
-
-	titleText := canvas.NewText("GoVid", accentCyan)
-	titleText.TextSize = 38
-	titleText.TextStyle = fyne.TextStyle{Bold: true}
-
-	subtitleText := canvas.NewText("Video Downloader", theme.Color(theme.ColorNameDisabled))
-	subtitleText.TextSize = 23
-	subtitleText.TextStyle = fyne.TextStyle{Italic: true}
-
-	headerLeft := container.NewVBox(titleText, subtitleText)
-	header := container.NewHBox(headerLeft, layout.NewSpacer(), brandLogo)
 
 	ui.download.trimStart.SetPlaceHolder("e.g. 00:01:30  (optional)")
 	ui.download.trimEnd.SetPlaceHolder("e.g. 00:05:00  (optional)")
 	ui.download.trimStart.Validator = validateTimestamp
 	ui.download.trimEnd.Validator = validateTimestamp
-
-	// accentBar returns a 4px wide rectangle in the theme's primary colour,
-	// used as a decorative left-edge bar on cards.
-	accentBar := func() *canvas.Rectangle {
-		bar := canvas.NewRectangle(accentCyan)
-		bar.SetMinSize(fyne.NewSize(4, 0))
-		return bar
-	}
 
 	inputCard := roundedCard("Specify the source and destination",
 		container.NewVBox(
@@ -963,7 +996,12 @@ func (manager *UIManager) createUI() {
 			container.NewGridWithColumns(3, ui.download.downloadBtn, openFolderBtn, ui.download.cancelBtn),
 		),
 	)
-	inputCardAccented := container.NewBorder(nil, nil, accentBar(), nil, inputCard)
+	return container.NewBorder(nil, nil, accentBar(), nil, inputCard)
+}
+
+// buildStatusCard assembles the progress bar and status-dot indicator card.
+func (manager *UIManager) buildStatusCard() fyne.CanvasObject {
+	ui := manager.ui
 
 	// Wrap the status dot in a fixed-size container so the circle renders at 18×18.
 	dotContainer := container.New(layout.NewGridWrapLayout(fyne.NewSize(18, 18)), ui.download.statusDot)
@@ -973,27 +1011,26 @@ func (manager *UIManager) createUI() {
 			container.NewHBox(dotContainer, ui.download.status),
 		),
 	)
-	statusCardAccented := container.NewBorder(nil, nil, accentBar(), nil, statusCard)
+	return container.NewBorder(nil, nil, accentBar(), nil, statusCard)
+}
+
+// buildLogPane creates the scrollable log container and stores it on the
+// widget bag so appendOutput can append to it later.
+func (manager *UIManager) buildLogPane() *container.Scroll {
+	ui := manager.ui
 
 	ui.download.logList = container.NewVBox()
 	spacer := canvas.NewRectangle(color.Transparent)
 	spacer.SetMinSize(fyne.NewSize(0, 10))
 	ui.download.output = container.NewScroll(container.NewVBox(ui.download.logList, spacer))
 	ui.download.output.SetMinSize(fyne.NewSize(0, 200))
+	return ui.download.output
+}
 
+// buildFooter constructs the copyright line shown at the bottom of the main window.
+func buildFooter() fyne.CanvasObject {
 	copyright := canvas.NewText("GoVid • By David Bennehag (dunder.gg) • Built with ❤️, 🤖 and ☕", theme.Color(theme.ColorNameDisabled))
 	copyright.TextSize = 14
 	copyright.Alignment = fyne.TextAlignCenter
-	footer := container.NewCenter(copyright)
-
-	topContent := container.NewVBox(
-		header,
-		inputCardAccented,
-		statusCardAccented,
-		widget.NewSeparator(),
-		widget.NewLabelWithStyle("Terminal Output:", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
-	)
-
-	content := container.NewBorder(topContent, footer, nil, nil, ui.download.output)
-	manager.mainWindow.SetContent(container.NewPadded(content))
+	return container.NewCenter(copyright)
 }
