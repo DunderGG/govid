@@ -14,6 +14,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 
 	"fyne.io/fyne/v2"
@@ -143,7 +144,7 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		SmoothMotionMode:  prefSvc.store.StringWithFallback(prefSmoothMotionMode, defaultSmoothMotionMode),
 		SmoothFPS:         prefSvc.store.FloatWithFallback(prefSmoothFPS, defaultSmoothFPS),
 		Sharpen:           prefSvc.store.Bool(prefSharpen),
-		SharpenAmount:     prefSvc.store.FloatWithFallback(prefSharpenAmount, defaultSharpenAmount),
+		SharpenAmount:     math.Round(prefSvc.store.FloatWithFallback(prefSharpenAmount, defaultSharpenAmount)*10) / 10,
 		NormalizeAudio:    prefSvc.store.Bool(prefNormalize),
 		VividMode:         prefSvc.store.Bool(prefVividMode),
 		Denoise:           prefSvc.store.Bool(prefDenoise),
@@ -185,7 +186,7 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 	prefSvc.store.SetString(prefSmoothMotionMode, p.SmoothMotionMode)
 	prefSvc.store.SetFloat(prefSmoothFPS, p.SmoothFPS)
 	prefSvc.store.SetBool(prefSharpen, p.Sharpen)
-	prefSvc.store.SetFloat(prefSharpenAmount, p.SharpenAmount)
+	prefSvc.store.SetFloat(prefSharpenAmount, math.Round(p.SharpenAmount*10)/10)
 	prefSvc.store.SetBool(prefNormalize, p.NormalizeAudio)
 	prefSvc.store.SetBool(prefVividMode, p.VividMode)
 	prefSvc.store.SetBool(prefDenoise, p.Denoise)

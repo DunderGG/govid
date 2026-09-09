@@ -120,13 +120,19 @@ type PostProcessControls struct {
 
 // NewPostProcessControls constructs the Post-Processing dialog's widgets.
 func NewPostProcessControls() *PostProcessControls {
+	smoothFPSSlider := widget.NewSlider(24, 120)
+	smoothFPSSlider.Step = 1
+
+	sharpenSlider := widget.NewSlider(0, 2)
+	sharpenSlider.Step = 0.1
+
 	return &PostProcessControls{
 		enablePostProcess: widget.NewCheck("Post-Processing", nil),
 		smoothMotion:      widget.NewCheck("Enabled", nil),
 		smoothMotionMode:  widget.NewRadioGroup([]string{"Precise (slow)", "Balanced", "Fast"}, nil),
-		smoothMotionFPS:   widget.NewSlider(24, 120),
+		smoothMotionFPS:   smoothFPSSlider,
 		sharpen:           widget.NewCheck("Sharpen Video", nil),
-		sharpenAmount:     widget.NewSlider(0, 2),
+		sharpenAmount:     sharpenSlider,
 		normalizeAudio:    widget.NewCheck("Normalize Audio", nil),
 		vividMode:         widget.NewCheck("Vivid Mode", nil),
 		denoise:           widget.NewCheck("Denoise", nil),

@@ -558,9 +558,6 @@ func (manager *UIManager) showPostProcessing() {
 	sharpenBinding.Set(ui.postProcess.sharpenAmount.Value)
 	sharpenLabel := widget.NewLabelWithData(binding.FloatToStringWithFormat(sharpenBinding, "%.1fx"))
 	ui.postProcess.sharpenAmount.Step = 0.1
-	ui.postProcess.sharpenAmount.OnChanged = func(v float64) {
-		sharpenBinding.Set(v)
-	}
 	if !ui.postProcess.sharpen.Checked {
 		ui.postProcess.sharpenAmount.Disable()
 	}
