@@ -131,11 +131,10 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 		vfFilters = append(vfFilters, fmt.Sprintf("cas=strength=%.2f", strength))
 	}
 	if ppSetting.VividMode {
-		// contrast=1.30 and saturation=1.50 give a strong "vivid" pop; brightness=0.02
-		// and gamma=1.05 lift overall midtones slightly to keep shadows from crushing.
+		// contrast=1.30 and saturation=1.50 give a strong "vivid" pop; brightness=0.02.
 		// gamma_b=1.1 lifts the blue channel in midtones/highlights, counteracting
 		// the warm/yellow cast that boosted saturation introduces in white areas.
-		vfFilters = append(vfFilters, "eq=contrast=1.30:brightness=0.02:saturation=1.50:gamma=1.05:gamma_b=1.1")
+		vfFilters = append(vfFilters, "eq=contrast=1.30:brightness=0.02:saturation=1.50:gamma_b=1.1")
 	}
 	if ppSetting.Deband {
 		vfFilters = append(vfFilters, "deband")
