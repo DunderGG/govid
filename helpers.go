@@ -18,9 +18,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/theme"
 )
 
 // ── General ──────────────────────────────────────────────────────────────────
@@ -87,19 +85,7 @@ func (app *DownloaderApp) updateStatus(msg string) {
 // is enabled, also writes it to the session log on disk. Error-like lines are
 // additionally mirrored to the daily error log via LogService.
 func (app *DownloaderApp) appendOutput(line string, col color.Color) {
-	fyne.Do(func() {
-		label := canvas.NewText(line, col)
-		label.TextSize = theme.TextSize()
-
-		app.ui.download.logList.Add(label)
-
-		if len(app.ui.download.logList.Objects) > app.logSvc.BufferLimit() {
-			app.ui.download.logList.Objects = app.ui.download.logList.Objects[len(app.ui.download.logList.Objects)-app.logSvc.BufferLimit():]
-		}
-
-		app.ui.download.logList.Refresh()
-		app.ui.download.output.ScrollToBottom()
-	})
+	app.onLogLine(line, col)
 
 	app.logSvc.WriteToFile(line)
 

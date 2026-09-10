@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"image/color"
 	"sync"
 	"sync/atomic"
 
@@ -169,18 +170,19 @@ type DownloadStats struct {
 // DownloaderApp acts as a coordinator, holding pointers to the specialized
 // sub-structs and handling application lifecycle.
 type DownloaderApp struct {
-	window     fyne.Window           // The primary application window
-	ui         *UIWidgets            // The graphical interface components
-	stats      *DownloadStats        // Statistics tracked during a session
-	logSvc     *LogService           // Session log, error log, and buffer-limit management
-	cancelMu   sync.Mutex            // Guards cancelFn updates and reads
-	cancelFn   context.CancelFunc    // Function used to signal yt-dlp to stop
-	stopPulse  chan struct{}         // Closed to stop the status dot pulse goroutine
-	uiManager  *UIManager            // Owns secondary window state (About, Help, History, Prefs, PP)
-	prefSvc    *PreferenceService    // Centralised preference loading and persistence
-	historySvc *HistoryService       // Download history persistence
-	depSvc     *DependencyService    // Binary path resolution, dependency checks, and yt-dlp updater
-	gpuSvc     *GPUCapabilityService // GPU backend capability detection and cache
+	window     fyne.Window                        // The primary application window
+	ui         *UIWidgets                         // The graphical interface components
+	stats      *DownloadStats                     // Statistics tracked during a session
+	logSvc     *LogService                        // Session log, error log, and buffer-limit management
+	cancelMu   sync.Mutex                         // Guards cancelFn updates and reads
+	cancelFn   context.CancelFunc                 // Function used to signal yt-dlp to stop
+	stopPulse  chan struct{}                      // Closed to stop the status dot pulse goroutine
+	uiManager  *UIManager                         // Owns secondary window state (About, Help, History, Prefs, PP)
+	prefSvc    *PreferenceService                 // Centralised preference loading and persistence
+	historySvc *HistoryService                    // Download history persistence
+	depSvc     *DependencyService                 // Binary path resolution, dependency checks, and yt-dlp updater
+	gpuSvc     *GPUCapabilityService              // GPU backend capability detection and cache
+	onLogLine  func(line string, col color.Color) // Renders a log line in the UI; set to uiManager.appendLogLine
 
 	// Track processing failures across concurrent workers so we can adjust the
 	// Retry button text at the end of the batch.

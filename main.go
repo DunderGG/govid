@@ -67,6 +67,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onLoadConfigFile = dlApp.prefSvc.LoadFromFile
 	dlApp.uiManager.onMergeConfig = dlApp.prefSvc.MergeConfig
 	dlApp.uiManager.onSetLogBufferLimit = dlApp.logSvc.SetBufferLimit
+	dlApp.uiManager.onLogBufferLimit = dlApp.logSvc.BufferLimit
 
 	// Wire the dependency-service callbacks and log/status callbacks for
 	// checkDependencies and the "Update yt-dlp" menu action.
@@ -75,6 +76,10 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onLog = dlApp.appendOutput
 	dlApp.uiManager.onStatus = dlApp.updateStatus
 	dlApp.uiManager.onSetStatusIndicator = dlApp.setStatusIndicator
+
+	// appendOutput delegates the widget-mutation half of logging to UIManager,
+	// which owns the log widgets' lifecycle.
+	dlApp.onLogLine = dlApp.uiManager.appendLogLine
 
 	// Wire the main window's action callbacks (download, open folder, cancel).
 	dlApp.uiManager.onStartDownload = dlApp.startDownload

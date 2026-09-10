@@ -52,7 +52,7 @@ All steps depend on the preceding phases. Execute in order; each step shrinks th
 
 - ~~**High Priority: Group UIWidgets**~~ — *Done. `UIWidgets` split into `DownloadControls`, `PreferenceControls`, and `PostProcessControls`, each with its own constructor; `NewUIWidgets()` composes them. All call sites migrated to `ui.download.*`/`ui.prefs.*`/`ui.postProcess.*`.*
 - ~~**High Priority: Refactor ui.go**~~ — *Done. Menus (`createMainMenu`) and dialogs (the five `show*` methods) were already extracted in Phase 5; the remaining piece was `createUI` itself, split into `buildHeader`, `configureEntryMode`, `wireToggleHandlers`, `loadMainWindowState`, `wireActionButtons`, `buildInputCard`, `buildStatusCard`, `buildLogPane`, and `buildFooter` in `ui_manager.go`, plus a shared `accentBar()` helper added next to `roundedCard` in `ui.go`. `createUI` is now a ~20-line composition of these helpers.*
-- **LogService step 3** — Replace the direct widget mutation in `appendOutput` with an `OnLogLine func(line string, col color.Color)` callback, now that `UIManager` owns widget lifecycle.
+- ~~**LogService step 3**~~ — *Done. `DownloaderApp` gained an `onLogLine func(line string, col color.Color)` field, wired in `main.go` to `uiManager.appendLogLine`. `appendOutput` in `helpers.go` now only handles file I/O (`logSvc.WriteToFile`/`WriteToErrorLog`) and calls `app.onLogLine(line, col)` for the UI part instead of touching `app.ui` directly. `appendLogLine(line, col)` — the `fyne.Do` block that adds the line, trims the buffer, and scrolls — moved to `ui_manager.go`, reading the buffer limit via a new `onLogBufferLimit func() int` callback (`LogService.BufferLimit`) instead of a direct service reference. `canvas`/`theme` imports removed from `helpers.go`.*
 - **Update documentation** — `architecture.md` is already current (§4.11 documents `GPUCapabilityService`); `classes.puml` and the sequence diagrams still have no GPU-related entries and need `GPUCapabilityService`, `GPUBackend`, `BackendCapability`, and `EncoderPlan` added, alongside the rest of the fully extracted architecture.
 
 ---
@@ -170,7 +170,7 @@ Extracted from `helpers.go` and `download.go`:
 - `ParseBufferLimit(s string) int` — replaces `parseLogLimit` (package-level helper).
 - `SessionLogPath(dir string)` / `ErrorLogPath(dir string)` — replaces the `dateStamp` + `filepath.Join` inline logic in both `startDownload` and `dailyErrorLogPath`.
 
-`appendOutput()` remains on `DownloaderApp` because it is tightly coupled to `UIWidgets` (it reads widget state and mutates the log list); it delegates all file I/O to `logSvc`. `logSessionConfiguration()` has been removed — its formatting logic now lives in `LogService.WriteSessionConfig`, driven by the plain `SessionConfig` struct.
+`appendOutput()` remains on `DownloaderApp` since it drives history/error-log side effects, but it no longer touches `UIWidgets` directly: it delegates the widget mutation to the `onLogLine` callback (`UIManager.appendLogLine`) and all file I/O to `logSvc`. `logSessionConfiguration()` has been removed — its formatting logic now lives in `LogService.WriteSessionConfig`, driven by the plain `SessionConfig` struct.
 
 **Next steps:**
 
@@ -178,7 +178,7 @@ Extracted from `helpers.go` and `download.go`:
 
 2. ~~**Extract `logSessionConfiguration` into a `SessionConfig` value struct**~~ — *Done. See Phase 4 above.*
 
-3. **`appendOutput` UI part will need a callback when `UIManager` absorbs `createUI`** — the `fyne.Do` block in `appendOutput` directly mutates `app.ui.logList` and `app.ui.output`. When `UIManager` eventually takes ownership of widget lifecycle and rendering (UIManager step 4), the UI side of `appendOutput` will need to become a registered `OnLogLine func(line string, col color.Color)` callback — similar to how `PPCallbacks.OnLog` and `ProcessCallbacks.OnLog` already decouple the engines from the UI.
+3. ~~**`appendOutput` UI part needs a callback now that `UIManager` owns `createUI`**~~ — *Done. `DownloaderApp.onLogLine func(line string, col color.Color)` wired in `main.go` to `uiManager.appendLogLine`. `appendOutput` calls `app.onLogLine(line, col)` instead of mutating `app.ui.download.logList`/`output` directly — the same bridging pattern `PPCallbacks.OnLog`/`ProcessCallbacks.OnLog` already use.*
 
 ## DependencyService
 

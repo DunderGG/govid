@@ -70,6 +70,7 @@ type UIManager struct {
 	onLoadConfigFile     func(path string) (*AppConfig, error)                                                                       // PreferenceService.LoadFromFile
 	onMergeConfig        func(cfg *AppConfig, base AppPreferences, validFormats, validQualities []string) (AppPreferences, []string) // PreferenceService.MergeConfig
 	onSetLogBufferLimit  func(limit int)                                                                                             // LogService.SetBufferLimit
+	onLogBufferLimit     func() int                                                                                                  // LogService.BufferLimit
 }
 
 // NewUIManager returns a UIManager bound to the given primary window.
@@ -1012,7 +1013,7 @@ func (manager *UIManager) buildStatusCard() fyne.CanvasObject {
 }
 
 // buildLogPane creates the scrollable log container and stores it on the
-// widget bag so appendOutput can append to it later.
+// widget bag so appendLogLine can append to it later.
 func (manager *UIManager) buildLogPane() *container.Scroll {
 	ui := manager.ui
 
@@ -1022,6 +1023,27 @@ func (manager *UIManager) buildLogPane() *container.Scroll {
 	ui.download.output = container.NewScroll(container.NewVBox(ui.download.logList, spacer))
 	ui.download.output.SetMinSize(fyne.NewSize(0, 200))
 	return ui.download.output
+}
+
+// appendLogLine renders one line in the graphical log view, trimming the
+// oldest lines once the buffer limit is exceeded. It is registered on
+// DownloaderApp as the onLogLine callback so appendOutput never touches
+// widgets directly.
+func (manager *UIManager) appendLogLine(line string, col color.Color) {
+	ui := manager.ui
+	fyne.Do(func() {
+		label := canvas.NewText(line, col)
+		label.TextSize = theme.TextSize()
+
+		ui.download.logList.Add(label)
+
+		if limit := manager.onLogBufferLimit(); len(ui.download.logList.Objects) > limit {
+			ui.download.logList.Objects = ui.download.logList.Objects[len(ui.download.logList.Objects)-limit:]
+		}
+
+		ui.download.logList.Refresh()
+		ui.download.output.ScrollToBottom()
+	})
 }
 
 // buildFooter constructs the copyright line shown at the bottom of the main window.
