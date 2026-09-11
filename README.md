@@ -21,6 +21,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Batch Processing**: Download multiple URLs at once by switching to Batch Mode (one URL per line).
 - **Real-time Progress**: Live progress tracking with per-download progress bars and a scrollable activity log.
 - **Optional Post-Processing**: Seamless integration with FFmpeg for frame interpolation (60FPS), sharpening, and audio normalization.
+- **GPU-Accelerated Encoding**: Optional hardware-accelerated final encode (NVIDIA NVENC, Intel QSV, AMD AMF, VAAPI, or VideoToolbox) with automatic CPU fallback if the selected backend is unavailable.
 - **Motion Smoothing**: Three interpolation modes (Precise, Balanced, Fast) for smoother motion at higher frame rates.
 - **Download Management**: Start, monitor, and cancel active downloads from a single queue view.
 - **Speed Limiting**: Cap download bandwidth to avoid saturating your network.
@@ -90,10 +91,11 @@ Ensure you have [Go 1.26+](https://go.dev/dl/) installed.
 2. **URL or Batch Mode**: Paste a video URL. Enable **Batch Mode** to paste multiple URLs (one per line).
 3. **Format and Quality**: Choose the output format (MP4, MKV, WebM, MP3, or M4A) and maximum resolution.
 4. **Trim (Optional)**: Enter a start time, end time, or both (for example `00:01:30` and `00:05:00`) to download only part of the video.
-5. **Post-Processing (Advanced)**: Open **Tools → Preferences** to enable:
+5. **Post-Processing (Advanced)**: Open **Tools → Post-Processing** to enable:
     - **Smooth Motion**: Interpolates video to 60 fps.
     - **Sharpen Video**: Restores edge detail.
     - **Normalize Audio**: Balances volume levels.
+    - **Encoder Backend**: Pick `Auto`, a specific GPU backend, or `Off` to control whether the final encode uses hardware acceleration.
 6. **JSON Config (Optional)**: Place a `govid.json` file in the app folder for startup defaults and repeatable workflows, then click **Load from Config** in Preferences.
 7. **Save Location**: Choose where the output file should be saved.
 8. **Download**: Click **Download Now** to start.

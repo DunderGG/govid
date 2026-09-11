@@ -168,8 +168,8 @@ Implemented in `gpu_capability.go` as `PlanEncoder(requested GPUBackend, capabil
 
 1. Inventory the bundled FFmpeg builds using the four capability commands above.
 2. Add typed backend and capability models in Go.
-3. Implement runtime probes and cache results for the current FFmpeg binary, device, and driver environment. *(Done — see `GPUCapabilityService`, `BackendCapability`, and `Detect` in `gpu_capability.go`. Detection covers the H.264 final-encode path only, in-memory for the current app run; not yet wired into the encode path.)*
-4. Accelerate final video encoding first, because it has clear boundaries and CPU equivalents. *(Done — see `PlanEncoder`/`EncoderPlan` in `gpu_capability.go`, wired via the "Encoder Backend" setting in the Post-Processing window. Fallback-on-failure and cross-run benchmarking still pending.)*
+3. Implement runtime probes and cache results for the current FFmpeg binary, device, and driver environment. *(Done — see `GPUCapabilityService`, `BackendCapability`, and `Detect` in `gpu_capability.go`. Detection covers the H.264 final-encode path only, in-memory for the current app run. `PPEngine.GPUCapabilities` is populated from `Detect()`'s result in `applyFFmpegFilters` (`postprocess.go`) before `ApplyFilters` runs, so detection is wired into the encode path.)*
+4. Accelerate final video encoding first, because it has clear boundaries and CPU equivalents. *(Done — see `PlanEncoder`/`EncoderPlan` in `gpu_capability.go`, wired via the "Encoder Backend" setting in the Post-Processing window. Fallback-on-failure is also done — see `PPEngine.retryWithCPU` (§6/§10). Cross-run benchmarking across representative hardware is still pending.)*
 5. Add GPU scaling where frames can remain on one device for the full video path.
 6. Evaluate tone mapping and denoise independently; keep them on CPU until quality, format support, and transfer overhead are understood.
 7. Benchmark representative 1080p, 1440p, and 4K jobs before enabling any backend in `auto` mode.
