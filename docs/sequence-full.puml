@@ -26,6 +26,7 @@ group Startup
     alt dependency missing
         App -> UI : dialog.ShowError("missing tool")
     end
+    App -> App  : go startGPUDetection()\n  — gpuSvc.Detect(ctx) runs in the background,\n    populating the GPUBackend → BackendCapability cache once
     UI  -> U    : ShowAndRun() — window visible
 end
 
@@ -170,13 +171,17 @@ alt hasPostProcess && len(allFinalPaths) > 0 && not cancelled
             App -> App  : resolveAutoCrop()\n  — if __autocrop__ sentinel present:
             App -> FF   : cropdetect pass (first 60 s)
             FF  --> App : crop=W:H:X:Y  (or "" if no bars)
-            App -> App  : engine.buildFFmpegArgs(input, tmpOutput, vfFilters, afFilters)\n  — libx264 CRF 18 / libvpx-vp9 CRF 31 / stream-copy
+            App -> App  : PlanEncoder(engine.GPUBackend,\n  engine.GPUCapabilities, containerExt)\n  — resolves GPU -c:v args, or CPU\n    (libx264 CRF 18 / libvpx-vp9 CRF 31) if unavailable
+            App -> App  : engine.buildFFmpegArgsForBackend(input, tmpOutput, vfFilters, afFilters, backend)
             App -> App  : engine.patchThreadCount(args, threadsPerJob)
+            App -> App  : guard := newGPUJobGuard(engine, job.usedGPU)\n  — blocks until a gpuSem slot is free (max 2 concurrent GPU jobs)
             App -> OS   : exec FFmpeg process
             OS  -> FF   : spawn process
+            App -> App  : guard.arm(onStall)  — no-op for CPU jobs
 
             loop FFmpeg stderr progress lines
                 FF  -> App : frame=N fps=X speed=Y
+                App -> App : guard.pet()  — resets the stall watchdog
                 App -> UI  : updateStatus(progress %)
             end
 
@@ -184,11 +189,15 @@ alt hasPostProcess && len(allFinalPaths) > 0 && not cancelled
             alt FFmpeg success
                 App -> OS  : os.Rename(tmpOutput → finalPath)
                 App -> OS  : os.Remove(inputPath)  [original replaced]
-            else FFmpeg failure
+            else FFmpeg failure && job.usedGPU
+                App -> App : guard.release()
+                App -> App : engine.retryWithCPU(ctx, job, cb, reason)\n  — rebuilds args with BackendOff, re-runs runJob()
+            else FFmpeg failure (CPU job, or GPU stall watchdog fired)
                 App -> App : ppFailed.Store(1)
                 App -> OS  : os.Remove(tmpOutput)  [clean up partial]
                 App -> UI  : appendOutput("[SYSTEM] FFmpeg failed…", red)
             end
+            App -> App : guard.release()  — deferred; idempotent no-op if already released
         end
     end
 

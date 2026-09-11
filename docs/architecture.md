@@ -87,6 +87,7 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `historySvc *HistoryService` | Download history persistence (see §4.8) |
 | `logSvc *LogService` | Session and error log files (see §4.7) |
 | `depSvc *DependencyService` | Binary path resolution, dependency checks, updater (see §4.9) |
+| `gpuSvc *GPUCapabilityService` | GPU backend capability detection and cache (see §4.11) |
 | `stats *DownloadStats` | Real-time download metrics for progress smoothing |
 | `cancelFn` | Cancels the active download context |
 | `stopPulse` | Channel closed to stop the status-dot animation goroutine |
@@ -134,17 +135,19 @@ The private `watchOutput(stdout, stderr, cb) scanResult` and `parseProgress(line
 ### 4.5 `PPEngine` — FFmpeg post-processing engine  
 *Defined in:* `pp_engine.go`
 
-Owns the resolved paths to `ffmpeg` and `ffprobe`. Exposes one public method:
+Owns the resolved paths to `ffmpeg` and `ffprobe`, plus the GPU acceleration state needed for the final encode step: `GPUBackend` (the resolved backend selection) and `GPUCapabilities` (the `map[GPUBackend]BackendCapability` copied from `GPUCapabilityService.Detect()` — see §4.11). Exposes one public method:
 
 - **`ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks)`** — builds one `PostProcessJob` per file, then runs them concurrently through a worker pool bounded to `runtime.NumCPU()` goroutines. Each worker calls the private `runJob()`.
 
 Internal flow per file:
 1. `resolveAutoCrop` — replaces the `__autocrop__` sentinel by running a 60-second `cropdetect` pass via `detectCropFilter`.
-2. `runJob` — runs the main FFmpeg encode. Streams stderr in real-time. On success, renames the `_pp` temp file over the original. On failure, deletes the temp file.
+2. `runJob` — runs the main FFmpeg encode. Streams stderr in real-time. On success, renames the `_pp` temp file over the original. On failure, deletes the temp file (CPU jobs) or retries once on the CPU (GPU jobs — see below).
 
-Private probe methods (`probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, `parseRationalFPS`) use `engine.FFprobePath` to measure frame counts and durations for progress reporting. Private argument builders (`buildFFmpegArgs`, `patchThreadCount`) assemble and patch the FFmpeg command-line for each job.
+Private probe methods (`probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, `parseRationalFPS`) use `engine.FFprobePath` to measure frame counts and durations for progress reporting. Private argument builders `buildFFmpegArgs`/`buildFFmpegArgsForBackend` assemble the FFmpeg command-line for each job, resolving the video encoder via the package-level `PlanEncoder(requested, capabilities, containerExt) EncoderPlan` function (§4.11); `patchThreadCount` patches in the per-job thread count afterward.
 
-`DownloaderApp.applyFFmpegFilters()` in `postprocess.go` is the thin wrapper that constructs `PPEngine` and wires `PPCallbacks` back to UI helpers.
+**GPU job lifecycle:** `gpuSem` (buffered channel, capacity `maxConcurrentGPUJobs = 2`) caps how many GPU-encoded jobs run concurrently, since hardware encoders like NVENC enforce a low concurrent session limit. `runJob` wraps each job's GPU-only bookkeeping in a `gpuJobGuard` (`newGPUJobGuard`, `arm`, `pet`, `release`): it acquires a `gpuSem` slot up front (no-op for CPU jobs), arms a `gpuStallTimeout` (30 s) watchdog that is `pet()` on every stderr line, and `release()`s the slot/watchdog exactly once regardless of exit path. If a GPU-encoded job fails — `cmd.Start()` error or a non-zero exit — `retryWithCPU` rebuilds the job's args with `BackendOff` and re-runs `runJob` once, so a driver hiccup or hung encoder falls back to the CPU baseline instead of failing the file outright.
+
+`DownloaderApp.applyFFmpegFilters()` in `postprocess.go` is the thin wrapper that constructs `PPEngine` and wires `PPCallbacks` back to UI helpers; it also sets `engine.GPUBackend` from the Post-Processing dialog's selector and `engine.GPUCapabilities` from `app.gpuSvc.Detect(ctx)` before calling `ApplyFilters`.
 
 ---
 
@@ -227,7 +230,11 @@ Detects, once per app run, which GPU acceleration backends the bundled ffmpeg bi
 - **`Detect(ctx context.Context) map[GPUBackend]BackendCapability`** — on first call, runs `ffmpeg -encoders` once and, per backend applicable to the current `runtime.GOOS`, checks whether its H.264 encoder is compiled in (`isEncoderCompiled`) and then probes it with a short synthetic encode (`probeEncoder`). Caches the result; later calls return the cached copy. Started in the background via `startGPUDetection()` in `helpers.go`, called from `main()` alongside `checkDependencies()`.
 - **`Capability(backend GPUBackend) (BackendCapability, bool)`** — reads a single cached backend result.
 
-`BackendCapability` records `Applicable`, `Compiled`, `Available`, the target `Encoder`, and a `Reason` string for diagnostics. This step only covers detection; no encode-path integration, user setting, or fallback logic consumes it yet (tracked as separate roadmap items).
+`BackendCapability` records `Applicable`, `Compiled`, `Available`, the target `Encoder`, and a `Reason` string for diagnostics.
+
+**Encoder resolution:** the package-level `PlanEncoder(requested GPUBackend, capabilities map[GPUBackend]BackendCapability, containerExt string) EncoderPlan` function (not a service method) always resolves to a runnable `-c:v` argument set. It resolves `BackendAuto` to the highest-priority `Available` backend (`backendPriority`: NVIDIA → Intel → AMD → VAAPI → VideoToolbox), falls back to the existing CPU encoder (`libx264` CRF 18, or `libvpx-vp9` CRF 31 for WebM — WebM always stays on CPU regardless of the requested backend) when the resolved backend is unavailable or `containerExt` is `.webm`, and otherwise returns the backend's constant-quality GPU args (e.g. `h264_nvenc -rc constqp -qp 19`). `EncoderPlan{Args, Label, UsedGPU, Backend}` carries the result; `Label` is a human-readable string used in job summaries and logs. `PPEngine.buildFFmpegArgsForBackend` calls `PlanEncoder` when building each job's FFmpeg command line (§4.5).
+
+**UI and preference wiring:** `GPUBackendOptions() []string` returns the backend labels applicable to the current OS, in priority order, for the Post-Processing dialog's "Encoder Backend" `*widget.Select` (`UIWidgets.postProcess.gpuBackend`); `GPUBackendFromLabel(label string) GPUBackend` maps a selected label back to its identifier. The selection persists via `PreferenceService`'s `GPUBackend` field/`prefGPUBackend` key. `FormatGPUDiagnostics(capabilities) []string` renders one availability line per applicable backend for the startup session log and the About window's GPU Acceleration section.
 
 ---
 

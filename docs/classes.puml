@@ -25,6 +25,7 @@ package "Application Core" #F0F4F8 {
         +stats : *DownloadStats
         +logSvc : *LogService
         +depSvc : *DependencyService
+        +gpuSvc : *GPUCapabilityService
         +cancelFn : context.CancelFunc
         +stopPulse : chan struct{}
         +uiManager : *UIManager
@@ -89,6 +90,7 @@ package "UI Layer" #F0F8F0 {
         +deinterlace : *widget.Check
         +nightMode : *widget.Check
         +upscaleVideo : *widget.Check
+        +gpuBackend : *widget.Select
     }
 
     class UIManager <<service>> {
@@ -198,6 +200,7 @@ package "Post-Processing Engine" #F8F0FF {
         -threads : int
         -encodeMode : string
         -totalFrames : int64
+        -usedGPU : bool
     }
 
     class PostProcessSettings <<data>> {
@@ -218,6 +221,53 @@ package "Post-Processing Engine" #F8F0FF {
         +UpscaleTarget : string
         +NormalizeAudio : bool
         +NightMode : bool
+    }
+
+}
+
+' ════════════════════════════════════════════════════════════
+' GPU CAPABILITY SERVICE
+' ════════════════════════════════════════════════════════════
+package "GPU Capability Service" #F0FFFF {
+
+    class GPUCapabilityService <<service>> {
+        -ffmpegPath : string
+        -cache : map[GPUBackend]BackendCapability
+        -detected : bool
+        --
+        +Detect(ctx) : map[GPUBackend]BackendCapability
+        +Capability(backend) : (BackendCapability, bool)
+        -runFFmpeg(ctx, args...) : string
+    }
+
+    enum GPUBackend <<string>> {
+        auto
+        off
+        nvidia
+        intel
+        amd
+        vaapi
+        videotoolbox
+    }
+
+    class BackendCapability <<data>> {
+        +Backend : GPUBackend
+        +Applicable : bool
+        +Compiled : bool
+        +Available : bool
+        +Encoder : string
+        +Reason : string
+    }
+
+    class EncoderPlan <<data>> {
+        +Args : []string
+        +Label : string
+        +UsedGPU : bool
+        +Backend : GPUBackend
+    }
+
+    class "PlanEncoder()" as PlanEncoderFn <<free function>> {
+        +(requested, capabilities,\n  containerExt) : EncoderPlan
     }
 
 }
@@ -295,6 +345,7 @@ package "Preference Service" #FFF0F0 {
         +NightMode : bool
         +UpscaleVideo : bool
         +UpscaleTarget : string
+        +GPUBackend : string
     }
 
 }
@@ -422,6 +473,7 @@ DownloaderApp *--> PreferenceService : prefSvc
 DownloaderApp *--> HistoryService   : historySvc
 DownloaderApp *--> LogService     : logSvc
 DownloaderApp *--> DependencyService : depSvc
+DownloaderApp *--> GPUCapabilityService : gpuSvc
 DownloaderApp *--> DownloadStats   : stats
 
 ' DownloaderApp uses engines (created per session, not stored as fields)
@@ -438,6 +490,15 @@ DownloadEngine ..> scanResult      : Execute output
 PPEngine ..> PPCallbacks    : ApplyFilters bridge
 PPEngine ..> PostProcessJob : builds & runs
 PPEngine ..> gpuJobGuard    : runJob acquires/releases
+PPEngine --> GPUBackend        : GPUBackend field
+PPEngine --> BackendCapability : GPUCapabilities field
+PPEngine ..> PlanEncoderFn     : buildFFmpegArgsForBackend calls
+
+' GPUCapabilityService internal flow
+GPUCapabilityService ..> BackendCapability : Detect / Capability
+GPUCapabilityService ..> GPUBackend        : keys its cache by
+PlanEncoderFn ..> EncoderPlan  : returns
+PlanEncoderFn ..> BackendCapability : reads availability from
 
 ' PreferenceService
 PreferenceService --> FynePreferences : store
@@ -479,6 +540,28 @@ note top of gpuJobGuard
   runJob() itself stays focused on the
   plain ffmpeg exec/log/rename flow.
   No-op when the job doesn't use GPU.
+end note
+
+note top of GPUCapabilityService
+  Detect() runs once per app run, started
+  in the background via startGPUDetection()
+  in helpers.go (called from main() alongside
+  checkDependencies()). Caches one
+  BackendCapability per GPUBackend applicable
+  to runtime.GOOS. PPEngine.GPUCapabilities
+  is populated from Detect()'s result before
+  ApplyFilters() runs (see postprocess.go).
+end note
+
+note top of PlanEncoderFn
+  Free function (not a GPUCapabilityService
+  method). Always resolves to a runnable
+  -c:v arg set: GPU args when the requested/
+  auto backend is Available, otherwise the
+  existing CPU encoder. WebM always stays on
+  libvpx-vp9 regardless of requested backend.
+  runJob() falls back to retryWithCPU() if a
+  GPU-encoded job still fails at runtime.
 end note
 
 note top of PostProcessSettings

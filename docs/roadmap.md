@@ -193,7 +193,8 @@ This document outlines planned features, improvements, and known limitations for
 
 ### UX Improvements
 - [x] Prevent duplicate application windows (Preferences, About, Help, Post-Processing).
-- [ ] Add hotkeys for the UI, like escape to close windows or ctrl-o to open folder. 
+- [ ] Add hotkeys for the UI, like escape to close windows or ctrl-o to open folder.
+- [ ] Add a button to each history entry to quickly re-add to URL field, or other actions.
 
 ### Automatic "Best-Fit" Quality
 > Smart handling of missing quality tiers.
