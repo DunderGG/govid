@@ -43,7 +43,8 @@ govid/
 ├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadHistoryEntry type
 ├── log_service.go          LogService — session log open/close, error log routing, buffer-limit management
 ├── dependency_service.go   DependencyService — binary path resolution, dependency checks, yt-dlp updater
-├── ui_manager.go           UIManager — owns secondary window lifecycle (About, Help, History, Prefs, PP)
+├── ui_manager.go           UIManager — main window layout (createUI, createMainMenu), secondary window lifecycle
+│                           (About, Help, History, Prefs, PP), and preference/dependency UI wrapper methods
 ├── gpu_capability.go       GPUCapabilityService — GPU backend capability detection and cache (see docs/gpu-acceleration.md)
 │
 ├── ── Orchestration ───────────────────────────────────────────────
@@ -52,9 +53,8 @@ govid/
 ├── logscanner.go           DownloadEngine.watchOutput / parseProgress — yt-dlp stdout/stderr parsing goroutines
 │
 ├── ── UI ──────────────────────────────────────────────────────────
-├── ui.go                   createUI, createMainMenu, showPreferences, showPostProcessing
-├── helpers.go              Thread-safe UI updates, applyPreferencesToWidgets, resetPreferences, rebuildUI, thin wrappers for checkDependencies/runUpdateInUI
-├── history_service.go      HistoryService — see §4.8
+├── ui.go                   Thin DownloaderApp delegates to UIManager's secondary windows; shared roundedCard/accentBar helpers
+├── helpers.go              Thread-safe UI updates, applyPreferencesToWidgets, cancellation callback guard, GPU detection kickoff
 │
 ├── ── Assets / Platform ───────────────────────────────────────────
 ├── theme.go                darkTheme and lightTheme (implement fyne.Theme)
@@ -105,12 +105,19 @@ A flat struct holding every Fyne widget. It intentionally carries no logic — w
 
 ---
 
-### 4.3 `UIManager` — secondary window owner  
+### 4.3 `UIManager` — main window and secondary window owner  
 *Defined in:* `ui_manager.go`
 
-Owns the five singleton secondary windows (About, Help, History, Preferences, Post-Processing). Calling a `show*` method on `UIManager` will re-focus an already-open window rather than opening a duplicate. `DownloaderApp` delegates its public `showAbout()`, `showHistory()`, and `showConfigHelp()` methods to `UIManager`.
+Owns the primary window reference (`mainWindow`) plus the five singleton secondary windows (About, Help, History, Preferences, Post-Processing). Calling a `show*` method re-focuses an already-open window rather than opening a duplicate, via the shared `focusOrCreate`/`onWindowClosed` helpers. `UIManager` holds no direct service references — every service access is bridged through injected callbacks (`onLoadHistory`, `onCheckDependencies`, `onSavePreferences`, etc.), wired once in `newDownloaderApp`.
 
-> **Planned next:** `showPreferences` and `showPostProcessing` will move here once all their dependencies are named services.
+Beyond the five `show*` methods, `UIManager` also owns:
+- **`createUI()`** — builds the main window layout, split into focused helpers (`buildHeader`, `configureEntryMode`, `wireToggleHandlers`, `loadMainWindowState`, `wireActionButtons`, `buildInputCard`, `buildStatusCard`, `buildLogPane`, `buildFooter`).
+- **`createMainMenu()`** — builds the menu bar.
+- **`savePreferences`, `resetPreferences`, `rebuildUI`** — preference persistence and full UI-rebuild-on-reset, used by `showPreferences`.
+- **`checkDependencies`, `runUpdateInUI`** — thin delegates to the injected `onCheckDependencies`/`onRunUpdate` callbacks for the startup tool check and the "Update yt-dlp" menu action.
+- **`appendLogLine`** — the `fyne.Do` block that appends a log line, trims the buffer (via `onLogBufferLimit`), and scrolls (see §4.7).
+
+`ui.go` is what remains outside `UIManager`: thin one-line `DownloaderApp` delegates to the `show*` methods above (`showHistory`, `showPostProcessing`, `showPreferences`, `showConfigHelp`), plus the shared `roundedCard`/`accentBar` container helpers `UIManager` uses when building widgets.
 
 ---
 
@@ -129,6 +136,8 @@ A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and pr
 The private `watchOutput(stdout, stderr, cb) scanResult` and `parseProgress(line, cb)` methods own all output-scanning; they hold no UI state and report every line and progress tick through `ProcessCallbacks`.
 
 `ProcessCallbacks` is a bridge struct: it carries closures (`OnLog`, `OnStatus`, `OnProgress`) that let the engine report progress back to the UI without importing Fyne. `OnProgress(pct float64, size string)` is called for each parsed percentage; `size` is the last reported downloaded-size token, or empty when the line had none. `DownloaderApp.runYtDlp()` is the only caller.
+
+**Division of responsibility with `download.go`:** `DownloadEngine` is UI-agnostic — it never reads widget state and reports everything through `ProcessCallbacks`. `download.go` is the layer that still needs the UI/app context: `startDownload()` owns the batch/session lifecycle (validating widget input, the queue `context.Context` for cancel/skip across multiple URLs, opening/closing the session log, running post-processing over the whole batch), and `runYtDlp()` is the per-URL adapter — it translates widget state into a `DownloadRequest`/`DownloadOptions`, calls `engine.Run`, then handles app-specific side effects the engine has no business knowing about (history recording, the "DOWNLOAD COMPLETE/ABORTED" log block, status indicator updates, OS notifications).
 
 ---
 
@@ -162,7 +171,7 @@ All 30 Fyne preference storage keys are named constants here (`prefSavedPath`, `
 - **`LoadFromFile(path string) (*AppConfig, error)`** — reads and parses a `govid.json` override file. Delegates JSON parsing to the package-level `parseAppConfig` helper in `preference_service.go`.
 - **`MergeConfig(cfg, base, validFormats, validQualities) (AppPreferences, []string)`** — validates each non-empty config field against the supplied option slices and confirms the path exists as a directory, then merges valid fields onto `base`. Returns the merged struct and a slice of validation error strings for any skipped fields. No widget dependency.
 
-`AppPreferences` is a plain value struct with no widget references. `applyPreferencesToWidgets(AppPreferences)` in `helpers.go` is the single translator from struct → widget state. `savePreferences(path)` in `preference_service.go` is the reverse — reads widget state and delegates to `prefSvc.Save`. `resetPreferences()` (data + log-buffer reset) and `rebuildUI()` (dark theme + `createUI`) in `helpers.go` together handle a full application reset; separating them lets callers invoke only what they need.
+`AppPreferences` is a plain value struct with no widget references. `applyPreferencesToWidgets(AppPreferences)` in `helpers.go` is the single translator from struct → widget state. `UIManager.savePreferences(path)` reads widget state and delegates to `prefSvc.Save`; `DownloaderApp.savePreferences` in `preference_service.go` is a one-line delegate to it. `UIManager.resetPreferences()` (data + log-buffer reset) and `UIManager.rebuildUI()` (dark theme + `createUI`) together handle a full application reset; separating them lets callers invoke only what they need.
 
 ---
 
@@ -206,8 +215,8 @@ Owns the `binDir` path (resolved once at construction from the executable locati
 
 - **`LocalPath(toolName string) string`** — returns the path to `toolName` inside `binDir`, appending `.exe` on Windows.
 - **`Resolve(toolName string) string`** — returns the bundled path when it exists on disk, otherwise the bare name for system PATH lookup. Called by `runYtDlp` and `applyFFmpegFilters` when constructing `DownloadEngine` and `PPEngine`.
-- **`Check(onWarning func(msg string))`** — verifies `yt-dlp` and `ffmpeg` are reachable; calls `onWarning` for each missing tool. Called at startup via the `checkDependencies` wrapper in `helpers.go`.
-- **`RunUpdate(cb UpdateCallbacks)`** — runs `yt-dlp -U` in a background goroutine and reports lines/success/failure through `UpdateCallbacks`. Called via the `runUpdateInUI` wrapper in `helpers.go`.
+- **`Check(onWarning func(msg string))`** — verifies `yt-dlp` and `ffmpeg` are reachable; calls `onWarning` for each missing tool. Called at startup via `UIManager.checkDependencies()`, a thin delegate to the injected `onCheckDependencies` callback.
+- **`RunUpdate(cb UpdateCallbacks)`** — runs `yt-dlp -U` in a background goroutine and reports lines/success/failure through `UpdateCallbacks`. Called via `UIManager.runUpdateInUI()`, wired to the injected `onRunUpdate` callback.
 
 `UpdateCallbacks` is a bridge struct (`OnLog`, `OnStatus`, `OnSuccess`, `OnFailure`) with no Fyne dependency, following the same pattern as `PPCallbacks` and `ProcessCallbacks`.
 
@@ -227,7 +236,7 @@ Both implement `fyne.Theme`. `darkTheme` is the default; `lightTheme` is applied
 
 Detects, once per app run, which GPU acceleration backends the bundled ffmpeg binary can actually use for final-encode acceleration. Holds `ffmpegPath` and a mutex-guarded cache keyed by `GPUBackend` (`auto`/`off`/`nvidia`/`intel`/`amd`/`vaapi`/`videotoolbox`).
 
-- **`Detect(ctx context.Context) map[GPUBackend]BackendCapability`** — on first call, runs `ffmpeg -encoders` once and, per backend applicable to the current `runtime.GOOS`, checks whether its H.264 encoder is compiled in (`isEncoderCompiled`) and then probes it with a short synthetic encode (`probeEncoder`). Caches the result; later calls return the cached copy. Started in the background via `startGPUDetection()` in `helpers.go`, called from `main()` alongside `checkDependencies()`.
+- **`Detect(ctx context.Context) map[GPUBackend]BackendCapability`** — on first call, runs `ffmpeg -encoders` once and, per backend applicable to the current `runtime.GOOS`, checks whether its H.264 encoder is compiled in (`isEncoderCompiled`) and then probes it with a short synthetic encode (`probeEncoder`). Caches the result; later calls return the cached copy. Started in the background via `startGPUDetection()` in `helpers.go`, called from `main()` alongside `uiManager.checkDependencies()`.
 - **`Capability(backend GPUBackend) (BackendCapability, bool)`** — reads a single cached backend result.
 
 `BackendCapability` records `Applicable`, `Compiled`, `Available`, the target `Encoder`, and a `Reason` string for diagnostics.
@@ -369,7 +378,7 @@ func classify(err error) Category {
 | `ffmpeg` | `PPEngine.runJob()`, `PPEngine.detectCropFilter()` | Post-processing encode / cropdetect |
 | `ffprobe` | `postprocess.go` probe functions | Frame count and duration queries for progress estimation |
 
-Tools are resolved with `depSvc.Resolve(toolName)`: prefers `./bin/<tool>[.exe]` beside the executable, falls back to `$PATH`. If neither is found, `depSvc.Check()` (called via `checkDependencies()` at startup) prints a warning to the log.
+Tools are resolved with `depSvc.Resolve(toolName)`: prefers `./bin/<tool>[.exe]` beside the executable, falls back to `$PATH`. If neither is found, `depSvc.Check()` (called via `uiManager.checkDependencies()` at startup) prints a warning to the log.
 
 ---
 
