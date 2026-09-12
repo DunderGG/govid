@@ -53,14 +53,14 @@ All steps depend on the preceding phases. Execute in order; each step shrinks th
 - ~~**High Priority: Group UIWidgets**~~ — *Done. `UIWidgets` split into `DownloadControls`, `PreferenceControls`, and `PostProcessControls`, each with its own constructor; `NewUIWidgets()` composes them. All call sites migrated to `ui.download.*`/`ui.prefs.*`/`ui.postProcess.*`.*
 - ~~**High Priority: Refactor ui.go**~~ — *Done. Menus (`createMainMenu`) and dialogs (the five `show*` methods) were already extracted in Phase 5; the remaining piece was `createUI` itself, split into `buildHeader`, `configureEntryMode`, `wireToggleHandlers`, `loadMainWindowState`, `wireActionButtons`, `buildInputCard`, `buildStatusCard`, `buildLogPane`, and `buildFooter` in `ui_manager.go`, plus a shared `accentBar()` helper added next to `roundedCard` in `ui.go`. `createUI` is now a ~20-line composition of these helpers.*
 - ~~**LogService step 3**~~ — *Done. `DownloaderApp` gained an `onLogLine func(line string, col color.Color)` field, wired in `main.go` to `uiManager.appendLogLine`. `appendOutput` in `helpers.go` now only handles file I/O (`logSvc.WriteToFile`/`WriteToErrorLog`) and calls `app.onLogLine(line, col)` for the UI part instead of touching `app.ui` directly. `appendLogLine(line, col)` — the `fyne.Do` block that adds the line, trims the buffer, and scrolls — moved to `ui_manager.go`, reading the buffer limit via a new `onLogBufferLimit func() int` callback (`LogService.BufferLimit`) instead of a direct service reference. `canvas`/`theme` imports removed from `helpers.go`.*
-- **Update documentation** — *Done. `classes.puml` gained a new "GPU Capability Service" package (`GPUCapabilityService`, `GPUBackend` enum, `BackendCapability`, `EncoderPlan`, the free-function `PlanEncoder` shown as a stereotyped class), plus `DownloaderApp.gpuSvc`, `PPEngine`'s `GPUBackend`/`GPUCapabilities`/`gpuSem` fields and `buildFFmpegArgsForBackend`, `PostProcessJob.usedGPU`, `UIWidgets.postProcess.gpuBackend`, and `AppPreferences.GPUBackend`, tied together with new relationship arrows and annotation notes. `sequence-full.puml` gained the background `startGPUDetection()` call in the Startup group and a GPU-aware post-processing worker-pool flow (`PlanEncoder` → `buildFFmpegArgsForBackend` → `gpuJobGuard` acquire/arm/pet/release → `retryWithCPU` fallback on GPU failure). `architecture.md` §4.5 now documents the GPU job lifecycle (`gpuSem`, `gpuJobGuard`, `retryWithCPU`) and §4.11 documents `EncoderPlan`/`PlanEncoder` and the UI/preference wiring, replacing the stale "no encode-path integration yet" note; the `DownloaderApp` field table also gained `gpuSvc`.*
+- ~~**Update documentation**~~ — *Done. `classes.puml` gained a new "GPU Capability Service" package (`GPUCapabilityService`, `GPUBackend` enum, `BackendCapability`, `EncoderPlan`, the free-function `PlanEncoder` shown as a stereotyped class), plus `DownloaderApp.gpuSvc`, `PPEngine`'s `GPUBackend`/`GPUCapabilities`/`gpuSem` fields and `buildFFmpegArgsForBackend`, `PostProcessJob.usedGPU`, `UIWidgets.postProcess.gpuBackend`, and `AppPreferences.GPUBackend`, tied together with new relationship arrows and annotation notes. `sequence-full.puml` gained the background `startGPUDetection()` call in the Startup group and a GPU-aware post-processing worker-pool flow (`PlanEncoder` → `buildFFmpegArgsForBackend` → `gpuJobGuard` acquire/arm/pet/release → `retryWithCPU` fallback on GPU failure). `architecture.md` §4.5 now documents the GPU job lifecycle (`gpuSem`, `gpuJobGuard`, `retryWithCPU`) and §4.11 documents `EncoderPlan`/`PlanEncoder` and the UI/preference wiring, replacing the stale "no encode-path integration yet" note; the `DownloaderApp` field table also gained `gpuSvc`.*
 
 ---
 
 ## High Priority
 
 - [x] Refactor ui.go into smaller helpers — Split the large window construction into helpers for menus, dialogs, history, and preferences so the file is easier to scan and change. *(`showAbout`, `showHistory`, `showConfigHelp`, `showPreferences`, `showPostProcessing`, `createMainMenu`, and `createUI` have all moved to UIManager; `ui.go` is left with only thin `DownloaderApp` delegates plus the shared `roundedCard`/`accentBar` helpers. `createUI` itself is now split into 9 focused helpers — see Phase 6.)*
-- [ ] Split download.go into phases — Separate yt-dlp argument building, process startup, output parsing, and retry handling into smaller functions. *(`BuildArgs`, the retry loop, `FinalizeFiles`, and their composition are all in `DownloadEngine` now ✓ (`engine.Run`). `download.go`'s `runYtDlp` is now a thin wrapper: build `DownloadRequest`/`DownloadOptions` from UI state, call `engine.Run`, handle history + UI report. `Execute()`'s argument count is also resolved ✓ (`DownloadOptions`). DownloadEngine has no further open steps.)*
+- [X] Split download.go into phases — Separate yt-dlp argument building, process startup, output parsing, and retry handling into smaller functions. *(`BuildArgs`, the retry loop, `FinalizeFiles`, and their composition are all in `DownloadEngine` now ✓ (`engine.Run`). `download.go`'s `runYtDlp` is now a thin wrapper: build `DownloadRequest`/`DownloadOptions` from UI state, call `engine.Run`, handle history + UI report. `Execute()`'s argument count is also resolved ✓ (`DownloadOptions`). DownloadEngine has no further open steps.)*
 - [x] Break postprocess.go into smaller pipelines — Move FFmpeg option building, UI state handling, and feature-specific logic into smaller functions or separate files. *(`PPEngine` owns filter execution. Probe functions and `buildFFmpegArgs`/`patchThreadCount` moved to `pp_engine.go` ✓. `buildPostProcessFilters`, `computeProcessingLoad`, and `checkPostProcessingEnabled` decoupled from `*UIWidgets` via the `PostProcessSettings` value struct ✓. `postprocess.go` is now settings + pure functions + a thin `applyFFmpegFilters` wrapper + shared format helpers.)*
 - [x] Use context.Context consistently for cancellation — Pass context through the download pipeline so stopping a job does not leave background work running. *(Context flows correctly through `startDownload` → `runYtDlp` → `DownloadEngine.Execute` → `PPEngine.ApplyFilters`. Resolved as a side-effect of the service extractions.)*
 - [x] Group UIWidgets into smaller structs — Break the large UIWidgets type into smaller feature-specific structs like download controls and preferences controls. *(`UIWidgets` now holds three sub-structs: `DownloadControls` (main window input/status/log widgets), `PreferenceControls` (Preferences dialog), and `PostProcessControls` (Post-Processing dialog plus the main-window master toggle). Each has its own `New*Controls()` constructor; `NewUIWidgets()` composes all three. All ~300 call sites across `download.go`, `helpers.go`, `log_service.go`, `postprocess.go`, and `ui_manager.go` updated to the new `ui.download.*`/`ui.prefs.*`/`ui.postProcess.*` paths.)*
@@ -89,15 +89,15 @@ All steps depend on the preceding phases. Execute in order; each step shrinks th
 
 Breaking down the `DownloaderApp` "God Object" into specialized components:
 
-- [ ] **DownloadEngine** — yt-dlp execution, retries, cancellation, and progress parsing.
-- [ ] **PPEngine** — FFmpeg filter composition, crop detection, worker pool orchestration, and post-process execution.
-- [ ] **UIManager** — secondary window lifecycle (About, Help, History, Prefs, PP).
-- [ ] **PreferenceService** — preference load/save/reset logic and defaults.
-- [ ] **HistoryService** — download history persistence, schema evolution, and lookup helpers.
-- [ ] **LogService** — session log/error log routing, rotation policy, and structured log helpers.
-- [ ] **DependencyService** — binary discovery, dependency checks, and updater command execution.
-- [ ] **GPUCapabilityService** — FFmpeg GPU backend detection, capability caching, and encoder-plan resolution (see [gpu-acceleration.md](gpu-acceleration.md)).
-- [ ] **Update documentation** — architecture.md, classes.puml, and sequence diagrams fully reflect the extracted architecture.
+- [x] **DownloadEngine** — yt-dlp execution, retries, cancellation, and progress parsing.
+- [x] **PPEngine** — FFmpeg filter composition, crop detection, worker pool orchestration, and post-process execution.
+- [x] **UIManager** — secondary window lifecycle (About, Help, History, Prefs, PP).
+- [x] **PreferenceService** — preference load/save/reset logic and defaults.
+- [x] **HistoryService** — download history persistence, schema evolution, and lookup helpers.
+- [x] **LogService** — session log/error log routing, rotation policy, and structured log helpers.
+- [x] **DependencyService** — binary discovery, dependency checks, and updater command execution.
+- [x] **GPUCapabilityService** — FFmpeg GPU backend detection, capability caching, and encoder-plan resolution (see [gpu-acceleration.md](gpu-acceleration.md)).
+- [x] **Update documentation** — architecture.md, classes.puml, and sequence diagrams fully reflect the extracted architecture.
 
 See the sections below for per-component details and open next steps.
 
@@ -199,7 +199,9 @@ The package-level `UpdateYtDlpCLI()` replaces the old `updateYtDlp()` free funct
 
 1. ~~**Move `checkDependencies` and `runUpdateInUI` wrappers to `UIManager`**~~ — *Done. See UIManager step 3 above.*
 
-2. **Expose a `Version(toolName string) (string, error)` method** — needed when the "yt-dlp Auto-Update" roadmap feature is implemented (showing the installed version alongside the latest available). The method would run `yt-dlp --version` and return the trimmed output.
+2. ~~**Expose a `Version(toolName string) (string, error)` method**~~ — *Done. `Version` runs `<resolved tool path> --version` via `Resolve` and returns the trimmed output, or a wrapped error. Not yet wired into any UI — available for the "yt-dlp Auto-Update" roadmap feature (showing the installed version alongside the latest available).*
+
+**No open next steps** — `DependencyService` is fully extracted.
 
 ## PreferenceService
 

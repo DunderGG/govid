@@ -71,6 +71,19 @@ func (svc *DependencyService) Check(onWarning func(msg string)) {
 	}
 }
 
+// Version runs "<toolName> --version" (resolved via Resolve) and returns its
+// trimmed output. Used to display the installed version alongside the latest
+// available one.
+func (svc *DependencyService) Version(toolName string) (string, error) {
+	cmd := exec.Command(svc.Resolve(toolName), "--version")
+	hideWindow(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("%s --version failed: %w", toolName, err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // ── yt-dlp updater ────────────────────────────────────────────────────────────
 
 // UpdateCallbacks bridges yt-dlp update events to the UI layer.
