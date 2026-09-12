@@ -256,6 +256,20 @@ This document outlines planned features, improvements, and known limitations for
 
 ## 🧹 Code Quality & Refactoring
 
+### Test Coverage
+> Keep unit tests alongside the Go package they exercise; reserve `testdata/` for fixtures and a separate `tests/` directory for future end-to-end coverage.
+
+- [ ] Add `download_test.go` for URL validation, output filename derivation, cancellation, and download error handling.
+- [ ] Add `download_engine_test.go` for yt-dlp argument construction, queue/concurrency behavior, and retry outcomes.
+- [ ] Add `postprocess_test.go` for post-processing filter generation, enabled-option combinations, and invalid settings.
+- [ ] Add `history_service_test.go` for persistence round trips and missing or corrupted history files.
+- [ ] Add `dependency_service_test.go` for executable discovery, version parsing, and missing dependency behavior.
+- [ ] Add `helpers_test.go` for path, extension, and formatting edge cases.
+- [ ] Add `logscanner_test.go` for parsing representative yt-dlp and FFmpeg output.
+- [ ] Add `log_service_test.go` for log buffering, rotation, and error-log behavior.
+- [X] Add `testdata/` fixtures for representative logs, preference/config JSON, and media metadata responses.
+- [X] Add `tests/` end-to-end coverage only after the core application logic has been separated from the Fyne UI.
+
 ### Window Management Boilerplate
 > Eliminate repeated singleton-window guard patterns across ui.go.
 
