@@ -841,7 +841,7 @@ func (manager *UIManager) configureEntryMode() {
 		ui.download.entry.SetPlaceHolder("https://www.youtube.com/watch?v=...")
 	}
 	ui.download.batchMode.OnChanged = func(checked bool) {
-		fyne.CurrentApp().Preferences().SetBool("batchMode", checked)
+		manager.savePreferences(ui.download.path.Text)
 		if !checked {
 			// Switching back to single mode: keep only the first non-empty URL.
 			first := ""

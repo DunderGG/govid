@@ -246,28 +246,7 @@ However, the audit identified three categories of items that were either missed 
 Although `PreferenceService` was extracted and the four primary toggle handlers were migrated, raw access to `fyne.CurrentApp().Preferences()` and unexported magic string literals still remain in several areas.
 
 #### 1.1 Fix `batchMode.OnChanged` in `ui_manager.go`
-* **File:** [`ui_manager.go`](../ui_manager.go#L843-L858)
-* **Problem:** In `configureEntryMode()`, `batchMode.OnChanged` directly calls `Preferences().SetBool("batchMode", checked)` with a magic string literal. `UIManager.savePreferences()` already saves `BatchMode: ui.download.batchMode.Checked`, so writing directly bypasses the service abstraction and duplicates persistence logic.
-* **Current code:**
-  ```go
-  ui.download.batchMode.OnChanged = func(checked bool) {
-      fyne.CurrentApp().Preferences().SetBool("batchMode", checked)
-      if !checked {
-          ...
-      }
-      manager.createUI()
-  }
-  ```
-* **Recommended fix:**
-  ```go
-  ui.download.batchMode.OnChanged = func(checked bool) {
-      manager.savePreferences(ui.download.path.Text)
-      if !checked {
-          ...
-      }
-      manager.createUI()
-  }
-  ```
+* ~~**File:** [`ui_manager.go`](../ui_manager.go#L843-L858)~~ — *Done. `batchMode.OnChanged` now calls `manager.savePreferences(ui.download.path.Text)` instead of the raw `Preferences().SetBool("batchMode", checked)` call; `BatchMode` is persisted via `savePreferences`'s existing `ui.download.batchMode.Checked` read.*
 
 #### 1.2 Fix `ui.download.path.OnChanged` in `ui_manager.go`
 * **File:** [`ui_manager.go`](../ui_manager.go#L878-L882)
