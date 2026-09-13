@@ -230,3 +230,156 @@ The package-level `UpdateYtDlpCLI()` replaces the old `updateYtDlp()` free funct
 - [x] Non-idiomatic os.Exit(0) in main normal flow — *Done. The `-update` success path exits via `return`; `os.Exit(...)` remains only for non-zero error exit code propagation.*
 
 - [x] Open question: strict single-cancel semantics — *Addressed. `RequestCancel()` atomically takes-and-clears the active cancel callback before invocation, preventing repeated concurrent invocations of the same cancel function from multiple UI paths.*
+
+---
+
+## Post-Refactor Audit Findings & Follow-Up Plan
+
+An end-to-end audit of the codebase against this roadmap confirmed that the architectural extractions (`DownloadEngine`, `PPEngine`, `UIManager`, `PreferenceService`, `HistoryService`, `LogService`, `DependencyService`, `GPUCapabilityService`, `UIWidgets` grouping, and `main.go` bootstrapping) are implemented and functional, and all unit tests pass.
+
+However, the audit identified three categories of items that were either missed during extraction, incorrectly marked as done, or left stale in diagrams and documentation. Use the checklist below to work through each fix sequentially.
+
+---
+
+### Category 1 — Preference Loading & Persistence Bypasses (Code)
+
+Although `PreferenceService` was extracted and the four primary toggle handlers were migrated, raw access to `fyne.CurrentApp().Preferences()` and unexported magic string literals still remain in several areas.
+
+#### 1.1 Fix `batchMode.OnChanged` in `ui_manager.go`
+* **File:** [`ui_manager.go`](../ui_manager.go#L843-L858)
+* **Problem:** In `configureEntryMode()`, `batchMode.OnChanged` directly calls `Preferences().SetBool("batchMode", checked)` with a magic string literal. `UIManager.savePreferences()` already saves `BatchMode: ui.download.batchMode.Checked`, so writing directly bypasses the service abstraction and duplicates persistence logic.
+* **Current code:**
+  ```go
+  ui.download.batchMode.OnChanged = func(checked bool) {
+      fyne.CurrentApp().Preferences().SetBool("batchMode", checked)
+      if !checked {
+          ...
+      }
+      manager.createUI()
+  }
+  ```
+* **Recommended fix:**
+  ```go
+  ui.download.batchMode.OnChanged = func(checked bool) {
+      manager.savePreferences(ui.download.path.Text)
+      if !checked {
+          ...
+      }
+      manager.createUI()
+  }
+  ```
+
+#### 1.2 Fix `ui.download.path.OnChanged` in `ui_manager.go`
+* **File:** [`ui_manager.go`](../ui_manager.go#L878-L882)
+* **Problem:** In `wireToggleHandlers()`, `ui.download.path.OnChanged` writes directly to `fyne.CurrentApp().Preferences().SetString(prefSavedPath, ...)`. It checks `ui.prefs.savePrefs.Checked` manually, bypassing `manager.savePreferences()`.
+* **Current code:**
+  ```go
+  ui.download.path.OnChanged = func(text string) {
+      if ui.prefs.savePrefs.Checked {
+          fyne.CurrentApp().Preferences().SetString(prefSavedPath, strings.TrimSpace(text))
+      }
+  }
+  ```
+* **Recommended fix:**
+  ```go
+  ui.download.path.OnChanged = func(text string) {
+      manager.savePreferences(text)
+  }
+  ```
+
+#### 1.3 Fix speed limit fallback in `download.go`
+* **File:** [`download.go`](../download.go#L244-L248)
+* **Problem:** In `runYtDlp()`, when the UI field is empty, the speed limit fallback reads `fyne.CurrentApp().Preferences().String("maxSpeed")` with a raw string literal instead of using `app.prefSvc.Load().MaxSpeed` or the `prefMaxSpeed` constant.
+* **Current code:**
+  ```go
+  limit := strings.TrimSpace(app.ui.prefs.maxSpeed.Text)
+  if limit == "" {
+      limit = fyne.CurrentApp().Preferences().String("maxSpeed")
+  }
+  ```
+* **Recommended fix:**
+  ```go
+  limit := strings.TrimSpace(app.ui.prefs.maxSpeed.Text)
+  if limit == "" {
+      limit = app.prefSvc.Load().MaxSpeed
+  }
+  ```
+
+#### 1.4 Centralize or document `themedIcon` preference read in `icons.go`
+* **File:** [`icons.go`](../icons.go#L78-L83)
+* **Problem:** `themedIcon()` directly calls `fyne.CurrentApp().Preferences().StringWithFallback(prefThemeMode, defaultThemeMode)`. While it uses the named constants, it bypasses `PreferenceService`.
+* **Recommended fix:** Evaluate whether to pass the current theme mode / `PreferenceService` or keep the direct read isolated as an asset-rendering utility with an explicit architectural note.
+
+---
+
+### Category 2 — Architecture & Diagram Synchronization (Documentation)
+
+The "Update documentation" task was marked done, but `classes.puml`, `sequence-full.puml`, and `architecture.md` are out of sync with the refactored code.
+
+#### 2.1 Synchronize `docs/classes.puml`
+* **File:** [`docs/classes.puml`](classes.puml)
+* **Specific items to update:**
+  - [ ] **`UIWidgets`:** Replace the flat ~30-field struct definition with three sub-structs: `DownloadControls`, `PreferenceControls`, and `PostProcessControls`, with `UIWidgets` referencing them as `download`, `prefs`, and `postProcess`.
+  - [ ] **`DownloaderApp`:**
+     - Remove obsolete methods that were moved to `UIManager` or package-level: `createUI()`, `createMainMenu()`, `checkDependencies()`, `resetPreferences()`, `rebuildUI()`, and `applyPreferencesToWidgets()`.
+     - Add missing fields: `historySvc : *HistoryService`, `onLogLine : func(string, color.Color)`, and `cancelMu : sync.Mutex`.
+  - [ ] **`UIManager`:**
+     - Add missing public methods: `createUI()`, `createMainMenu()`, `checkDependencies()`, `runUpdateInUI()`, `showPreferences()`, `showPostProcessing()`, `savePreferences()`, `resetPreferences()`, `rebuildUI()`, `appendLogLine()`.
+     - Add the 17 injected callback fields (`onLoadHistory`, `onClearHistory`, `onCheckDependencies`, `onRunUpdate`, `onLoadPreferences`, `onSavePreferences`, `onResetPreferences`, `onLoadConfigFile`, `onMergeConfig`, `onSetLogBufferLimit`, `onLogBufferLimit`, `onLog`, `onStatus`, `onSetStatusIndicator`, `onStartDownload`, `onOpenFolder`, `onRequestCancel`).
+     - Remove stale relationship line: `UIManager --> HistoryService : historySvc` (UIManager no longer holds a reference to `HistoryService`).
+  - [ ] **`DownloadEngine` & `DownloadRequest`:**
+     - Update `Execute()` signature to accept `opts DownloadOptions`.
+     - Add `Run(ctx, req, opts, cb) : DownloadResult`.
+     - Add `FinalizeFiles(savePath, downloadID, onLog) : []string`.
+     - Add `DownloadOptions` and `DownloadResult` structs.
+     - Move `AutoRetry` out of `DownloadRequest` and into `DownloadOptions`.
+  - [ ] **`HistoryService`:**
+     - Update `AppendAll` signature to `AppendAll(rec DownloadRecord) : error`.
+     - Add `DownloadRecord` struct.
+  - [ ] **`LogService`:**
+     - Add `sessionDir : string`.
+     - Add `WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))`.
+     - Add `SessionConfig` struct.
+  - [ ] **`DependencyService`:**
+     - Add `Version(toolName string) : (string, error)`.
+  - [ ] **`GPUCapabilityService`:**
+     - Add `GPUBackendOptions()`, `GPUBackendFromLabel()`, and `FormatGPUDiagnostics().String()`.
+
+#### 2.2 Synchronize `docs/sequence-full.puml`
+* **File:** [`docs/sequence-full.puml`](sequence-full.puml)
+* **Specific items to update:**
+  - [ ] **Startup sequence:** Update `createMainMenu()`, `createUI()`, and `checkDependencies()` to show them invoked on `UIManager` (`dlApp.uiManager`), matching `main.go`. Remove `dialog.ShowError("missing tool")` since `DependencyService.Check` logs warnings rather than showing a dialog.
+  - [ ] **Session initialization:** Replace `OpenFile("GoVid_log.txt", ...)` with `LogService.OpenSessionLog(savePath)` which opens the timestamped log file and writes session config via `LogService.WriteSessionConfig`.
+  - [ ] **Session teardown:** Replace `log.file.Close()` with `LogService.CloseSessionLog()`.
+
+#### 2.3 Synchronize `docs/architecture.md`
+* **File:** [`docs/architecture.md`](architecture.md)
+* **Specific items to update:**
+  - [ ] **§4.1 `DownloaderApp` table:** Add `onLogLine` callback and `cancelMu sync.Mutex`.
+  - [ ] **§4.2 `UIWidgets`:** Remove the obsolete `> **Planned:** split into smaller feature-scoped structs` note. Document the actual grouped structure (`DownloadControls`, `PreferenceControls`, `PostProcessControls`).
+  - [ ] **§4.8 `HistoryService`:** Update `AppendAll` description from the old 6-parameter signature to `AppendAll(rec DownloadRecord)`. Remove the stale sentence stating `UIManager receives a reference at startup` (UIManager uses injected callbacks `onLoadHistory`/`onClearHistory`).
+
+---
+
+### Category 3 — Roadmap Text & Errata Corrections (Documentation)
+
+Minor stale references and signature mismatches within [`refactor_roadmap.md`](refactor_roadmap.md) itself:
+
+#### 3.1 Correct file name for HistoryService
+* **Location:** [`refactor_roadmap.md` § HistoryService](#historyservice) (line 153)
+* **Correction:** Change `"HistoryService struct introduced in history.go"` to `"HistoryService struct introduced in history_service.go"`.
+
+#### 3.2 Correct `HistoryService.AppendAll` signature
+* **Location:** [`refactor_roadmap.md` § HistoryService](#historyservice) (line 153)
+* **Correction:** Change `AppendAll(url, finalPaths, savePath, format, quality, postProcessed) error` to `AppendAll(rec DownloadRecord) error`.
+
+#### 3.3 Correct post-processing block thresholds location
+* **Location:** [`refactor_roadmap.md` § Medium Priority](#medium-priority) (line 73) & [`postprocess.go`](../postprocess.go#L47)
+* **Correction:** The roadmap and `postprocess.go` state that block thresholds are in `ui.go`. They were moved to [`ui_manager.go:573`](../ui_manager.go#L573) inside `showPostProcessing()`.
+
+#### 3.4 Correct section count and import claims for `helpers.go`
+* **Location:** [`refactor_roadmap.md` § Low Priority](#low-priority) (lines 80, 81, 84)
+* **Correction:**
+  - Line 80 lists 6 sections in `helpers.go`; the file currently has 4 sections + General because config and dependency logic moved out.
+  - Line 81 refers to `loadConfigFile(path string)` as a package-level helper, but it was subsequently deleted when `PreferenceService.LoadFromFile` was added.
+  - Line 84 states `os/exec` was removed from `helpers.go`, but it is still imported for `exec.ExitError` in `exitCodeFromError()`. Default-format logic is also in `ui_manager.go` (`loadMainWindowState`), not `ui.go`.
