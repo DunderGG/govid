@@ -876,9 +876,7 @@ func (manager *UIManager) wireToggleHandlers() {
 	}
 	ui.download.path.SetPlaceHolder("Download folder...")
 	ui.download.path.OnChanged = func(text string) {
-		if ui.prefs.savePrefs.Checked {
-			fyne.CurrentApp().Preferences().SetString(prefSavedPath, strings.TrimSpace(text))
-		}
+		manager.savePreferences(text)
 	}
 }
 

@@ -249,22 +249,7 @@ Although `PreferenceService` was extracted and the four primary toggle handlers 
 * ~~**File:** [`ui_manager.go`](../ui_manager.go#L843-L858)~~ — *Done. `batchMode.OnChanged` now calls `manager.savePreferences(ui.download.path.Text)` instead of the raw `Preferences().SetBool("batchMode", checked)` call; `BatchMode` is persisted via `savePreferences`'s existing `ui.download.batchMode.Checked` read.*
 
 #### 1.2 Fix `ui.download.path.OnChanged` in `ui_manager.go`
-* **File:** [`ui_manager.go`](../ui_manager.go#L878-L882)
-* **Problem:** In `wireToggleHandlers()`, `ui.download.path.OnChanged` writes directly to `fyne.CurrentApp().Preferences().SetString(prefSavedPath, ...)`. It checks `ui.prefs.savePrefs.Checked` manually, bypassing `manager.savePreferences()`.
-* **Current code:**
-  ```go
-  ui.download.path.OnChanged = func(text string) {
-      if ui.prefs.savePrefs.Checked {
-          fyne.CurrentApp().Preferences().SetString(prefSavedPath, strings.TrimSpace(text))
-      }
-  }
-  ```
-* **Recommended fix:**
-  ```go
-  ui.download.path.OnChanged = func(text string) {
-      manager.savePreferences(text)
-  }
-  ```
+* ~~**File:** [`ui_manager.go`](../ui_manager.go#L878-L880)~~ — *Done. `ui.download.path.OnChanged` now delegates to `manager.savePreferences(text)`, keeping path persistence under the centralized preference service flow.*
 
 #### 1.3 Fix speed limit fallback in `download.go`
 * **File:** [`download.go`](../download.go#L244-L248)
