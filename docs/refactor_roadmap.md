@@ -252,22 +252,7 @@ Although `PreferenceService` was extracted and the four primary toggle handlers 
 * ~~**File:** [`ui_manager.go`](../ui_manager.go#L878-L880)~~ — *Done. `ui.download.path.OnChanged` now delegates to `manager.savePreferences(text)`, keeping path persistence under the centralized preference service flow.*
 
 #### 1.3 Fix speed limit fallback in `download.go`
-* **File:** [`download.go`](../download.go#L244-L248)
-* **Problem:** In `runYtDlp()`, when the UI field is empty, the speed limit fallback reads `fyne.CurrentApp().Preferences().String("maxSpeed")` with a raw string literal instead of using `app.prefSvc.Load().MaxSpeed` or the `prefMaxSpeed` constant.
-* **Current code:**
-  ```go
-  limit := strings.TrimSpace(app.ui.prefs.maxSpeed.Text)
-  if limit == "" {
-      limit = fyne.CurrentApp().Preferences().String("maxSpeed")
-  }
-  ```
-* **Recommended fix:**
-  ```go
-  limit := strings.TrimSpace(app.ui.prefs.maxSpeed.Text)
-  if limit == "" {
-      limit = app.prefSvc.Load().MaxSpeed
-  }
-  ```
+* ~~**File:** [`download.go`](../download.go#L244-L248)~~ — *Done. `runYtDlp()` now falls back to `app.prefSvc.Load().MaxSpeed` when the UI speed limit is empty, keeping preference access behind `PreferenceService`.*
 
 #### 1.4 Centralize or document `themedIcon` preference read in `icons.go`
 * **File:** [`icons.go`](../icons.go#L78-L83)

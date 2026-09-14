@@ -243,7 +243,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	// Resolve speed limit: prefer current UI value, fall back to saved preference.
 	limit := strings.TrimSpace(app.ui.prefs.maxSpeed.Text)
 	if limit == "" {
-		limit = fyne.CurrentApp().Preferences().String("maxSpeed")
+		limit = app.prefSvc.Load().MaxSpeed
 	}
 
 	engine := NewDownloadEngine(
