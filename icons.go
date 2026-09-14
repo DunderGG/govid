@@ -73,10 +73,10 @@ func svgWithColor(name, pathData, fill string) *fyne.StaticResource {
 	return fyne.NewStaticResource(name, []byte(svg))
 }
 
-// themedIcon returns the correct dark or light icon variant for the active theme.
-func themedIcon(name IconName) fyne.Resource {
+// themedIcon returns the correct dark or light icon variant for the given theme.
+func themedIcon(name IconName, themeMode string) fyne.Resource {
 	icon := icons[name]
-	if fyne.CurrentApp().Preferences().StringWithFallback(prefThemeMode, defaultThemeMode) == "Light" {
+	if themeMode == "Light" {
 		return icon.light
 	}
 	return icon.dark

@@ -788,10 +788,10 @@ func (manager *UIManager) createUI() {
 	manager.configureEntryMode()
 	manager.wireToggleHandlers()
 	manager.loadMainWindowState(prefs)
-	manager.wireActionButtons()
+	manager.wireActionButtons(prefs.ThemeMode)
 
 	header := buildHeader()
-	inputCard := manager.buildInputCard()
+	inputCard := manager.buildInputCard(prefs.ThemeMode)
 	statusCard := manager.buildStatusCard()
 	logPane := manager.buildLogPane()
 	footer := buildFooter()
@@ -912,10 +912,10 @@ func (manager *UIManager) loadMainWindowState(prefs AppPreferences) {
 
 // wireActionButtons configures the download and cancel buttons' icons, text,
 // and tap handlers.
-func (manager *UIManager) wireActionButtons() {
+func (manager *UIManager) wireActionButtons(themeMode string) {
 	ui := manager.ui
 
-	ui.download.downloadBtn.Icon = themedIcon(IconDownload)
+	ui.download.downloadBtn.Icon = themedIcon(IconDownload, themeMode)
 	ui.download.downloadBtn.Text = "Download Now!"
 	ui.download.downloadBtn.OnTapped = func() {
 		manager.onStartDownload()
@@ -923,7 +923,7 @@ func (manager *UIManager) wireActionButtons() {
 	ui.download.downloadBtn.Importance = widget.HighImportance
 	ui.download.downloadBtn.Refresh()
 
-	ui.download.cancelBtn.Icon = themedIcon(IconCancel)
+	ui.download.cancelBtn.Icon = themedIcon(IconCancel, themeMode)
 	ui.download.cancelBtn.Text = "Cancel"
 	ui.download.cancelBtn.OnTapped = func() {
 		if manager.onRequestCancel() {
@@ -935,10 +935,10 @@ func (manager *UIManager) wireActionButtons() {
 // buildInputCard assembles the "Specify the source and destination" card:
 // URL/path entry, format/quality selectors, trim range, and the toggle/action
 // button rows. Returns the card wrapped with its decorative accent bar.
-func (manager *UIManager) buildInputCard() fyne.CanvasObject {
+func (manager *UIManager) buildInputCard(themeMode string) fyne.CanvasObject {
 	ui := manager.ui
 
-	browseBtn := widget.NewButtonWithIcon("", themedIcon(IconFolderOpen), func() {
+	browseBtn := widget.NewButtonWithIcon("", themedIcon(IconFolderOpen, themeMode), func() {
 		dialog.ShowFolderOpen(func(list fyne.ListableURI, err error) {
 			if err != nil || list == nil {
 				return
@@ -947,7 +947,7 @@ func (manager *UIManager) buildInputCard() fyne.CanvasObject {
 		}, manager.mainWindow)
 	})
 
-	openFolderBtn := widget.NewButtonWithIcon("Open Folder", themedIcon(IconFolder), func() {
+	openFolderBtn := widget.NewButtonWithIcon("Open Folder", themedIcon(IconFolder, themeMode), func() {
 		manager.onOpenFolder()
 	})
 

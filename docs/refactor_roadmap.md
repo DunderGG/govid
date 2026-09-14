@@ -255,9 +255,7 @@ Although `PreferenceService` was extracted and the four primary toggle handlers 
 * ~~**File:** [`download.go`](../download.go#L244-L248)~~ — *Done. `runYtDlp()` now falls back to `app.prefSvc.Load().MaxSpeed` when the UI speed limit is empty, keeping preference access behind `PreferenceService`.*
 
 #### 1.4 Centralize or document `themedIcon` preference read in `icons.go`
-* **File:** [`icons.go`](../icons.go#L78-L83)
-* **Problem:** `themedIcon()` directly calls `fyne.CurrentApp().Preferences().StringWithFallback(prefThemeMode, defaultThemeMode)`. While it uses the named constants, it bypasses `PreferenceService`.
-* **Recommended fix:** Evaluate whether to pass the current theme mode / `PreferenceService` or keep the direct read isolated as an asset-rendering utility with an explicit architectural note.
+* ~~**File:** [`icons.go`](../icons.go#L78-L83)~~ — *Done. `themedIcon` now receives the resolved `ThemeMode` from `createUI` instead of reading the global Fyne preference store, keeping icon selection deterministic and independent of `PreferenceService`.*
 
 ---
 
