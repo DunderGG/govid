@@ -264,33 +264,7 @@ Although `PreferenceService` was extracted and the four primary toggle handlers 
 The "Update documentation" task was marked done, but `classes.puml`, `sequence-full.puml`, and `architecture.md` are out of sync with the refactored code.
 
 #### 2.1 Synchronize `docs/classes.puml`
-* **File:** [`docs/classes.puml`](classes.puml)
-* **Specific items to update:**
-  - [ ] **`UIWidgets`:** Replace the flat ~30-field struct definition with three sub-structs: `DownloadControls`, `PreferenceControls`, and `PostProcessControls`, with `UIWidgets` referencing them as `download`, `prefs`, and `postProcess`.
-  - [ ] **`DownloaderApp`:**
-     - Remove obsolete methods that were moved to `UIManager` or package-level: `createUI()`, `createMainMenu()`, `checkDependencies()`, `resetPreferences()`, `rebuildUI()`, and `applyPreferencesToWidgets()`.
-     - Add missing fields: `historySvc : *HistoryService`, `onLogLine : func(string, color.Color)`, and `cancelMu : sync.Mutex`.
-  - [ ] **`UIManager`:**
-     - Add missing public methods: `createUI()`, `createMainMenu()`, `checkDependencies()`, `runUpdateInUI()`, `showPreferences()`, `showPostProcessing()`, `savePreferences()`, `resetPreferences()`, `rebuildUI()`, `appendLogLine()`.
-     - Add the 17 injected callback fields (`onLoadHistory`, `onClearHistory`, `onCheckDependencies`, `onRunUpdate`, `onLoadPreferences`, `onSavePreferences`, `onResetPreferences`, `onLoadConfigFile`, `onMergeConfig`, `onSetLogBufferLimit`, `onLogBufferLimit`, `onLog`, `onStatus`, `onSetStatusIndicator`, `onStartDownload`, `onOpenFolder`, `onRequestCancel`).
-     - Remove stale relationship line: `UIManager --> HistoryService : historySvc` (UIManager no longer holds a reference to `HistoryService`).
-  - [ ] **`DownloadEngine` & `DownloadRequest`:**
-     - Update `Execute()` signature to accept `opts DownloadOptions`.
-     - Add `Run(ctx, req, opts, cb) : DownloadResult`.
-     - Add `FinalizeFiles(savePath, downloadID, onLog) : []string`.
-     - Add `DownloadOptions` and `DownloadResult` structs.
-     - Move `AutoRetry` out of `DownloadRequest` and into `DownloadOptions`.
-  - [ ] **`HistoryService`:**
-     - Update `AppendAll` signature to `AppendAll(rec DownloadRecord) : error`.
-     - Add `DownloadRecord` struct.
-  - [ ] **`LogService`:**
-     - Add `sessionDir : string`.
-     - Add `WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))`.
-     - Add `SessionConfig` struct.
-  - [ ] **`DependencyService`:**
-     - Add `Version(toolName string) : (string, error)`.
-  - [ ] **`GPUCapabilityService`:**
-     - Add `GPUBackendOptions()`, `GPUBackendFromLabel()`, and `FormatGPUDiagnostics().String()`.
+* ~~**File:** [`docs/classes.puml`](classes.puml)~~ — *Done. Synchronized the diagram with the current grouped UI controls, coordinator/UIManager ownership and callbacks, download lifecycle value types, history and logging records, dependency versioning, GPU helper functions, and relationships.*
 
 #### 2.2 Synchronize `docs/sequence-full.puml`
 * **File:** [`docs/sequence-full.puml`](sequence-full.puml)

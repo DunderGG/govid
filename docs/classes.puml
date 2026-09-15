@@ -24,8 +24,11 @@ package "Application Core" #F0F4F8 {
         +ui : *UIWidgets
         +stats : *DownloadStats
         +logSvc : *LogService
+        +historySvc : *HistoryService
         +depSvc : *DependencyService
         +gpuSvc : *GPUCapabilityService
+        +onLogLine : func(string, color.Color)
+        +cancelMu : sync.Mutex
         +cancelFn : context.CancelFunc
         +stopPulse : chan struct{}
         +uiManager : *UIManager
@@ -35,13 +38,7 @@ package "Application Core" #F0F4F8 {
         --
         +startDownload()
         +runYtDlp(ctx, url, path, ...)
-        +applyPreferencesToWidgets(p)
         +savePreferences(path)
-        +resetPreferences()
-        +rebuildUI()
-        +checkDependencies()
-        +createUI()
-        +createMainMenu()
         +applyFFmpegFilters(ctx, paths, vf, af)
     }
 
@@ -53,36 +50,50 @@ package "Application Core" #F0F4F8 {
 package "UI Layer" #F0F8F0 {
 
     class UIWidgets <<ui>> {
-        ' — Download controls —
+        +download : *DownloadControls
+        +prefs : *PreferenceControls
+        +postProcess : *PostProcessControls
+    }
+
+    class DownloadControls <<ui>> {
         +entry : *widget.Entry
         +path : *widget.Entry
-        +format : *widget.Select
-        +quality : *widget.Select
-        +downloadBtn : *widget.Button
-        +cancelBtn : *widget.Button
+        +output : *container.Scroll
+        +logList : *fyne.Container
         +progress : *widget.ProgressBar
         +status : *widget.Label
-        +statusDot : *canvas.Circle
-        ' — Session options —
+        +format : *widget.Select
+        +quality : *widget.Select
         +saveLog : *widget.Check
         +notify : *widget.Check
         +autoRetry : *widget.Check
-        +enablePostProcess : *widget.Check
-        +batchMode : *widget.Check
-        +maxSpeed : *widget.Entry
+        +downloadBtn : *widget.Button
+        +cancelBtn : *widget.Button
+        +statusDot : *canvas.Circle
         +trimStart : *widget.Entry
         +trimEnd : *widget.Entry
-        +cookies : *widget.Entry
-        ' — Settings controls —
-        +savePrefs : *widget.Check
+        +batchMode : *widget.Check
+    }
+
+    class PreferenceControls <<ui>> {
+        +maxSpeed : *widget.Entry
         +themeMode : *widget.RadioGroup
+        +cookies : *widget.Entry
+        +savePrefs : *widget.Check
         +logLimit : *widget.Select
-        ' — Post-processing controls (12 fields) —
+    }
+
+    class PostProcessControls <<ui>> {
+        +enablePostProcess : *widget.Check
         +smoothMotion : *widget.Check
+        +smoothMotionMode : *widget.RadioGroup
+        +smoothMotionFPS : *widget.Slider
         +sharpen : *widget.Check
+        +sharpenAmount : *widget.Slider
         +normalizeAudio : *widget.Check
         +vividMode : *widget.Check
         +denoise : *widget.Check
+        +denoiseMode : *widget.RadioGroup
         +hdrToSdr : *widget.Check
         +deband : *widget.Check
         +autoCrop : *widget.Check
@@ -90,6 +101,7 @@ package "UI Layer" #F0F8F0 {
         +deinterlace : *widget.Check
         +nightMode : *widget.Check
         +upscaleVideo : *widget.Check
+        +upscaleTarget : *widget.Select
         +gpuBackend : *widget.Select
     }
 
@@ -100,10 +112,38 @@ package "UI Layer" #F0F8F0 {
         -historyWindow : fyne.Window
         -prefsWindow : fyne.Window
         -ppWindow : fyne.Window
+        -ui : *UIWidgets
+        -onLoadHistory : func() ([]DownloadHistoryEntry, error)
+        -onClearHistory : func() error
+        -onCheckDependencies : func(func(string))
+        -onRunUpdate : func(UpdateCallbacks)
+        -onLoadPreferences : func() AppPreferences
+        -onSavePreferences : func(AppPreferences)
+        -onResetPreferences : func()
+        -onLoadConfigFile : func(string) (*AppConfig, error)
+        -onMergeConfig : func(*AppConfig, AppPreferences, []string, []string) (AppPreferences, []string)
+        -onSetLogBufferLimit : func(int)
+        -onLogBufferLimit : func() int
+        -onLog : func(string, color.Color)
+        -onStatus : func(string)
+        -onSetStatusIndicator : func(string)
+        -onStartDownload : func()
+        -onOpenFolder : func()
+        -onRequestCancel : func() bool
         --
+        +createUI()
+        +createMainMenu()
+        +checkDependencies()
+        +runUpdateInUI()
         +showAbout()
         +showHistory()
         +showConfigHelp()
+        +showPreferences()
+        +showPostProcessing()
+        +savePreferences(path)
+        +resetPreferences()
+        +rebuildUI()
+        +appendLogLine(line, col)
     }
 
 }
@@ -118,7 +158,9 @@ package "Download Engine" #FFF8F0 {
         +FFmpegPath : string
         --
         +BuildArgs(req DownloadRequest) : DownloadArgs
-        +Execute(ctx, args, autoRetry,\n  index, total, cb) : scanResult
+        +Execute(ctx, args, opts DownloadOptions, cb) : scanResult
+        +Run(ctx, req, opts DownloadOptions, cb) : DownloadResult
+        +FinalizeFiles(savePath, downloadID, onLog) : []string
         -watchOutput(stdout, stderr, cb) : scanResult
         -parseProgress(line, cb)
     }
@@ -132,7 +174,19 @@ package "Download Engine" #FFF8F0 {
         +TrimEnd : string
         +MaxSpeed : string
         +CookiesPath : string
+    }
+
+    class DownloadOptions <<data>> {
         +AutoRetry : bool
+        +Index : int
+        +Total : int
+    }
+
+    class DownloadResult <<data>> {
+        +FinalPaths : []string
+        +Extension : string
+        +Scan : scanResult
+        +Err : error
     }
 
     class DownloadArgs <<data>> {
@@ -270,6 +324,18 @@ package "GPU Capability Service" #F0FFFF {
         +(requested, capabilities,\n  containerExt) : EncoderPlan
     }
 
+    class "GPUBackendOptions()" as GPUBackendOptionsFn <<free function>> {
+        +() : []string
+    }
+
+    class "GPUBackendFromLabel()" as GPUBackendFromLabelFn <<free function>> {
+        +(label string) : GPUBackend
+    }
+
+    class "FormatGPUDiagnostics()" as FormatGPUDiagnosticsFn <<free function>> {
+        +(capabilities) : []string
+    }
+
 }
 
 ' ════════════════════════════════════════════════════════════
@@ -281,9 +347,18 @@ package "History Service" #F0FFF4 {
         -filePath : string
         --
         +Load() : []DownloadHistoryEntry
-        +AppendAll(url, finalPaths, savePath,\n  format, quality, postProcessed)
+        +AppendAll(rec DownloadRecord) : error
         +Clear()
-        -buildEntries(...) : []DownloadHistoryEntry
+        -buildEntries(rec, timestamp) : []DownloadHistoryEntry
+    }
+
+    class DownloadRecord <<data>> {
+        +URL : string
+        +FinalPaths : []string
+        +SavePath : string
+        +Format : string
+        +Quality : string
+        +PostProcessed : bool
     }
 
     class DownloadHistoryEntry <<data>> {
@@ -361,6 +436,7 @@ package "Dependency Service" #FFFFF0 {
         +LocalPath(toolName string) : string
         +Resolve(toolName string) : string
         +Check(onWarning func(string))
+        +Version(toolName string) : (string, error)
         +RunUpdate(cb UpdateCallbacks)
     }
 
@@ -383,6 +459,7 @@ package "Log Service" #F0F8FF {
         -mutex : sync.Mutex
         -errorMutex : sync.Mutex
         -bufferLimit : int
+        -sessionDir : string
         --
         +OpenSessionLog(dir string) : (string, error)
         +CloseSessionLog()
@@ -391,6 +468,28 @@ package "Log Service" #F0F8FF {
         +IsActive() : bool
         +SetBufferLimit(n int)
         +BufferLimit() : int
+        +WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))
+    }
+
+    class SessionConfig <<data>> {
+        +URLs : []string
+        +RawURLField : string
+        +SavePath : string
+        +BatchMode : bool
+        +Format : string
+        +Quality : string
+        +TrimStart : string
+        +TrimEnd : string
+        +MaxSpeed : string
+        +CookiesPath : string
+        +SaveLog : bool
+        +Notify : bool
+        +AutoRetry : bool
+        +PostProcessEnabled : bool
+        +SavePrefs : bool
+        +LogLimit : string
+        +ThemeMode : string
+        +PP : PostProcessSettings
     }
 
 }
@@ -468,6 +567,9 @@ DependencyService ..> UpdateCallbacks : RunUpdate bridge
 
 ' DownloaderApp composition (owns these fields)
 DownloaderApp *--> UIWidgets       : ui
+UIWidgets *--> DownloadControls    : download
+UIWidgets *--> PreferenceControls  : prefs
+UIWidgets *--> PostProcessControls : postProcess
 DownloaderApp *--> UIManager       : uiManager
 DownloaderApp *--> PreferenceService : prefSvc
 DownloaderApp *--> HistoryService   : historySvc
@@ -483,6 +585,8 @@ DownloaderApp ..> PPEngine         : creates per post-process
 ' DownloadEngine value flow
 DownloadEngine ..> DownloadRequest : BuildArgs input
 DownloadEngine ..> DownloadArgs    : BuildArgs output
+DownloadEngine ..> DownloadOptions  : Run / Execute options
+DownloadEngine ..> DownloadResult   : Run output
 DownloadEngine ..> ProcessCallbacks : Execute bridge
 DownloadEngine ..> scanResult      : Execute output
 
@@ -499,6 +603,9 @@ GPUCapabilityService ..> BackendCapability : Detect / Capability
 GPUCapabilityService ..> GPUBackend        : keys its cache by
 PlanEncoderFn ..> EncoderPlan  : returns
 PlanEncoderFn ..> BackendCapability : reads availability from
+GPUBackendOptionsFn ..> GPUBackend : returns labels for
+GPUBackendFromLabelFn ..> GPUBackend : parses label to
+FormatGPUDiagnosticsFn ..> BackendCapability : formats results from
 
 ' PreferenceService
 PreferenceService --> FynePreferences : store
@@ -506,7 +613,10 @@ PreferenceService ..> AppPreferences  : Load / Save
 
 ' HistoryService
 HistoryService ..> DownloadHistoryEntry : Load / AppendAll
-UIManager --> HistoryService : historySvc
+HistoryService ..> DownloadRecord : AppendAll input
+
+' LogService
+LogService ..> SessionConfig : WriteSessionConfig input
 
 ' UIManager renders history
 UIManager ..> DownloadHistoryEntry : renders
