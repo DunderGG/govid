@@ -6,6 +6,7 @@ Fast, cross-platform desktop video downloader for `yt-dlp` with optional FFmpeg 
 [![License](https://img.shields.io/github/license/DunderGG/govid)](LICENSE)
 ![Go Version](https://img.shields.io/badge/go-1.26%2B-00ADD8)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-2ea44f)
+[![CI](https://github.com/DunderGG/govid/actions/workflows/ci.yml/badge.svg)](https://github.com/DunderGG/govid/actions/workflows/ci.yml)
 
 Download: [Latest Release](https://github.com/DunderGG/govid/releases/latest)
 Quick links: [Features](#-features) · [Getting Started](#-getting-started) · [Usage](#-usage)
