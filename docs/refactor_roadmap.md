@@ -270,11 +270,7 @@ The "Update documentation" task was marked done, but `classes.puml`, `sequence-f
 * ~~**File:** [`docs/sequence-full.puml`](sequence-full.puml)~~ — *Done. Startup now shows `UIManager` ownership for UI creation and dependency checks, missing dependencies are logged as warnings, session logging uses `LogService.OpenSessionLog`/`WriteSessionConfig`, and teardown calls `LogService.CloseSessionLog`.*
 
 #### 2.3 Synchronize `docs/architecture.md`
-* **File:** [`docs/architecture.md`](architecture.md)
-* **Specific items to update:**
-  - [ ] **§4.1 `DownloaderApp` table:** Add `onLogLine` callback and `cancelMu sync.Mutex`.
-  - [ ] **§4.2 `UIWidgets`:** Remove the obsolete `> **Planned:** split into smaller feature-scoped structs` note. Document the actual grouped structure (`DownloadControls`, `PreferenceControls`, `PostProcessControls`).
-  - [ ] **§4.8 `HistoryService`:** Update `AppendAll` description from the old 6-parameter signature to `AppendAll(rec DownloadRecord)`. Remove the stale sentence stating `UIManager receives a reference at startup` (UIManager uses injected callbacks `onLoadHistory`/`onClearHistory`).
+* ~~**File:** [`docs/architecture.md`](architecture.md)~~ — *Done. Updated the `DownloaderApp` cancellation/logging fields, documented the grouped `UIWidgets` structure, and synchronized `HistoryService.AppendAll` plus its callback-based UIManager boundary.*
 
 ---
 

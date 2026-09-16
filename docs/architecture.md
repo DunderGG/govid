@@ -89,8 +89,10 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `depSvc *DependencyService` | Binary path resolution, dependency checks, updater (see §4.9) |
 | `gpuSvc *GPUCapabilityService` | GPU backend capability detection and cache (see §4.11) |
 | `stats *DownloadStats` | Real-time download metrics for progress smoothing |
-| `cancelFn` | Cancels the active download context |
+| `cancelMu sync.Mutex` | Guards access to the active cancellation callback |
+| `cancelFn context.CancelFunc` | Cancels the active download context |
 | `stopPulse` | Channel closed to stop the status-dot animation goroutine |
+| `onLogLine func(string, color.Color)` | Renders log lines through `UIManager.appendLogLine` |
 | `ppFailed atomic.Int32` | Counts post-processing failures across concurrent workers |
 | `isRunning atomic.Bool` | Prevents close without confirmation while jobs are active |
 
@@ -99,9 +101,13 @@ The central type. It holds pointers to every service and is the sole owner of th
 ### 4.2 `UIWidgets` — widget bag  
 *Defined in:* `types.go`
 
-A flat struct holding every Fyne widget. It intentionally carries no logic — widgets are wired with callbacks in `createUI()`. Grouped conceptually into download controls, session options, settings controls, and post-processing controls.
+`UIWidgets` is a widget bag with no application logic. It groups widgets into three feature-scoped structs, each constructed by its own constructor and composed by `NewUIWidgets()`:
 
-> **Planned:** split into smaller feature-scoped structs (see `docs/refactor_roadmap.md`).
+- **`DownloadControls`** — URL and save-path inputs, format/quality selectors, trim fields, batch/session toggles, progress/status widgets, action buttons, and the log view.
+- **`PreferenceControls`** — maximum speed, theme mode, cookies path, save-preferences toggle, and log-limit selector.
+- **`PostProcessControls`** — the post-processing master toggle, FFmpeg filter controls, upscale settings, and GPU backend selector.
+
+Widgets are wired with callbacks in `UIManager.createUI()` and accessed through `ui.download`, `ui.prefs`, and `ui.postProcess`.
 
 ---
 
@@ -199,10 +205,10 @@ Package-level helpers: `IsErrorLine(line string) bool` (matches ERROR/FAILED), `
 Owns the path to `download_history.json` (beside the executable) and exposes three methods:
 
 - **`Load() ([]DownloadHistoryEntry, error)`** — reads all entries in chronological order. Returns nil with no error when the file does not yet exist.
-- **`AppendAll(url, finalPaths, savePath, format, quality, postProcessed)`** — builds one `DownloadHistoryEntry` per path and writes the updated array in a single atomic write. When `finalPaths` is empty a placeholder entry is appended so the URL is still recorded.
+- **`AppendAll(rec DownloadRecord)`** — builds one `DownloadHistoryEntry` per path in `rec.FinalPaths` and writes the updated array in a single atomic write. When `rec.FinalPaths` is empty a placeholder entry is appended so the URL is still recorded.
 - **`Clear() error`** — overwrites the file with an empty JSON array.
 
-The private `buildEntries` helper and `inferOriginalTitle` live here; neither has a UI dependency. `DownloaderApp` holds `historySvc *HistoryService`; `UIManager` receives a reference at startup so `showHistory` never touches the file path directly.
+The private `buildEntries` helper and `inferOriginalTitle` live here; neither has a UI dependency. `DownloaderApp` holds `historySvc *HistoryService`; `UIManager` uses injected `onLoadHistory` and `onClearHistory` callbacks so `showHistory` never touches the file path directly.
 
 `DownloadHistoryEntry` is a plain JSON-serialisable value struct (url, originalTitle, finalFilename, savedPath, format, quality, downloadedAt, postProcessed).
 
