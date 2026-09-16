@@ -70,18 +70,18 @@ All steps depend on the preceding phases. Execute in order; each step shrinks th
 
 - [x] Centralize preference loading — Move preference reads and default values into a small settings-loading layer so UI code stays focused on layout and event wiring. *(`PreferenceService` done.)*
 - [x] Extract shared window-focus logic — Create one helper for the repeated focus-or-create pattern so every dialog and tool window behaves consistently. *(Added `focusOrCreate(win *fyne.Window) bool` and `onWindowClosed(win *fyne.Window) func()` to `ui_manager.go`; applied across all 5 singleton show methods in `ui_manager.go` and `ui.go`.)*
-- [x] Replace hard-coded post-processing thresholds with constants — Name the thresholds and cost values so the code self-documents what each value means and is easier to tune later. *(Added 16 `cost*` constants and 4 `loadThreshold*` constants to `postprocess.go`; all magic numbers in `computeProcessingLoad` replaced. Block thresholds in `ui.go` left inline with a cross-reference comment to the load scale.)*
+- [x] Replace hard-coded post-processing thresholds with constants — Name the thresholds and cost values so the code self-documents what each value means and is easier to tune later. *(Added 16 `cost*` constants and 4 `loadThreshold*` constants to `postprocess.go`; all magic numbers in `computeProcessingLoad` replaced. Block thresholds remain inline in `ui_manager.go` within `showPostProcessing()`, with a cross-reference comment to the load scale.)*
 - [x] Keep LogManager focused on one job — Separate file appending and log persistence from mutex and error-handling details if the type grows further. *(`LogService` extracted; `LogManager` removed.)*
 - [x] Move history handling behind a service boundary — Keep storage and schema changes away from the UI so history can evolve without touching the main window code. *(`HistoryService` done.)*
 - [x] Keep log parsing tolerant — Treat yt-dlp output parsing as best-effort so small wording changes do not break downloads. *(Already satisfied: all parsing uses `strings.Contains` / `strings.CutPrefix` / `strings.Fields` with silent fallbacks. No parse failure can interrupt a download — worst case is a wrong progress value or incorrect format label in the summary.)*
 
 ## Low Priority
 
-- [x] Organize helpers.go by purpose — Split helpers into groups like parsing, filesystem, UI, and formatting so the file does not become a dumping ground. *(Six named sections added: Config file, Thread-safe UI updates, Progress bar, Preference management, Filesystem, Dependency / update wrappers.)*
-- [x] Make helper functions narrowly named and testable — Use descriptive helper names and prefer deterministic helpers for time, byte, and formatting logic so they are easy to test. *(Extracted pure `parseAppConfig([]byte)` and `isValidOption(string, []string)` from the DownloaderApp methods; made `loadConfigFile(path string)` a package-level function accepting an explicit path; added `configFileName` constant.)*
+- [x] Organize helpers.go by purpose — Split helpers into groups like parsing, filesystem, UI, and formatting so the file does not become a dumping ground. *(Four named sections plus General: File I/O, UI updates, Preference management, and External tools.)*
+- [x] Make helper functions narrowly named and testable — Use descriptive helper names and prefer deterministic helpers for time, byte, and formatting logic so they are easy to test. *(Extracted pure `parseAppConfig([]byte)` and `isValidOption(string, []string)` helpers; config-file loading now belongs to `PreferenceService.LoadFromFile`, and the obsolete `loadConfigFile` helper was removed.)*
 - [x] Keep theme code isolated and reusable — Keep theme colors and helpers separate from UI construction, and use named constants or helpers for repeated colors. *(Added 12 named colour vars to theme.go (`colSystem`, `colInfo`, `colError`, `colWarning`, `colSuccess`, `colSuccessBorder`, `colDebug`, `colDotIdle`, `colDotSuccess`, `colDotFailed`, `colDotCanceled`, `colDotProcessing`); replaced ~70 inline `color.RGBA{...}` literals across 8 files; normalised the stray `{255,160,0}` to `colWarning`; removed unused `image/color` import from main.go.)*
 - [x] Isolate icon and embedded asset code — Keep generated or embedded asset files separate from application logic so they stay predictable and easier to update. *(`icons.go` and `embedded_icon.go` were already well-isolated. Fixed the raw `"themeMode"` string in `themedIcon()` to use the `prefThemeMode` constant; added a comment linking `svgFillLight` to `accentCyan` in `theme.go` to prevent them drifting.)*
-- [x] Preserve platform-specific wrappers — Keep Windows and non-Windows process handling in dedicated build-tag files so the rest of the app can stay cross-platform and simple. *(Extracted `openFolderCommand(path string) *exec.Cmd` into `sys_windows.go` (Explorer) and `sys_others.go` (open/xdg-open); `openDownloadFolder` in helpers.go is now a 3-line wrapper; `runtime` and `os/exec` imports removed from helpers.go. The `.exe` suffix check in `dependency_service.go` and the default-format UI logic in `ui.go` were left inline — both are policy/string logic, not process handling.)*
+- [x] Preserve platform-specific wrappers — Keep Windows and non-Windows process handling in dedicated build-tag files so the rest of the app can stay cross-platform and simple. *(Extracted `openFolderCommand(path string) *exec.Cmd` into `sys_windows.go` (Explorer) and `sys_others.go` (open/xdg-open); `openDownloadFolder` in helpers.go is now a 3-line wrapper. `helpers.go` still imports `os/exec` for `exec.ExitError` in `exitCodeFromError()`. The `.exe` suffix check remains in `dependency_service.go`, and default-format UI logic is in `ui_manager.go` (`loadMainWindowState`); both are policy logic rather than process wrappers.)*
 
 ---
 
@@ -150,7 +150,7 @@ See the sections below for per-component details and open next steps.
 
 ## HistoryService
 
-**Done:** `HistoryService` struct introduced in `history.go`. It owns the path to `download_history.json` and exposes three methods: `Load() ([]DownloadHistoryEntry, error)` (reads all entries, tolerant of missing file), `AppendAll(url, finalPaths, savePath, format, quality, postProcessed) error` (builds and persists one entry per output file in a single write), and `Clear() error` (resets to an empty array). The private `buildEntries` helper and `inferOriginalTitle` moved onto the service. All previous free functions (`historyFilePath`, `loadDownloadHistory`, `appendDownloadHistory`, `clearDownloadHistory`, `buildDownloadHistoryEntries`) have been removed. `DownloaderApp` holds `historySvc *HistoryService`; `UIManager` receives a reference at startup so `showHistory` and its Clear button never touch file paths directly. `download.go` now calls `app.historySvc.AppendAll(...)` instead of a for-loop over individual `appendDownloadHistory` calls.
+**Done:** `HistoryService` struct introduced in `history_service.go`. It owns the path to `download_history.json` and exposes three methods: `Load() ([]DownloadHistoryEntry, error)` (reads all entries, tolerant of missing file), `AppendAll(rec DownloadRecord) error` (builds and persists one entry per output file in a single write), and `Clear() error` (resets to an empty array). The private `buildEntries` helper and `inferOriginalTitle` moved onto the service. All previous free functions (`historyFilePath`, `loadDownloadHistory`, `appendDownloadHistory`, `clearDownloadHistory`, `buildDownloadHistoryEntries`) have been removed. `DownloaderApp` holds `historySvc *HistoryService`; `UIManager` uses injected `onLoadHistory`/`onClearHistory` callbacks so `showHistory` and its Clear button never touch file paths directly. `download.go` now passes a `DownloadRecord` to `app.historySvc.AppendAll(...)`.
 
 **No open next steps** — `HistoryService` is fully extracted. Future work would be covered by the medium-priority roadmap item "Move history handling behind a service boundary", which is now complete.
 
@@ -279,20 +279,13 @@ The "Update documentation" task was marked done, but `classes.puml`, `sequence-f
 Minor stale references and signature mismatches within [`refactor_roadmap.md`](refactor_roadmap.md) itself:
 
 #### 3.1 Correct file name for HistoryService
-* **Location:** [`refactor_roadmap.md` § HistoryService](#historyservice) (line 153)
-* **Correction:** Change `"HistoryService struct introduced in history.go"` to `"HistoryService struct introduced in history_service.go"`.
+* ~~**Done:** Changed `HistoryService`'s source reference from `history.go` to `history_service.go`.~~
 
 #### 3.2 Correct `HistoryService.AppendAll` signature
-* **Location:** [`refactor_roadmap.md` § HistoryService](#historyservice) (line 153)
-* **Correction:** Change `AppendAll(url, finalPaths, savePath, format, quality, postProcessed) error` to `AppendAll(rec DownloadRecord) error`.
+* ~~**Done:** Updated the documented signature to `AppendAll(rec DownloadRecord) error`.~~
 
 #### 3.3 Correct post-processing block thresholds location
-* **Location:** [`refactor_roadmap.md` § Medium Priority](#medium-priority) (line 73) & [`postprocess.go`](../postprocess.go#L47)
-* **Correction:** The roadmap and `postprocess.go` state that block thresholds are in `ui.go`. They were moved to [`ui_manager.go:573`](../ui_manager.go#L573) inside `showPostProcessing()`.
+* ~~**Done:** Updated the threshold location to `ui_manager.go` within `showPostProcessing()`.~~
 
 #### 3.4 Correct section count and import claims for `helpers.go`
-* **Location:** [`refactor_roadmap.md` § Low Priority](#low-priority) (lines 80, 81, 84)
-* **Correction:**
-  - Line 80 lists 6 sections in `helpers.go`; the file currently has 4 sections + General because config and dependency logic moved out.
-  - Line 81 refers to `loadConfigFile(path string)` as a package-level helper, but it was subsequently deleted when `PreferenceService.LoadFromFile` was added.
-  - Line 84 states `os/exec` was removed from `helpers.go`, but it is still imported for `exec.ExitError` in `exitCodeFromError()`. Default-format logic is also in `ui_manager.go` (`loadMainWindowState`), not `ui.go`.
+* ~~**Done:** Corrected the helpers section count, removed the stale `loadConfigFile` claim, retained the `os/exec` import note, and pointed default-format logic to `ui_manager.go`.~~
