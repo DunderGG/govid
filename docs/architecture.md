@@ -40,7 +40,7 @@ govid/
 ├── pp_engine.go            PPEngine — concurrent FFmpeg post-processing worker pool
 ├── preference_service.go   PreferenceService — preference keys, defaults, Load/Save/Reset, LoadFromFile, MergeConfig;
 │                           savePreferences, parseAppConfig, isValidOption co-located
-├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadHistoryEntry type
+├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadRecord and DownloadHistoryEntry types
 ├── log_service.go          LogService — session log open/close, error log routing, buffer-limit management
 ├── dependency_service.go   DependencyService — binary path resolution, dependency checks, yt-dlp updater
 ├── ui_manager.go           UIManager — main window layout (createUI, createMainMenu), secondary window lifecycle
@@ -49,7 +49,7 @@ govid/
 │
 ├── ── Orchestration ───────────────────────────────────────────────
 ├── download.go             DownloaderApp.startDownload / runYtDlp — UI orchestration for a download session
-├── postprocess.go          PostProcessSettings, buildPostProcessFilters / applyFFmpegFilters — value struct + thin UI wrapper
+├── postprocess.go          PostProcessSettings, buildPostProcessFilters / applyFFmpegFilters — value struct + thin UI wrapper; shared format/scan helpers
 ├── logscanner.go           DownloadEngine.watchOutput / parseProgress — yt-dlp stdout/stderr parsing goroutines
 │
 ├── ── UI ──────────────────────────────────────────────────────────
@@ -141,6 +141,8 @@ A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and pr
 
 The private `watchOutput(stdout, stderr, cb) scanResult` and `parseProgress(line, cb)` methods own all output-scanning; they hold no UI state and report every line and progress tick through `ProcessCallbacks`.
 
+`scanResult` records the source extensions seen in `[download] Destination:` lines, whether yt-dlp converted or merged the media, and whether a retryable network/rate-limit error was observed. The final result retains this metadata for the completion summary and retry decision.
+
 `ProcessCallbacks` is a bridge struct: it carries closures (`OnLog`, `OnStatus`, `OnProgress`) that let the engine report progress back to the UI without importing Fyne. `OnProgress(pct float64, size string)` is called for each parsed percentage; `size` is the last reported downloaded-size token, or empty when the line had none. `DownloaderApp.runYtDlp()` is the only caller.
 
 **Division of responsibility with `download.go`:** `DownloadEngine` is UI-agnostic — it never reads widget state and reports everything through `ProcessCallbacks`. `download.go` is the layer that still needs the UI/app context: `startDownload()` owns the batch/session lifecycle (validating widget input, the queue `context.Context` for cancel/skip across multiple URLs, opening/closing the session log, running post-processing over the whole batch), and `runYtDlp()` is the per-URL adapter — it translates widget state into a `DownloadRequest`/`DownloadOptions`, calls `engine.Run`, then handles app-specific side effects the engine has no business knowing about (history recording, the "DOWNLOAD COMPLETE/ABORTED" log block, status indicator updates, OS notifications).
@@ -150,7 +152,7 @@ The private `watchOutput(stdout, stderr, cb) scanResult` and `parseProgress(line
 ### 4.5 `PPEngine` — FFmpeg post-processing engine  
 *Defined in:* `pp_engine.go`
 
-Owns the resolved paths to `ffmpeg` and `ffprobe`, plus the GPU acceleration state needed for the final encode step: `GPUBackend` (the resolved backend selection) and `GPUCapabilities` (the `map[GPUBackend]BackendCapability` copied from `GPUCapabilityService.Detect()` — see §4.11). Exposes one public method:
+Owns the resolved paths to `ffmpeg` and `ffprobe`, plus the GPU acceleration state needed for the final encode step: `GPUBackend` (the resolved backend selection), `GPUCapabilities` (the `map[GPUBackend]BackendCapability` copied from `GPUCapabilityService.Detect()`), and `gpuSem` (a semaphore with capacity `maxConcurrentGPUJobs = 2` — see §4.11). Construct it with `NewPPEngine(ffmpegPath, ffprobePath)`. Exposes one public method:
 
 - **`ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks)`** — builds one `PostProcessJob` per file, then runs them concurrently through a worker pool bounded to `runtime.NumCPU()` goroutines. Each worker calls the private `runJob()`.
 
@@ -169,7 +171,7 @@ Private probe methods (`probeFrameCount`, `probeDuration`, `computeOutputFrameCo
 ### 4.6 `PreferenceService` — preference persistence  
 *Defined in:* `preference_service.go`
 
-All 30 Fyne preference storage keys are named constants here (`prefSavedPath`, `prefFormat`, …). Default values are separate named constants (`defaultThemeMode`, `defaultSmoothFPS`, …).
+All 30 Fyne preference storage keys are named constants here (`prefSavedPath`, `prefFormat`, …). Default values are separate named constants (`defaultThemeMode`, `defaultSmoothFPS`, …) in the same file; `Load()` applies those defaults when a stored value is absent.
 
 - **`Load() AppPreferences`** — reads the Fyne store and returns a fully-defaulted plain struct. Called once at startup and again each time a secondary window refreshes its controls.
 - **`Save(AppPreferences)`** — writes the struct back. Honours the `savePrefs` gate: if the user has disabled persistence, only the toggle itself is written.
@@ -184,13 +186,14 @@ All 30 Fyne preference storage keys are named constants here (`prefSavedPath`, `
 ### 4.7 `LogService` — file logging
 *Defined in:* `log_service.go`
 
-Owns the session log file handle, two mutexes, daily rotation policy, and the UI buffer-limit value. `DownloaderApp` holds `logSvc *LogService`.
+Owns the session log file handle, two mutexes, daily rotation policy, the UI buffer-limit value, and a pre-session line buffer. Session and error files use `GoVid_log_YYYY-MM-DD.txt` and `GoVid_errors_YYYY-MM-DD.txt`; old daily files are retained rather than automatically deleted. `DownloaderApp` holds `logSvc *LogService`.
 
 - **`OpenSessionLog(dir string) (string, error)`** — opens (or appends to) the daily `GoVid_log_YYYY-MM-DD.txt` in `dir`. Returns the resolved path.
 - **`CloseSessionLog()`** — writes a closing marker and closes the file.
 - **`WriteToFile(line string)`** — appends a timestamped line to the open session log.
 - **`WriteToErrorLog(line string)`** — appends a timestamped line to the daily `GoVid_errors_YYYY-MM-DD.txt`. Uses the session directory cached by `OpenSessionLog`; falls back to the executable directory when no session is active. Opens and closes the file on each call.
 - **`SetBufferLimit(n int)` / `BufferLimit() int`** — gets/sets the UI log line cap (replaces the former `logBufferLimit` global).
+- Before a session opens, `WriteToFile` keeps timestamped lines in the bounded `preSession` buffer. `OpenSessionLog` flushes those lines into the newly opened file, preserving startup diagnostics such as dependency warnings and GPU detection output.
 - **`WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))`** — writes the session's starting configuration (save path, format/quality, trim, toggles, preferences, URL list, post-process settings) as one log line per setting via `writeFn`. Driven entirely by `SessionConfig`, a plain value struct with no widget references, built by `newSessionConfig(ui *UIWidgets, urls []string, savePath, trimStart, trimEnd string) SessionConfig` — it embeds the existing `PostProcessSettings` (§4.5) for its post-process fields rather than duplicating them.
 
 Package-level helpers: `IsErrorLine(line string) bool` (matches ERROR/FAILED), `ParseBufferLimit(s string) int` (converts the preference string to an integer), `SessionLogPath(dir string)`, `ErrorLogPath(dir string)`.
@@ -205,12 +208,13 @@ Package-level helpers: `IsErrorLine(line string) bool` (matches ERROR/FAILED), `
 Owns the path to `download_history.json` (beside the executable) and exposes three methods:
 
 - **`Load() ([]DownloadHistoryEntry, error)`** — reads all entries in chronological order. Returns nil with no error when the file does not yet exist.
-- **`AppendAll(rec DownloadRecord)`** — builds one `DownloadHistoryEntry` per path in `rec.FinalPaths` and writes the updated array in a single atomic write. When `rec.FinalPaths` is empty a placeholder entry is appended so the URL is still recorded.
+- **`AppendAll(rec DownloadRecord)`** — builds one `DownloadHistoryEntry` per path in `rec.FinalPaths` and writes the updated array in a single write. When `rec.FinalPaths` is empty a placeholder entry is appended so the URL is still recorded.
 - **`Clear() error`** — overwrites the file with an empty JSON array.
 
 The private `buildEntries` helper and `inferOriginalTitle` live here; neither has a UI dependency. `DownloaderApp` holds `historySvc *HistoryService`; `UIManager` uses injected `onLoadHistory` and `onClearHistory` callbacks so `showHistory` never touches the file path directly.
 
 `DownloadHistoryEntry` is a plain JSON-serialisable value struct (url, originalTitle, finalFilename, savedPath, format, quality, downloadedAt, postProcessed).
+`DownloadRecord` is the plain input value passed to `AppendAll`: URL, final paths, save path, format, quality, and post-processing state.
 
 ---
 
@@ -259,17 +263,18 @@ Detects, once per app run, which GPU acceleration backends the bundled ffmpeg bi
 
 ```
 User clicks Download
-  └─ startDownload()          validate URLs; open log file; spawn worker goroutines
+  └─ startDownload()          validate URLs; open log file; spawn the sequential download worker
        └─ runYtDlp()           per URL
             ├─ engine.BuildArgs(DownloadRequest)   → []string args
-            ├─ engine.Execute(ctx, args, cb)        → scanResult
+            ├─ engine.Execute(ctx, args, opts, cb)   → scanResult
             │    ├─ cmd.StdoutPipe / StderrPipe
             │    └─ engine.watchOutput() goroutines (parse % / size) → cb.OnProgress
-            ├─ finalizeDownloadedFiles()            glob → rename
-            └─ historySvc.AppendAll()               JSON append
+              ├─ engine.FinalizeFiles()               glob → rename
+              └─ historySvc.AppendAll(DownloadRecord) JSON append
   └─ applyFFmpegFilters()     if post-processing enabled
        └─ PPEngine.ApplyFilters(ctx, files, vf, af, cb)
-            └─ runJob() per file (worker pool)
+              ├─ resolveAutoCrop() per file (sentinel → crop filter)
+              └─ runJob() per file (CPU worker pool; GPU jobs also use gpuSem, max 2)
 ```
 
 ### 5.2 Preference flow
@@ -354,11 +359,17 @@ func classify(err error) Category {
 
 | Goroutine | Started by | Cancelled by |
 |---|---|---|
-| Per-URL download worker | `startDownload()` via `sync.WaitGroup` | `context.WithCancel` (Cancel button) |
+| Download queue worker | `startDownload()` launches one background goroutine; URLs are processed sequentially | `queueCtx` via `context.WithCancel` |
 | `DownloadEngine.watchOutput` stdout/stderr | `DownloadEngine.Execute()` | process exit + pipe close |
-| Progress bar smoother | `createUI()` → ticker goroutine | same context cancel |
+| Progress bar smoother | `startDownload()` → 20 ms ticker goroutine | `queueCtx` cancellation |
 | Status dot pulse | `setStatusIndicator("active")` | `stopPulse` channel close |
-| Post-process worker pool | `PPEngine.ApplyFilters()` | same context |
+| Post-process worker pool | `PPEngine.ApplyFilters()`; GPU jobs additionally wait on `gpuSem` (capacity 2) | same context |
+
+The download queue itself is sequential: in batch mode each URL gets a child
+`runCtx` of the queue-level `queueCtx`. Cancelling the child skips only the
+active URL; in single-URL mode `runCtx` is the queue context, so cancellation
+stops the session. Post-processing runs afterward over the collected successful
+paths and can process multiple files concurrently.
 
 **UI thread rule:** every widget mutation must run inside `fyne.Do(func() { … })` when called from a non-main goroutine. Fyne panics on direct cross-thread access.
 
@@ -372,7 +383,7 @@ func classify(err error) Category {
 | Session log | `<save dir>/GoVid_log_YYYY-MM-DD.txt` | Plain text | `LogService` |
 | Error log | `<save dir>/GoVid_errors_YYYY-MM-DD.txt` | Plain text | `LogService` |
 | Download history | `<exe dir>/download_history.json` | JSON array | `HistoryService` |
-| Override config | `<cwd>/govid.json` | JSON object | `helpers.go` |
+| Override config | `<cwd>/govid.json` | JSON object | `PreferenceService` (`LoadFromFile` / `MergeConfig`); `AppConfig` is defined in `types.go` |
 
 ---
 

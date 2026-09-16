@@ -36,8 +36,24 @@ package "Application Core" #F0F4F8 {
         +ppFailed : atomic.Int32
         +isRunning : atomic.Bool
         --
+        +SetCancelFunc(cancel context.CancelFunc)
+        +RequestCancel() : bool
         +startDownload()
         +runYtDlp(ctx, url, path, ...)
+        +openDownloadFolder()
+        +updateStatus(msg)
+        +appendOutput(line, col)
+        +updateProgress(pct, size)
+        +setStatusIndicator(state)
+        +setProgress(pct)
+        +setProgressNow(pct)
+        +startGPUDetection()
+        +showHistory()
+        +showPostProcessing()
+        +showPreferences()
+        +showConfigHelp()
+        +showAbout()
+        +getPostProcessingButton()
         +savePreferences(path)
         +applyFFmpegFilters(ctx, paths, vf, af)
     }
@@ -157,6 +173,7 @@ package "Download Engine" #FFF8F0 {
         +YtDlpPath : string
         +FFmpegPath : string
         --
+        +NewDownloadEngine(ytDlpPath, ffmpegPath) : *DownloadEngine
         +BuildArgs(req DownloadRequest) : DownloadArgs
         +Execute(ctx, args, opts DownloadOptions, cb) : scanResult
         +Run(ctx, req, opts DownloadOptions, cb) : DownloadResult
@@ -191,6 +208,11 @@ package "Download Engine" #FFF8F0 {
 
     class DownloadArgs <<data>> {
         +Args : []string
+        +Extension : string
+        +DownloadID : string
+        +HasTrim : bool
+        +TrimDisplayStart : string
+        +TrimDisplayEnd : string
     }
 
     class ProcessCallbacks <<bridge>> {
@@ -200,6 +222,8 @@ package "Download Engine" #FFF8F0 {
     }
 
     class scanResult <<data>> {
+        +sourceExts : []string
+        +wasConverted : bool
         +hadTransientErr : bool
     }
 
@@ -213,7 +237,11 @@ package "Post-Processing Engine" #F8F0FF {
     class PPEngine <<service>> {
         +FFmpegPath : string
         +FFprobePath : string
+        +GPUBackend : GPUBackend
+        +GPUCapabilities : map[GPUBackend]BackendCapability
+        -gpuSem : chan struct{}
         --
+        +NewPPEngine(ffmpegPath, ffprobePath) : *PPEngine
         +ApplyFilters(ctx, files, vf, af, cb)
         -detectCropFilter(ctx, input, cb) : string
         -resolveAutoCrop(ctx, input, filters, cb) : []string

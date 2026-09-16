@@ -57,6 +57,7 @@ group Session Initialisation
     alt saveLog.Checked
         App -> LS : OpenSessionLog(savePath)\n  — open timestamped session log
         LS  --> App : log path
+        LS  -> LS : flush bounded preSession lines\n  — startup diagnostics buffered before logging enabled
         App -> LS : WriteSessionConfig(cfg, appendOutput)
     end
     App -> App  : context.WithCancel(Background)\n  → queueCtx / stopQueue
@@ -65,7 +66,7 @@ end
 ' ─────────────────────────────────────────────────────────────
 ' 3. PROGRESS SMOOTHER GOROUTINE
 ' ─────────────────────────────────────────────────────────────
-App -> App : go progressSmoother(queueCtx)\n  — ticks every 20 ms\n  — eases progress bar toward targetPct
+App -> App : go progressSmoother(queueCtx)\n  — time.NewTicker(20 ms)\n  — step = (targetPct - current) × 0.05\n  — minimum step 0.001; stops on queueCtx.Done()
 
 ' ─────────────────────────────────────────────────────────────
 ' 4. BATCH DOWNLOAD LOOP (goroutine)
@@ -76,6 +77,9 @@ App -> App : buildPostProcessFilters()\n  → vfFilters, afFilters
 group loop [for each URL in queue]
     alt batch mode (len > 1)
         App -> App : context.WithCancel(queueCtx)\n  → runCtx / skipItem  (per-URL cancel)
+        note right : Cancel skips only the active URL;\nqueueCtx and later URLs remain available.
+    else single URL
+        note right : runCtx == queueCtx; Cancel stops the whole session.
     end
 
     App -> App : runYtDlp(runCtx, url, …)
@@ -103,6 +107,7 @@ group loop [for each URL in queue]
                 WO  -> YT : scan stdout line by line
                 loop stdout lines
                     WO  -> WO  : engine.parseProgress(line, cb)\n  — extract %, size
+                    WO  -> WO  : detect [download] Destination:\n  — collect source extension
                     WO  -> App : cb.OnProgress(pct, size)\n  — App applies to stats.targetPct
                     WO  -> App : cb.OnLog(line, foreground colour)
                 end
@@ -111,7 +116,7 @@ group loop [for each URL in queue]
                 WO  -> YT : scan stderr line by line
                 loop stderr lines
                     WO  -> WO  : detect [Merger]/[VideoConvertor] → wasConverted
-                    WO  -> WO  : check transientErrPatterns → hadTransientErr
+                    WO  -> WO  : check transientErrPatterns\n  — 429, timeout, connection/reset errors → hadTransientErr
                     WO  -> App : cb.OnLog(line, red/amber/grey/default)
                 end
                 WO  -> WO : scanner.Err() check → log if I/O error
@@ -196,10 +201,13 @@ alt hasPostProcess && len(allFinalPaths) > 0 && not cancelled
             else FFmpeg failure && job.usedGPU
                 App -> App : guard.release()
                 App -> App : engine.retryWithCPU(ctx, job, cb, reason)\n  — rebuilds args with BackendOff, re-runs runJob()
-            else FFmpeg failure (CPU job, or GPU stall watchdog fired)
+            else FFmpeg failure (CPU job)
                 App -> App : ppFailed.Store(1)
                 App -> OS  : os.Remove(tmpOutput)  [clean up partial]
                 App -> UI  : appendOutput("[SYSTEM] FFmpeg failed…", red)
+            else GPU stall watchdog fires
+                App -> App : guard callback kills FFmpeg process\n  — 30 s with no stderr output
+                App -> App : guard.release()\n  — retryWithCPU if GPU job, otherwise record failure
             end
             App -> App : guard.release()  — deferred; idempotent no-op if already released
         end
