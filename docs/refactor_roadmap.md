@@ -267,11 +267,7 @@ The "Update documentation" task was marked done, but `classes.puml`, `sequence-f
 * ~~**File:** [`docs/classes.puml`](classes.puml)~~ — *Done. Synchronized the diagram with the current grouped UI controls, coordinator/UIManager ownership and callbacks, download lifecycle value types, history and logging records, dependency versioning, GPU helper functions, and relationships.*
 
 #### 2.2 Synchronize `docs/sequence-full.puml`
-* **File:** [`docs/sequence-full.puml`](sequence-full.puml)
-* **Specific items to update:**
-  - [ ] **Startup sequence:** Update `createMainMenu()`, `createUI()`, and `checkDependencies()` to show them invoked on `UIManager` (`dlApp.uiManager`), matching `main.go`. Remove `dialog.ShowError("missing tool")` since `DependencyService.Check` logs warnings rather than showing a dialog.
-  - [ ] **Session initialization:** Replace `OpenFile("GoVid_log.txt", ...)` with `LogService.OpenSessionLog(savePath)` which opens the timestamped log file and writes session config via `LogService.WriteSessionConfig`.
-  - [ ] **Session teardown:** Replace `log.file.Close()` with `LogService.CloseSessionLog()`.
+* ~~**File:** [`docs/sequence-full.puml`](sequence-full.puml)~~ — *Done. Startup now shows `UIManager` ownership for UI creation and dependency checks, missing dependencies are logged as warnings, session logging uses `LogService.OpenSessionLog`/`WriteSessionConfig`, and teardown calls `LogService.CloseSessionLog`.*
 
 #### 2.3 Synchronize `docs/architecture.md`
 * **File:** [`docs/architecture.md`](architecture.md)

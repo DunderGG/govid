@@ -9,6 +9,8 @@ skinparam shadowing false
 actor       User            as U
 participant "Fyne UI"       as UI
 participant "DownloaderApp" as App
+participant "UIManager"      as UIM
+participant "LogService"     as LS
 participant "DownloadEngine\nwatchOutput" as WO
 participant "yt-dlp"        as YT
 participant "FFmpeg"        as FF
@@ -19,12 +21,13 @@ participant "OS / Disk"     as OS
 ' ─────────────────────────────────────────────────────────────
 group Startup
     App -> App  : newDownloaderApp(window)\n  — init UIWidgets\n  — load Fyne preferences
-    App -> UI   : createUI()  — build layout, wire callbacks
-    App -> App  : createMainMenu()
-    App -> OS   : checkDependencies()\n  — Stat(yt-dlp), Stat(ffmpeg)
-    OS  --> App : found / missing
+    App -> UIM  : dlApp.uiManager.createMainMenu()
+    App -> UIM  : dlApp.uiManager.createUI()\n  — build layout, wire callbacks
+    App -> UIM  : dlApp.uiManager.checkDependencies()
+    UIM -> OS   : DependencyService.Check()\n  — Stat(yt-dlp), Stat(ffmpeg)
+    OS  --> UIM : found / missing
     alt dependency missing
-        App -> UI : dialog.ShowError("missing tool")
+        UIM -> App : onLog warning for missing tool
     end
     App -> App  : go startGPUDetection()\n  — gpuSvc.Detect(ctx) runs in the background,\n    populating the GPUBackend → BackendCapability cache once
     UI  -> U    : ShowAndRun() — window visible
@@ -52,8 +55,9 @@ group Session Initialisation
     App -> UI   : setStatusIndicator("active")
     App -> App  : ppFailed.Store(0)
     alt saveLog.Checked
-        App -> OS : OpenFile("GoVid_log.txt", APPEND|CREATE|WRONLY)
-        OS  --> App : log file handle
+        App -> LS : OpenSessionLog(savePath)\n  — open timestamped session log
+        LS  --> App : log path
+        App -> LS : WriteSessionConfig(cfg, appendOutput)
     end
     App -> App  : context.WithCancel(Background)\n  → queueCtx / stopQueue
 end
@@ -222,7 +226,7 @@ end
 ' 6. SESSION TEARDOWN
 ' ─────────────────────────────────────────────────────────────
 group Teardown
-    App -> OS  : log.file.Close()  [if saveLog was on]
+    App -> LS  : CloseSessionLog()
     App -> App : stopQueue()  — cancels queueCtx → stops progress smoother
     alt ppFailed > 0
         App -> UI : downloadBtn.SetText("Retry")
