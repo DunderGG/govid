@@ -1,11 +1,11 @@
 # <img src="https://github.com/user-attachments/assets/d81ed71e-cc17-4944-aafc-d94f7af758b4" alt="GoVid icon" width="64" height="64" /> **GoVid**
 
-Fast, cross-platform desktop video downloader for `yt-dlp` with optional FFmpeg post-processing.
+Fast, cross-platform desktop video downloader, powered by `yt-dlp` with optional FFmpeg post-processing.
 
 [![Latest Release](https://img.shields.io/github/v/release/DunderGG/govid?label=release)](https://github.com/DunderGG/govid/releases/latest)
 [![License](https://img.shields.io/github/license/DunderGG/govid)](LICENSE)
 ![Go Version](https://img.shields.io/badge/go-1.26%2B-00ADD8)
-![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-2ea44f)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-2ea44f)
 [![CI](https://github.com/DunderGG/govid/actions/workflows/ci.yml/badge.svg)](https://github.com/DunderGG/govid/actions/workflows/ci.yml)
 
 Download: [Latest Release](https://github.com/DunderGG/govid/releases/latest)
@@ -22,7 +22,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Batch Processing**: Download multiple URLs at once by switching to Batch Mode (one URL per line).
 - **Real-time Progress**: Live progress tracking with per-download progress bars and a scrollable activity log.
 - **Optional Post-Processing**: Seamless integration with FFmpeg for frame interpolation (60FPS), sharpening, and audio normalization.
-- **GPU-Accelerated Encoding**: Optional hardware-accelerated final encode (NVIDIA NVENC, Intel QSV, AMD AMF, VAAPI, or VideoToolbox) with automatic CPU fallback if the selected backend is unavailable.
+- **GPU-Accelerated Encoding**: Optional hardware-accelerated final encode (NVIDIA NVENC, Intel QSV, AMD AMF, or VAAPI) with automatic CPU fallback if the selected backend is unavailable.
 - **Motion Smoothing**: Three interpolation modes (Precise, Balanced, Fast) for smoother motion at higher frame rates.
 - **Download Management**: Start, monitor, and cancel active downloads from a single queue view.
 - **Speed Limiting**: Cap download bandwidth to avoid saturating your network.
@@ -37,7 +37,7 @@ You can download the latest pre-compiled executables from the **[Releases Page](
 
 1. Download the bundled `.zip` for your operating system.
 2. Extract the zip — `yt-dlp` and `ffmpeg` are included in the `bin/` folder.
-3. Run `GoVid.exe` (Windows) or `GoVid` (Linux/macOS) and start downloading!
+3. Run `GoVid.exe` (Windows) or `GoVid` (Linux) and start downloading!
 
 ## 🚀 Getting Started
 
@@ -54,7 +54,6 @@ If you are building from source, you must have the following tools installed and
 3.  **A GCC C compiler**: GoVid uses [Fyne](https://fyne.io/), which requires CGO and a C compiler to build.
     - **Windows**: Install [MSYS2](https://www.msys2.org/), then run `pacman -S mingw-w64-x86_64-gcc` in the MSYS2 shell and add `C:\msys64\mingw64\bin` to your system `PATH`.
     - **Linux**: Install GCC via your package manager, e.g. `sudo apt install gcc` (Debian/Ubuntu) or `sudo dnf install gcc` (Fedora).
-    - **macOS**: Install the Xcode Command Line Tools via `xcode-select --install`.
 
 ### Installation
 
@@ -74,7 +73,7 @@ Ensure you have [Go 1.26+](https://go.dev/dl/) installed.
     .\build.bat
     ```
 
-    **On Linux / macOS**:
+    **On Linux**:
     ```bash
     chmod +x build.sh
     ./build.sh
@@ -83,7 +82,7 @@ Ensure you have [Go 1.26+](https://go.dev/dl/) installed.
 3.  **Run the application**:
     ```bash
     ./GoVid.exe  # Windows
-    ./GoVid      # Linux/macOS
+    ./GoVid      # Linux
     ```
 
 ## 📖 Usage

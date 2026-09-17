@@ -15,7 +15,7 @@ It provides a graphical interface, real-time progress feedback, optional FFmpeg 
 | Language | Go 1.24+ |
 | UI toolkit | [Fyne v2](https://fyne.io/) |
 | External tools | `yt-dlp`, `ffmpeg`, `ffprobe` |
-| Platforms | Windows, macOS, Linux |
+| Platforms | Windows, Linux |
 
 ---
 

@@ -1,11 +1,10 @@
 #!/bin/bash
-# build.sh — Build script for GoVid (Linux / macOS / Git Bash on Windows).
+# build.sh — Build script for GoVid (Linux / Git Bash on Windows).
 #
 # Prerequisites:
 #   - Go 1.21+  https://go.dev/dl/
 #   - GCC: required by Fyne (CGO). Install via your system package manager.
 #       Linux:  sudo apt install gcc  (Debian/Ubuntu)  or  sudo dnf install gcc  (Fedora)
-#       macOS:  xcode-select --install
 #       Windows (MSYS2): pacman -S mingw-w64-x86_64-gcc
 #   - go-winres  https://github.com/tc-hib/go-winres  (Windows only)
 #

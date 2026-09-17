@@ -114,7 +114,7 @@ The binary reports `cuda`, `qsv`, `amf`, `d3d11va`, `d3d12va`, `dxva2`, and `vaa
 
 This confirms that the current package contains the components needed to attempt the three primary Windows pipelines. It does not confirm that any pipeline works on the current or an end user's GPU. Driver and device initialization belong to runtime capability detection.
 
-Windows is currently the only platform with a bundled artifact in this repository. Repeat this inventory and record a platform-specific binary checksum when macOS and Linux packages are added.
+Windows is currently the only platform with a bundled artifact in this repository. Repeat this inventory and record a platform-specific binary checksum when Linux packages are added.
 
 ---
 
@@ -180,7 +180,7 @@ Complex existing filters such as `nlmeans`, `deshake`, `deband`, and audio proce
 
 ## 9. Definition of done for backend identification
 
-- Target device, decode, filter, and encode APIs are named for Windows, Linux, and macOS.
+- Target device, decode, filter, and encode APIs are named for Windows and Linux.
 - Initial platform priorities and stable configuration identifiers are defined.
 - Compile-time FFmpeg capability checks are distinguished from runtime device probes.
 - CPU fallback remains a requirement for every accelerated path.

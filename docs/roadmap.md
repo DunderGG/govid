@@ -201,12 +201,16 @@ This document outlines planned features, improvements, and known limitations for
 
 - [ ] Show a "Smart Downscale" notification if the requested resolution isn't available.
 
-### macOS & Linux Polish
-> Close the gap on non-Windows platforms.
+### Linux Polish
+> Close the gap on the currently supported non-Windows platform.
 
-- [ ] Test and fix `build.sh` on macOS and Ubuntu.
-- [ ] Add macOS `.app` bundle packaging with correct `Info.plist` metadata.
+- [ ] Test and fix `build.sh` on Ubuntu.
 - [ ] Verify that `openDownloadFolder` works correctly on all supported distros.
+
+### macOS Investigation
+> Assess the work required before macOS can be considered a supported platform.
+
+- [ ] Investigate building and running GoVid on macOS, including Fyne/CGO prerequisites, `build.sh`, process handling, bundled FFmpeg/yt-dlp dependencies, and release packaging requirements.
 
 ### Post-Processing Features
 > Improve output quality for downloaded files.
@@ -238,9 +242,9 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] The code for the guide window needs improving. Get rid of extremely long text strings.
 - [X] Errors from ffmpeg sometimes gets buried in the verbose logs. Maybe Errors should be logged to separate file?
 - [ ] Investigate GPU acceleration for FFmpeg.
-	- [X] Identify [target acceleration backends](gpu-acceleration.md) per OS: `nvenc`/`cuda` (NVIDIA), `qsv` (Intel), `amf` (AMD), and `videotoolbox` (macOS).
+	- [X] Identify [target acceleration backends](gpu-acceleration.md) per OS: `nvenc`/`cuda` (NVIDIA), `qsv` (Intel), `amf` (AMD), and `vaapi` (Linux).
 	- [X] Verify which backends are available in our [current bundled FFmpeg build](gpu-acceleration.md#5-current-bundled-build-inventory) (`ffmpeg -hide_banner -encoders`, `-hwaccels`, `-decoders`, `-filters`). 
-		- [ ] Re-run for future macOS and Linux artifacts.
+		- [ ] Re-run for future Linux artifacts.
 	- [X] Decide [feature scope](gpu-acceleration.md#7-feature-scope-decision): which post-processing operations should use GPU first (e.g. scaling, tone mapping, denoise) and which remain CPU.
 		- [ ] Revisit the deferred GPU scale/deinterlace fast-path once final-encode acceleration is implemented and benchmarked.
 	- [X] Add [runtime capability detection](gpu-acceleration.md#8-recommended-implementation-order) in Go (`GPUCapabilityService` in `gpu_capability.go`) and cache results by backend/vendor so unsupported paths are never selected.
