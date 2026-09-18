@@ -53,6 +53,7 @@ package "Application Core" #F0F4F8 {
         +showPreferences()
         +showConfigHelp()
         +showAbout()
+        +clearTerminalOutput()
         +getPostProcessingButton()
         +savePreferences(path)
         +applyFFmpegFilters(ctx, paths, vf, af)
@@ -160,6 +161,7 @@ package "UI Layer" #F0F8F0 {
         +resetPreferences()
         +rebuildUI()
         +appendLogLine(line, col)
+        +clearTerminalOutput()
     }
 
 }

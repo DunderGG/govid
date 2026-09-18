@@ -67,8 +67,7 @@ func (app *DownloaderApp) startDownload() {
 	app.updateStatus("Status: Initializing...")
 	app.setProgressNow(0)
 	app.stats.targetPct = 0
-	app.ui.download.logList.Objects = nil
-	app.ui.download.logList.Refresh()
+	app.clearTerminalOutput()
 	app.ui.download.cancelBtn.Enable()
 	app.ui.download.downloadBtn.Disable()
 	app.ui.download.downloadBtn.SetText("Download Now!")

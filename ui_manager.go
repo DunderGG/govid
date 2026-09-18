@@ -114,6 +114,10 @@ func (manager *UIManager) createMainMenu() {
 		manager.showHistory()
 	})
 
+	clearLogMenu := fyne.NewMenuItem("Clear Terminal Output", func() {
+		manager.clearTerminalOutput()
+	})
+
 	updateMenu := fyne.NewMenuItem("Update yt-dlp", func() {
 		dialog.ShowConfirm("Update yt-dlp", "This will run 'yt-dlp -U' to update the tool. Continue?", func(ok bool) {
 			if ok {
@@ -135,7 +139,7 @@ func (manager *UIManager) createMainMenu() {
 	})
 
 	mainMenu := fyne.NewMainMenu(
-		fyne.NewMenu("File", historyMenu),
+		fyne.NewMenu("File", historyMenu, fyne.NewMenuItemSeparator(), clearLogMenu),
 		fyne.NewMenu("Tools", updateMenu, prefsMenu, fyne.NewMenuItem("Post-Processing", func() {
 			manager.showPostProcessing()
 		})),
@@ -831,18 +835,12 @@ func buildHeader() fyne.CanvasObject {
 func (manager *UIManager) configureEntryMode() {
 	ui := manager.ui
 
-	if ui.download.batchMode.Checked {
-		ui.download.entry.MultiLine = true
-		ui.download.entry.SetMinRowsVisible(4)
-		ui.download.entry.SetPlaceHolder("One URL per line...\nhttps://...\nhttps://...")
-	} else {
-		ui.download.entry.MultiLine = false
-		ui.download.entry.SetMinRowsVisible(1)
-		ui.download.entry.SetPlaceHolder("https://www.youtube.com/watch?v=...")
-	}
-	ui.download.batchMode.OnChanged = func(checked bool) {
-		manager.savePreferences(ui.download.path.Text)
-		if !checked {
+	setMode := func(checked bool) {
+		if checked {
+			ui.download.entry.MultiLine = true
+			ui.download.entry.SetMinRowsVisible(4)
+			ui.download.entry.SetPlaceHolder("One URL per line...\nhttps://...\nhttps://...")
+		} else {
 			// Switching back to single mode: keep only the first non-empty URL.
 			first := ""
 			for _, line := range strings.Split(ui.download.entry.Text, "\n") {
@@ -852,8 +850,18 @@ func (manager *UIManager) configureEntryMode() {
 				}
 			}
 			ui.download.entry.SetText(first)
+			ui.download.entry.MultiLine = false
+			ui.download.entry.SetMinRowsVisible(1)
+			ui.download.entry.SetPlaceHolder("https://www.youtube.com/watch?v=...")
 		}
-		manager.createUI()
+		ui.download.entry.Refresh()
+	}
+
+	setMode(ui.download.batchMode.Checked)
+
+	ui.download.batchMode.OnChanged = func(checked bool) {
+		manager.savePreferences(ui.download.path.Text)
+		setMode(checked)
 	}
 }
 
@@ -1011,11 +1019,14 @@ func (manager *UIManager) buildStatusCard() fyne.CanvasObject {
 }
 
 // buildLogPane creates the scrollable log container and stores it on the
-// widget bag so appendLogLine can append to it later.
+// widget bag so appendLogLine can append to it later. Existing log entries
+// are preserved if logList is already initialized.
 func (manager *UIManager) buildLogPane() *container.Scroll {
 	ui := manager.ui
 
-	ui.download.logList = container.NewVBox()
+	if ui.download.logList == nil {
+		ui.download.logList = container.NewVBox()
+	}
 	spacer := canvas.NewRectangle(color.Transparent)
 	spacer.SetMinSize(fyne.NewSize(0, 10))
 	ui.download.output = container.NewScroll(container.NewVBox(ui.download.logList, spacer))
@@ -1041,6 +1052,21 @@ func (manager *UIManager) appendLogLine(line string, col color.Color) {
 
 		ui.download.logList.Refresh()
 		ui.download.output.ScrollToBottom()
+	})
+}
+
+// clearTerminalOutput empties the terminal output window and resets its scroll position.
+func (manager *UIManager) clearTerminalOutput() {
+	ui := manager.ui
+	if ui == nil || ui.download.logList == nil {
+		return
+	}
+	fyne.Do(func() {
+		ui.download.logList.Objects = nil
+		ui.download.logList.Refresh()
+		if ui.download.output != nil {
+			ui.download.output.ScrollToTop()
+		}
 	})
 }
 

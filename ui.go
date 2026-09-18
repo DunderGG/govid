@@ -48,6 +48,11 @@ func (app *DownloaderApp) showAbout() {
 	app.uiManager.showAbout()
 }
 
+// clearTerminalOutput delegates to UIManager which owns the log container.
+func (app *DownloaderApp) clearTerminalOutput() {
+	app.uiManager.clearTerminalOutput()
+}
+
 // roundedCard wraps content in a rounded-rectangle background panel, giving
 // cards a softer, more modern look than the default widget.Card. It renders
 // a themed background with a subtle 1px border and 10px corner radius, then
