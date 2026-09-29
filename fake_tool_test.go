@@ -62,9 +62,12 @@ func runFakeTool(mode string, args []string) int {
 		}
 		return fakeYtDlpDownload(args)
 	case "ytdlp-hang":
-		fmt.Println("[download]   1.0% of   10.00MiB at    1.00MiB/s ETA 00:10")
-		time.Sleep(time.Minute)
-		return 0
+		return fakeYtDlpHang()
+	case "ytdlp-hang-once":
+		if previousRuns == 0 {
+			return fakeYtDlpHang()
+		}
+		return fakeYtDlpDownload(args)
 	case "version":
 		if !slices.Contains(args, "--version") {
 			fmt.Fprintf(os.Stderr, "fake tool: expected --version, got %q\n", args)
@@ -120,6 +123,14 @@ func fakeYtDlpDownload(args []string) int {
 func fakeYtDlpTransient() int {
 	fmt.Fprintln(os.Stderr, "ERROR: [youtube] fake: Unable to download webpage: HTTP Error 429: Too Many Requests")
 	return 1
+}
+
+// fakeYtDlpHang mimics a stalled download: it reports some progress and then
+// blocks until the test cancels it (the process is killed on cancel).
+func fakeYtDlpHang() int {
+	fmt.Println("[download]   1.0% of   10.00MiB at    1.00MiB/s ETA 00:10")
+	time.Sleep(time.Minute)
+	return 0
 }
 
 // argAfter returns the value following flag in args, or "" when absent.

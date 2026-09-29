@@ -263,7 +263,7 @@ This document outlines planned features, improvements, and known limitations for
 ### Test Coverage
 > Keep unit tests alongside the Go package they exercise; reserve `testdata/` for fixtures and a separate `tests/` directory for future end-to-end coverage.
 
-- [ ] Add `download_test.go` for URL validation, output filename derivation, cancellation, and download error handling.
+- [X] Add `download_test.go` for URL validation, output filename derivation, cancellation, and download error handling. (Drives `startDownload`/`runYtDlp` through the Fyne test driver and the fake yt-dlp, including the batch queue: blank-line skipping, per-item cancel that keeps the queue running, and duplicate-name renaming.)
 - [X] Add `download_engine_test.go` for yt-dlp argument construction, queue/concurrency behavior, and retry outcomes. (Covers `BuildArgs`, `Execute` retry/cancel/launch-failure paths, `Run`, `FinalizeFiles`, and `uniquePath` against a scripted fake yt-dlp. `DownloadEngine` handles one URL at a time; the batch queue lives in `startDownload` and is exercised by `download_test.go`.)
 - [X] Add `postprocess_test.go` for post-processing filter generation, enabled-option combinations, and invalid settings. (Also covers processing-load scoring, filter labels, and the shared FFmpeg progress/byte/duration formatters.)
 - [X] Add `history_service_test.go` for persistence round trips and missing or corrupted history files.
@@ -346,6 +346,7 @@ This document outlines planned features, improvements, and known limitations for
 
 - [ ] Add/maintain a checklist of all widget writes and enforce UI-thread-safe wrappers.
 - [ ] Add regression checks for known freeze scenarios (idle after long run, long batch with verbose logs).
+- [ ] Fix the data races `go test -race` reports in the `startDownload` session tests (`download_test.go`): the progress-smoother goroutine reads `stats.targetPct` and `progress.Value` off the UI thread while the yt-dlp scanner goroutine writes `targetPct` via `setProgress`. Guard `targetPct` (e.g. an atomic) and read the bar value inside `fyne.Do`, then add `-race` to the documented test command.
 
 ### Observability for Freeze Reports
 > Make future freeze incidents diagnosable from logs.
