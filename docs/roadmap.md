@@ -270,7 +270,7 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Add `dependency_service_test.go` for executable discovery, version parsing, and missing dependency behavior.
 - [X] Add `helpers_test.go` for path, extension, and formatting edge cases. (Covers what `helpers.go` owns: exit-code mapping, cancel-func handoff, progress clamping, size-token parsing, and preference application. The path/extension/formatting helpers live elsewhere and are tested beside their owners: `uniquePath` in `download_engine_test.go`, `formatBytes`/`formatDuration`/`formatFFmpegProgress` in `postprocess_test.go`.)
 - [X] Add `logscanner_test.go` for parsing representative yt-dlp and FFmpeg output. (yt-dlp stdout/stderr fixtures live in `testdata/`; `logscanner.go` only parses yt-dlp output, so FFmpeg progress parsing is covered by `formatFFmpegProgress` tests in `postprocess_test.go`.)
-- [ ] Add `log_service_test.go` for log buffering, rotation, and error-log behavior.
+- [X] Add `log_service_test.go` for log buffering, rotation, and error-log behavior. (Rotation is the daily-filename scheme of `SessionLogPath`/`ErrorLogPath`; there is no size-based rotation to test.)
 - [X] Add `testdata/` fixtures for representative logs, preference/config JSON, and media metadata responses.
 - [X] Add `tests/` end-to-end coverage only after the core application logic has been separated from the Fyne UI.
 
