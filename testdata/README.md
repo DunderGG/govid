@@ -21,3 +21,5 @@ binary files here.
 | `ytdlp_stderr_merge.log` | `logscanner_test.go` | yt-dlp stderr with debug, warning, `[Merger]`, and remux lines. |
 | `ytdlp_stderr_transient.log` | `logscanner_test.go` | yt-dlp stderr ending in a retryable HTTP 429 error. |
 | `ytdlp_stderr_fatal.log` | `logscanner_test.go` | yt-dlp stderr ending in a permanent "Unsupported URL" error. |
+| `history_valid.json` | `history_service_test.go` | A two-entry `download_history.json` in the current schema. |
+| `history_corrupted.json` | `history_service_test.go` | A truncated history file that fails to parse. |

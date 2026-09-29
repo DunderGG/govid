@@ -1,0 +1,22 @@
+[
+  {
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "originalTitle": "Sample Video",
+    "finalFilename": "GoVid_Sample Video_1080p.mp4",
+    "savedPath": "C:\\Downloads",
+    "format": "MP4",
+    "quality": "1080p",
+    "downloadedAt": "2026-01-15 10:30:00",
+    "postProcessed": false
+  },
+  {
+    "url": "https://example.com/podcast",
+    "originalTitle": "Podcast Episode",
+    "finalFilename": "GoVid_Podcast Episode.mp3",
+    "savedPath": "C:\\Downloads",
+    "format": "MP3",
+    "quality": "Best Quality",
+    "downloadedAt": "2026-01-16 08:00:00",
+    "postProcessed": true
+  }
+]
