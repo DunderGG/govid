@@ -23,3 +23,4 @@ binary files here.
 | `ytdlp_stderr_fatal.log` | `logscanner_test.go` | yt-dlp stderr ending in a permanent "Unsupported URL" error. |
 | `history_valid.json` | `history_service_test.go` | A two-entry `download_history.json` in the current schema. |
 | `history_corrupted.json` | `history_service_test.go` | A truncated history file that fails to parse. |
+| `ffmpeg_progress.log` | `postprocess_test.go` | FFmpeg stderr with carriage-return-separated progress updates, as split by `scanCRLF`. |

@@ -265,7 +265,7 @@ This document outlines planned features, improvements, and known limitations for
 
 - [ ] Add `download_test.go` for URL validation, output filename derivation, cancellation, and download error handling.
 - [ ] Add `download_engine_test.go` for yt-dlp argument construction, queue/concurrency behavior, and retry outcomes.
-- [ ] Add `postprocess_test.go` for post-processing filter generation, enabled-option combinations, and invalid settings.
+- [X] Add `postprocess_test.go` for post-processing filter generation, enabled-option combinations, and invalid settings. (Also covers processing-load scoring, filter labels, and the shared FFmpeg progress/byte/duration formatters.)
 - [X] Add `history_service_test.go` for persistence round trips and missing or corrupted history files.
 - [ ] Add `dependency_service_test.go` for executable discovery, version parsing, and missing dependency behavior.
 - [X] Add `helpers_test.go` for path, extension, and formatting edge cases. (Covers what `helpers.go` owns: exit-code mapping, cancel-func handoff, progress clamping, size-token parsing, and preference application. The path/extension/formatting helpers live elsewhere and are tested beside their owners: `uniquePath` in `download_engine_test.go`, `formatBytes`/`formatDuration`/`formatFFmpegProgress` in `postprocess_test.go`.)
