@@ -57,6 +57,8 @@ Run the test suite before submitting a change:
 go test ./...
 ```
 
+The unit tests do not need yt-dlp, FFmpeg, or network access. Tests that exercise external tools use the fake-tool harness in `fake_tool_test.go`: when the `GOVID_FAKE_TOOL` environment variable is set, the test binary behaves as a scripted stand-in for the tool instead of running the suite. Use `installFakeTool` to place it where a service looks for a binary and `useFakeTool` to pick its behaviour. Put shared test inputs in `testdata/` (see [testdata/README.md](testdata/README.md)).
+
 Format changed Go files with `gofmt`.
 
 ## Windows release inputs
