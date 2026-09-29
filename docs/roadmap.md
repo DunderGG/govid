@@ -264,7 +264,7 @@ This document outlines planned features, improvements, and known limitations for
 > Keep unit tests alongside the Go package they exercise; reserve `testdata/` for fixtures and a separate `tests/` directory for future end-to-end coverage.
 
 - [ ] Add `download_test.go` for URL validation, output filename derivation, cancellation, and download error handling.
-- [ ] Add `download_engine_test.go` for yt-dlp argument construction, queue/concurrency behavior, and retry outcomes.
+- [X] Add `download_engine_test.go` for yt-dlp argument construction, queue/concurrency behavior, and retry outcomes. (Covers `BuildArgs`, `Execute` retry/cancel/launch-failure paths, `Run`, `FinalizeFiles`, and `uniquePath` against a scripted fake yt-dlp. `DownloadEngine` handles one URL at a time; the batch queue lives in `startDownload` and is exercised by `download_test.go`.)
 - [X] Add `postprocess_test.go` for post-processing filter generation, enabled-option combinations, and invalid settings. (Also covers processing-load scoring, filter labels, and the shared FFmpeg progress/byte/duration formatters.)
 - [X] Add `history_service_test.go` for persistence round trips and missing or corrupted history files.
 - [X] Add `dependency_service_test.go` for executable discovery, version parsing, and missing dependency behavior. (Also covers `RunUpdate`; external tools are simulated by the fake-tool harness in `fake_tool_test.go`.)
