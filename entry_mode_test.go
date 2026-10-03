@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -141,3 +142,29 @@ func TestClearTerminalOutputMenuItem(t *testing.T) {
 	}
 }
 
+
+func TestShowPostProcessingRestoresPersistedPrefs(t *testing.T) {
+	_ = test.NewApp()
+	app := newDownloaderApp(test.NewWindow(nil))
+	mgr := app.uiManager
+	mgr.createUI()
+
+	persisted := app.prefSvc.Load()
+	persisted.SmoothFPS = 30
+	persisted.SharpenAmount = 1.7
+	mgr.onLoadPreferences = func() AppPreferences { return persisted }
+
+	// Unsaved edits from a previous visit must not survive reopening.
+	app.ui.postProcess.smoothMotionFPS.SetValue(90)
+	app.ui.postProcess.sharpenAmount.SetValue(1.2)
+
+	mgr.showPostProcessing()
+	t.Cleanup(func() { mgr.ppWindow.Close() })
+
+	if got := app.ui.postProcess.smoothMotionFPS.Value; got != 30 {
+		t.Errorf("smoothMotionFPS.Value = %v, want 30", got)
+	}
+	if got := app.ui.postProcess.sharpenAmount.Value; math.Abs(got-1.7) > 1e-9 {
+		t.Errorf("sharpenAmount.Value = %v, want 1.7", got)
+	}
+}

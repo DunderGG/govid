@@ -528,6 +528,7 @@ func (manager *UIManager) showPostProcessing() {
 	ui.postProcess.smoothMotion.SetChecked(prefs.SmoothMotion)
 	ui.postProcess.smoothMotionMode.Horizontal = true
 	ui.postProcess.smoothMotionMode.SetSelected(prefs.SmoothMotionMode)
+	ui.postProcess.smoothMotionFPS.SetValue(prefs.SmoothFPS)
 	ui.postProcess.sharpen.SetChecked(prefs.Sharpen)
 	ui.postProcess.sharpenAmount.SetValue(prefs.SharpenAmount)
 	ui.postProcess.vividMode.SetChecked(prefs.VividMode)
