@@ -90,13 +90,44 @@ func (svc *HistoryService) AppendAll(rec DownloadRecord) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(svc.filePath, data, 0644)
+	return writeFileAtomic(svc.filePath, data)
 }
 
 // Clear overwrites the history file with an empty JSON array,
 // effectively removing all recorded entries.
 func (svc *HistoryService) Clear() error {
-	return os.WriteFile(svc.filePath, []byte("[]"), 0644)
+	return writeFileAtomic(svc.filePath, []byte("[]"))
+}
+
+// writeFileAtomic replaces path with data so that a crash or power loss
+// leaves either the old or the new contents, never a truncated file. It
+// writes a temp file in the same directory, flushes it to disk, and renames
+// it over path.
+func writeFileAtomic(path string, data []byte) (err error) {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tmp.Close()
+			os.Remove(tmp.Name())
+		}
+	}()
+
+	if _, err = tmp.Write(data); err != nil {
+		return err
+	}
+	if err = tmp.Sync(); err != nil {
+		return err
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	if err = os.Chmod(tmp.Name(), 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // buildEntries constructs one DownloadHistoryEntry per path in rec.FinalPaths,

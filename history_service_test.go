@@ -181,6 +181,48 @@ func TestHistoryAppendAllWritesPlaceholderWithoutPaths(t *testing.T) {
 	}
 }
 
+func TestHistoryWritesLeaveNoTempFiles(t *testing.T) {
+	svc := newTempHistoryService(t, "history_valid.json")
+
+	if err := svc.AppendAll(DownloadRecord{URL: "https://example.com/next"}); err != nil {
+		t.Fatalf("AppendAll() error = %v", err)
+	}
+	if err := svc.Clear(); err != nil {
+		t.Fatalf("Clear() error = %v", err)
+	}
+
+	files, err := os.ReadDir(filepath.Dir(svc.filePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0].Name() != historyFileName {
+		var names []string
+		for _, f := range files {
+			names = append(names, f.Name())
+		}
+		t.Errorf("directory contains %q, want only %q", names, historyFileName)
+	}
+}
+
+func TestWriteFileAtomicFailureRemovesTempFile(t *testing.T) {
+	dir := t.TempDir()
+	// A non-empty directory in place of the target makes the final rename fail.
+	blocked := filepath.Join(dir, historyFileName)
+	if err := os.Mkdir(blocked, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(blocked, "child"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeFileAtomic(blocked, []byte("new")); err == nil {
+		t.Fatal("writeFileAtomic() over a non-empty directory succeeded, want error")
+	}
+	if matches, _ := filepath.Glob(filepath.Join(dir, "*.tmp")); len(matches) != 0 {
+		t.Errorf("temp files left behind after failure: %q", matches)
+	}
+}
+
 func TestHistoryClear(t *testing.T) {
 	svc := newTempHistoryService(t, "history_valid.json")
 
