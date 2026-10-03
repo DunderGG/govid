@@ -13,6 +13,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"image/color"
 	"math"
@@ -214,6 +215,26 @@ func (engine *PPEngine) retryWithCPU(ctx context.Context, job PostProcessJob, cb
 	engine.runJob(ctx, job, cb)
 }
 
+// failJob reports a terminal FFmpeg failure for job: it marks the session as
+// failed via OnFailure, logs msg and any captured output, and removes the
+// partial temp file. Every path that gives up on a job must go through here
+// so the Retry button and the log stay consistent.
+func failJob(job PostProcessJob, cb PPCallbacks, msg string, output []string) {
+	cb.OnFailure()
+	cb.OnLog("[ERROR] "+msg, colError)
+	for _, line := range output {
+		if line = strings.TrimSpace(line); line != "" {
+			cb.OnLog(line, colDebug)
+		}
+	}
+	if removeErr := os.Remove(job.tmpOutput); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+		cb.OnLog(
+			fmt.Sprintf("[SYSTEM] Warning: could not remove temp file: %v", removeErr),
+			colWarning,
+		)
+	}
+}
+
 // runJob executes a single PostProcessJob and streams FFmpeg's stderr to the UI
 // in real-time. Progress stats update the status bar; all other lines are
 // forwarded to the log. The original file is replaced only if FFmpeg succeeds.
@@ -263,18 +284,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 				engine.retryWithCPU(ctx, job, cb, lastLine(string(out)))
 				return
 			}
-			cb.OnLog(fmt.Sprintf("[ERROR] Post-processing failed: %v", err), colError)
-			for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-				if line != "" {
-					cb.OnLog(line, colDebug)
-				}
-			}
-			if removeErr := os.Remove(job.tmpOutput); removeErr != nil {
-				cb.OnLog(
-					fmt.Sprintf("[SYSTEM] Warning: could not remove temp file: %v", removeErr),
-					colWarning,
-				)
-			}
+			failJob(job, cb, fmt.Sprintf("Post-processing failed: %v", err), strings.Split(string(out), "\n"))
 			return
 		}
 
@@ -295,7 +305,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 			engine.retryWithCPU(ctx, job, cb, err.Error())
 			return
 		}
-		cb.OnLog(fmt.Sprintf("[ERROR] Could not start FFmpeg: %v", err), colError)
+		failJob(job, cb, fmt.Sprintf("Could not start FFmpeg: %v", err), nil)
 		return
 	}
 
@@ -344,17 +354,8 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 			engine.retryWithCPU(ctx, job, cb, reason)
 			return
 		}
-		cb.OnFailure()
-		cb.OnLog(
-			fmt.Sprintf("[ERROR] Post-processing failed: %v", err),
-			colError,
-		)
-		if removeErr := os.Remove(job.tmpOutput); removeErr != nil {
-			cb.OnLog(
-				fmt.Sprintf("[SYSTEM] Warning: could not remove temp file: %v", removeErr),
-				colWarning,
-			)
-		}
+		// The output was already streamed to the log line by line.
+		failJob(job, cb, fmt.Sprintf("Post-processing failed: %v", err), nil)
 		return
 	}
 
