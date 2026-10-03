@@ -346,7 +346,7 @@ This document outlines planned features, improvements, and known limitations for
 
 - [ ] Add/maintain a checklist of all widget writes and enforce UI-thread-safe wrappers.
 - [ ] Add regression checks for known freeze scenarios (idle after long run, long batch with verbose logs).
-- [ ] Fix the data races `go test -race` reports in the `startDownload` session tests (`download_test.go`): the progress-smoother goroutine reads `stats.targetPct` and `progress.Value` off the UI thread while the yt-dlp scanner goroutine writes `targetPct` via `setProgress`. Guard `targetPct` (e.g. an atomic) and read the bar value inside `fyne.Do`, then add `-race` to the documented test command.
+- [x] Fix the data races `go test -race` reports in the `startDownload` session tests (`download_test.go`): the progress-smoother goroutine reads `stats.targetPct` and `progress.Value` off the UI thread while the yt-dlp scanner goroutine writes `targetPct` via `setProgress`. Guard `targetPct` (e.g. an atomic) and read the bar value inside `fyne.Do`, then add `-race` to the documented test command.
 
 ### Observability for Freeze Reports
 > Make future freeze incidents diagnosable from logs.

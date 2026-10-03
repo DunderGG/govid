@@ -54,12 +54,12 @@ chmod +x build.sh
 Run the test suite before submitting a change:
 
 ```text
-go test ./...
+go test -race ./...
 ```
 
 The unit tests do not need yt-dlp, FFmpeg, or network access. Tests that exercise external tools use the fake-tool harness in `fake_tool_test.go`: when the `GOVID_FAKE_TOOL` environment variable is set, the test binary behaves as a scripted stand-in for the tool instead of running the suite. Use `installFakeTool` to place it where a service looks for a binary and `useFakeTool` to pick its behaviour. Put shared test inputs in `testdata/` (see [testdata/README.md](testdata/README.md)).
 
-`go test -race ./...` currently reports known data races in the `startDownload` session tests in `download_test.go`. They are caused by the progress-smoother goroutine and are tracked under "UI Thread Safety Audit" in [docs/roadmap.md](docs/roadmap.md). Any other race report is new and should be fixed.
+The race detector needs cgo (a C compiler on `PATH`), which building Fyne already requires. CI runs the suite with `-race`, so any race report is a bug and should be fixed.
 
 Format changed Go files with `gofmt`.
 
