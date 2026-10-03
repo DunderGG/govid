@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -186,6 +187,28 @@ func TestBufferLimitAccessors(t *testing.T) {
 	if got := svc.BufferLimit(); got != 500 {
 		t.Errorf("BufferLimit() = %d, want 500", got)
 	}
+}
+
+// Run with -race: the preferences window changes the limit on the UI thread
+// while background goroutines buffer pre-session lines.
+func TestBufferLimitConcurrentWithWriteToFile(t *testing.T) {
+	svc := NewLogService()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := range 100 {
+			svc.SetBufferLimit(50 + i)
+			_ = svc.BufferLimit()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for range 100 {
+			svc.WriteToFile("line")
+		}
+	}()
+	wg.Wait()
 }
 
 func TestIsErrorLine(t *testing.T) {

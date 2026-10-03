@@ -141,11 +141,15 @@ func (svc *LogService) WriteToErrorLog(line string) {
 
 // SetBufferLimit updates the cached UI line cap.
 func (svc *LogService) SetBufferLimit(limit int) {
+	svc.mutex.Lock()
+	defer svc.mutex.Unlock()
 	svc.bufferLimit = limit
 }
 
 // BufferLimit returns the current UI line cap.
 func (svc *LogService) BufferLimit() int {
+	svc.mutex.Lock()
+	defer svc.mutex.Unlock()
 	return svc.bufferLimit
 }
 
