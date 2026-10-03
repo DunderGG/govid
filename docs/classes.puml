@@ -468,6 +468,7 @@ package "Dependency Service" #FFFFF0 {
         +Check(onWarning func(string))
         +Version(toolName string) : (string, error)
         +RunUpdate(cb UpdateCallbacks)
+        +UpdateCLI() : error
     }
 
     class UpdateCallbacks <<bridge>> {

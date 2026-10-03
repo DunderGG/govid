@@ -96,7 +96,7 @@ func main() {
 	flag.Parse()
 
 	if *updateFlag {
-		if err := UpdateYtDlpCLI(); err != nil {
+		if err := NewDependencyService().UpdateCLI(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(int(exitCodeFromError(err)))
 		}

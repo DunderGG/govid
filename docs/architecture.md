@@ -230,7 +230,7 @@ Owns the `binDir` path (resolved once at construction from the executable locati
 
 `UpdateCallbacks` is a bridge struct (`OnLog`, `OnStatus`, `OnSuccess`, `OnFailure`) with no Fyne dependency, following the same pattern as `PPCallbacks` and `ProcessCallbacks`.
 
-The package-level `UpdateYtDlpCLI()` function is used by the `--update` CLI flag in `main()` and runs the update synchronously with output to stdout.
+`UpdateCLI()` is used by the `--update` CLI flag in `main()`. It updates the same resolved yt-dlp binary as `RunUpdate`, synchronously, with output to stdout.
 
 ---
 
@@ -351,7 +351,7 @@ func classify(err error) Category {
 - The error-to-exit-code mapping helper is defined in `helpers.go`
   (`exitCodeFromError(err error) ExitCode`).
 - An implementation example can be found at the start of `main()`, where it is 
-  used when calling `UpdateYtDlpCLI()`.
+  used when calling `DependencyService.UpdateCLI()`.
 
 ---
 

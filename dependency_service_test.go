@@ -222,3 +222,30 @@ func TestDependencyRunUpdateToleratesNilCallbacks(t *testing.T) {
 		t.Fatal("RunUpdate did not finish")
 	}
 }
+
+func TestDependencyUpdateCLIUsesBundledYtDlp(t *testing.T) {
+	// With an empty PATH, the update can only succeed via the bundled binary.
+	isolatePath(t)
+	binDir := t.TempDir()
+	installFakeTool(t, binDir, "yt-dlp")
+	useFakeTool(t, "update")
+
+	if err := (&DependencyService{binDir: binDir}).UpdateCLI(); err != nil {
+		t.Fatalf("UpdateCLI() = %v, want nil", err)
+	}
+}
+
+func TestDependencyUpdateCLIFailure(t *testing.T) {
+	isolatePath(t)
+	binDir := t.TempDir()
+	installFakeTool(t, binDir, "yt-dlp")
+	useFakeTool(t, "fail")
+
+	err := (&DependencyService{binDir: binDir}).UpdateCLI()
+	if err == nil {
+		t.Fatal("UpdateCLI() = nil, want error for failing tool")
+	}
+	if got := exitCodeFromError(err); got == ExitOK {
+		t.Errorf("exitCodeFromError(%v) = ExitOK, want a failure code", err)
+	}
+}

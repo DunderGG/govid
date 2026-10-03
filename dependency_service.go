@@ -6,7 +6,7 @@
 //     yt-dlp self-update command.
 //   - UpdateCallbacks: bridges update events back to the UI layer without any
 //     Fyne dependency.
-//   - Package-level UpdateYtDlpCLI for headless --update flag use.
+//   - UpdateCLI for headless --update flag use.
 package main
 
 import (
@@ -142,12 +142,12 @@ func (svc *DependencyService) RunUpdate(cb UpdateCallbacks) {
 	}()
 }
 
-// UpdateYtDlpCLI runs 'yt-dlp -U' synchronously and prints its output to
-// stdout. Used for the --update CLI flag; does not require a running Fyne
-// application.
-func UpdateYtDlpCLI() error {
+// UpdateCLI runs 'yt-dlp -U' synchronously and prints its output to stdout.
+// Like RunUpdate, it updates the bundled yt-dlp when one exists. Used for the
+// --update CLI flag; does not require a running Fyne application.
+func (svc *DependencyService) UpdateCLI() error {
 	fmt.Println("Updating yt-dlp...")
-	cmd := exec.Command("yt-dlp", "-U")
+	cmd := exec.Command(svc.Resolve("yt-dlp"), "-U")
 	hideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	fmt.Print(string(out))
