@@ -66,7 +66,6 @@ func (app *DownloaderApp) startDownload() {
 	// Reset UI and stats for new session.
 	app.updateStatus("Status: Initializing...")
 	app.setProgressNow(0)
-	app.stats.targetPct = 0
 	app.clearTerminalOutput()
 	app.ui.download.cancelBtn.Enable()
 	app.ui.download.downloadBtn.Disable()
@@ -94,35 +93,9 @@ func (app *DownloaderApp) startDownload() {
 	queueCtx, stopQueue := context.WithCancel(context.Background())
 	app.SetCancelFunc(stopQueue)
 
-	// Launch smoothing goroutine: interpolates progress bar towards the target
-	// percentage using an easing step, giving a smooth visual effect.
-	go func() {
-		ticker := time.NewTicker(time.Duration(fpsInterval) * time.Millisecond)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-queueCtx.Done():
-				return
-			case <-ticker.C:
-				current := app.ui.download.progress.Value
-				target := app.stats.targetPct
-				if current < target {
-					step := (target - current) * 0.05
-					if step < 0.001 {
-						step = 0.001
-					}
-					newVal := current + step
-					if newVal > target {
-						newVal = target
-					}
-					fyne.Do(func() {
-						app.ui.download.progress.SetValue(newVal)
-					})
-				}
-			}
-		}
-	}()
+	// Launch the smoothing goroutine, which owns the progress bar until the
+	// session ends.
+	go app.runProgressSmoother(queueCtx)
 
 	if len(urls) > 1 {
 		app.appendOutput(fmt.Sprintf("[SYSTEM] Batch mode: %d URLs queued.", len(urls)), colInfo)
@@ -174,7 +147,6 @@ func (app *DownloaderApp) startDownload() {
 			if index > 0 {
 				// Reset progress UI between URLs.
 				app.setProgressNow(0)
-				app.stats.targetPct = 0
 				fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
 			}
 
@@ -298,10 +270,11 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	durationTotal := time.Since(startTime).Seconds()
 	durationFormatted := fmt.Sprintf("%.2fs", durationTotal)
 
+	lastSize, downloadedRaw, unit := app.stats.sizeSnapshot()
 	var avgSpeed string
-	if durationTotal > 0 && app.stats.downloadedRaw > 0 {
-		avg := app.stats.downloadedRaw / durationTotal
-		avgSpeed = fmt.Sprintf("%.2f%s/s", avg, app.stats.unit)
+	if durationTotal > 0 && downloadedRaw > 0 {
+		avg := downloadedRaw / durationTotal
+		avgSpeed = fmt.Sprintf("%.2f%s/s", avg, unit)
 	} else {
 		avgSpeed = "N/A"
 	}
@@ -318,7 +291,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 				app.appendOutput("DOWNLOAD ABORTED", colWarning)
 				app.appendOutput(fmt.Sprintf("   ├─ Runtime:    %s", durationFormatted), colWarning)
 				app.appendOutput(fmt.Sprintf("   ├─ Avg Speed:  %s", avgSpeed), colWarning)
-				app.appendOutput(fmt.Sprintf("   └─ Downloaded: %s", app.stats.lastSize), colWarning)
+				app.appendOutput(fmt.Sprintf("   └─ Downloaded: %s", lastSize), colWarning)
 				app.appendOutput("────────────────────────────────────────", colAbortedBorder)
 				app.updateStatus("Status: Canceled.")
 				app.setStatusIndicator("canceled")
@@ -362,7 +335,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 			app.appendOutput("DOWNLOAD COMPLETE", colSuccess)
 			app.appendOutput(fmt.Sprintf("   ├─ Duration:   %s", durationFormatted), colSuccess)
 			app.appendOutput(fmt.Sprintf("   ├─ Avg Speed:  %s", avgSpeed), colSuccess)
-			app.appendOutput(fmt.Sprintf("   ├─ Downloaded: %s", app.stats.lastSize), colSuccess)
+			app.appendOutput(fmt.Sprintf("   ├─ Downloaded: %s", lastSize), colSuccess)
 			app.appendOutput(fmt.Sprintf("   └─ Format:     %s", formatLine), colSuccess)
 			app.appendOutput("────────────────────────────────────────", colSuccessBorder)
 			app.updateStatus("Status: Success!")

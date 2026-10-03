@@ -99,8 +99,7 @@ func (app *DownloaderApp) appendOutput(line string, col color.Color) {
 func (app *DownloaderApp) updateProgress(pct float64, size string) {
 	app.setProgress(pct)
 	if size != "" {
-		app.stats.lastSize = size
-		fmt.Sscanf(size, "%f%s", &app.stats.downloadedRaw, &app.stats.unit)
+		app.stats.recordSize(size)
 	}
 }
 
@@ -185,16 +184,56 @@ func (app *DownloaderApp) setProgress(pct float64) {
 	if pct > 1 {
 		pct = 1
 	}
-	app.stats.targetPct = pct
+	app.stats.setTarget(pct, false)
 }
 
-// setProgressNow immediately sets the progress bar to the given value,
-// bypassing the smooth interpolation. Use for resets or completion snaps.
+// setProgressNow makes the progress bar jump to the given value, bypassing the
+// smooth interpolation. Use for resets or completion snaps. The jump is applied
+// by runProgressSmoother, which is the only writer of the progress bar during
+// a session.
 func (app *DownloaderApp) setProgressNow(pct float64) {
-	fyne.Do(func() {
-		app.ui.download.progress.SetValue(pct)
-	})
-	app.stats.targetPct = pct
+	app.stats.setTarget(pct, true)
+}
+
+// runProgressSmoother eases the progress bar towards the target percentage
+// until ctx is cancelled, giving a smooth visual effect. It tracks the
+// displayed value itself rather than reading the widget, so the widget is
+// only ever touched inside fyne.Do.
+func (app *DownloaderApp) runProgressSmoother(ctx context.Context) {
+	ticker := time.NewTicker(time.Duration(fpsInterval) * time.Millisecond)
+	defer ticker.Stop()
+
+	current := 0.0
+	show := func(pct float64) {
+		current = pct
+		fyne.Do(func() {
+			app.ui.download.progress.SetValue(pct)
+		})
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			// Apply a pending snap (e.g. the final 100%) so it is not lost
+			// when the session ends between ticks.
+			if target, snap := app.stats.takeTarget(); snap {
+				show(target)
+			}
+			return
+		case <-ticker.C:
+			target, snap := app.stats.takeTarget()
+			switch {
+			case snap:
+				show(target)
+			case current < target:
+				step := (target - current) * 0.05
+				if step < 0.001 {
+					step = 0.001
+				}
+				show(min(current+step, target))
+			}
+		}
+	}
 }
 
 // ── Preference management ────────────────────────────────────────────────────

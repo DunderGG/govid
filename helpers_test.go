@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
 	"os"
 	"os/exec"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2/test"
 )
@@ -119,21 +121,55 @@ func TestUpdateProgressEmptySizeKeepsStats(t *testing.T) {
 		t.Errorf("targetPct = %v, want 0.5", app.stats.targetPct)
 	}
 	if app.stats.lastSize != "3.0GiB" || app.stats.downloadedRaw != 3 || app.stats.unit != "GiB" {
-		t.Errorf("stats changed on empty size: %+v", *app.stats)
+		t.Errorf("stats changed on empty size: lastSize=%q downloadedRaw=%v unit=%q",
+			app.stats.lastSize, app.stats.downloadedRaw, app.stats.unit)
 	}
 }
 
-func TestSetProgressNowUpdatesBarAndTarget(t *testing.T) {
-	_ = test.NewApp()
-	app := &DownloaderApp{ui: NewUIWidgets(), stats: &DownloadStats{targetPct: 0.9}}
+func TestSetProgressNowRequestsSnap(t *testing.T) {
+	app := &DownloaderApp{stats: &DownloadStats{targetPct: 0.9}}
 
 	app.setProgressNow(0.3)
 
-	if app.ui.download.progress.Value != 0.3 {
-		t.Errorf("progress.Value = %v, want 0.3", app.ui.download.progress.Value)
+	pct, snap := app.stats.takeTarget()
+	if pct != 0.3 || !snap {
+		t.Errorf("takeTarget() = (%v, %v), want (0.3, true)", pct, snap)
 	}
-	if app.stats.targetPct != 0.3 {
-		t.Errorf("targetPct = %v, want 0.3", app.stats.targetPct)
+	if _, snap := app.stats.takeTarget(); snap {
+		t.Error("takeTarget() still reports a snap after it was taken")
+	}
+}
+
+// runSmootherFor runs the progress smoother for d and returns once it has
+// exited. The test driver runs fyne.Do synchronously on the smoother's
+// goroutine, so the widget may only be read after this returns.
+func runSmootherFor(app *DownloaderApp, d time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	defer cancel()
+	app.runProgressSmoother(ctx)
+}
+
+func TestProgressSmootherEasesTowardsTarget(t *testing.T) {
+	_ = test.NewApp()
+	app := &DownloaderApp{ui: NewUIWidgets(), stats: &DownloadStats{}}
+
+	app.setProgress(0.5)
+	runSmootherFor(app, 10*fpsInterval*time.Millisecond)
+
+	if got := app.ui.download.progress.Value; got <= 0 || got > 0.5 {
+		t.Errorf("progress.Value = %v, want in (0, 0.5]", got)
+	}
+}
+
+func TestProgressSmootherAppliesPendingSnapOnShutdown(t *testing.T) {
+	_ = test.NewApp()
+	app := &DownloaderApp{ui: NewUIWidgets(), stats: &DownloadStats{}}
+
+	app.setProgressNow(1)
+	runSmootherFor(app, 0)
+
+	if got := app.ui.download.progress.Value; got != 1 {
+		t.Errorf("progress.Value = %v, want 1", got)
 	}
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"image/color"
 	"sync"
 	"sync/atomic"
@@ -159,12 +160,50 @@ func NewUIWidgets() *UIWidgets {
 	}
 }
 
-// DownloadStats tracks the real-time metrics of a download session.
+// DownloadStats tracks the real-time metrics of a download session. It is
+// written from the yt-dlp output goroutine and read by the progress smoother
+// and runYtDlp, so every field is guarded by mu.
 type DownloadStats struct {
+	mu            sync.Mutex
 	lastSize      string  // Last size reported by yt-dlp e.g., "15.2MiB"
 	downloadedRaw float64 // Numeric value for calculations
 	unit          string  // e.g., "MiB"
 	targetPct     float64 // The target percentage to aim for, for smoothing logic
+	snapPending   bool    // true when the smoother should jump straight to targetPct
+}
+
+// setTarget records a new progress target. When snap is true the smoother
+// jumps to it on its next tick instead of easing towards it.
+func (s *DownloadStats) setTarget(pct float64, snap bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.targetPct = pct
+	s.snapPending = snap
+}
+
+// takeTarget returns the current progress target and whether a snap was
+// requested, clearing the snap request.
+func (s *DownloadStats) takeTarget() (pct float64, snap bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	snap = s.snapPending
+	s.snapPending = false
+	return s.targetPct, snap
+}
+
+// recordSize stores the latest downloaded size reported by yt-dlp, e.g. "15.2MiB".
+func (s *DownloadStats) recordSize(size string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastSize = size
+	fmt.Sscanf(size, "%f%s", &s.downloadedRaw, &s.unit)
+}
+
+// sizeSnapshot returns the latest downloaded size and its parsed parts.
+func (s *DownloadStats) sizeSnapshot() (lastSize string, downloadedRaw float64, unit string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastSize, s.downloadedRaw, s.unit
 }
 
 // DownloaderApp acts as a coordinator, holding pointers to the specialized
