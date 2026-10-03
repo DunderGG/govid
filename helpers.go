@@ -112,56 +112,14 @@ func (app *DownloaderApp) updateProgress(pct float64, size string) {
 //   - "canceled" → stops pulsing, shows orange
 func (app *DownloaderApp) setStatusIndicator(state string) {
 	fyne.Do(func() {
-		// Stop any existing pulse goroutine.
-		if app.stopPulse != nil {
-			close(app.stopPulse)
-			app.stopPulse = nil
-		}
+		app.stopStatusPulse()
 
 		switch state {
 		case "active":
-			app.stopPulse = make(chan struct{})
-			stopCh := app.stopPulse
-			go func() {
-				ticker := time.NewTicker(50 * time.Millisecond)
-				defer ticker.Stop()
-				t := 0.0
-				for {
-					select {
-					case <-stopCh:
-						return
-					case <-ticker.C:
-						t += 0.1
-						alpha := uint8(128 + 127*math.Sin(t))
-						fyne.Do(func() {
-							app.ui.download.statusDot.FillColor = color.RGBA{R: accentCyan.R, G: accentCyan.G, B: accentCyan.B, A: alpha}
-							app.ui.download.statusDot.Refresh()
-						})
-					}
-				}
-			}()
+			app.startStatusPulse(accentCyan)
 		case "processing":
 			// Pulsing purple to distinguish post-processing from active download.
-			app.stopPulse = make(chan struct{})
-			stopCh := app.stopPulse
-			go func() {
-				ticker := time.NewTicker(50 * time.Millisecond)
-				defer ticker.Stop()
-				t := 0.0
-				for {
-					select {
-					case <-stopCh:
-						return
-					case <-ticker.C:
-						t += 0.1
-						alpha := uint8(128 + 127*math.Sin(t))
-						fyne.Do(func() {
-							app.ui.download.statusDot.FillColor = color.RGBA{R: colDotProcessing.R, G: colDotProcessing.G, B: colDotProcessing.B, A: alpha}
-							app.ui.download.statusDot.Refresh()
-						})
-					}
-				}
-			}()
+			app.startStatusPulse(colDotProcessing)
 		case "success":
 			app.ui.download.statusDot.FillColor = colDotSuccess
 		case "failed":
@@ -173,6 +131,55 @@ func (app *DownloaderApp) setStatusIndicator(state string) {
 		}
 		app.ui.download.statusDot.Refresh()
 	})
+}
+
+// startStatusPulse launches a goroutine that pulses the status dot's alpha in
+// the given base colour until stopStatusPulse is called. Must be called on
+// the UI thread.
+func (app *DownloaderApp) startStatusPulse(base color.RGBA) {
+	stopCh := make(chan struct{})
+	doneCh := make(chan struct{})
+	app.stopPulse, app.pulseDone = stopCh, doneCh
+
+	go func() {
+		defer close(doneCh)
+		ticker := time.NewTicker(50 * time.Millisecond)
+		defer ticker.Stop()
+		t := 0.0
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-ticker.C:
+				t += 0.1
+				alpha := uint8(128 + 127*math.Sin(t))
+				fyne.Do(func() {
+					// A frame queued just before the pulse was stopped must
+					// not overwrite the colour of the next state.
+					select {
+					case <-stopCh:
+						return
+					default:
+					}
+					app.ui.download.statusDot.FillColor = color.RGBA{R: base.R, G: base.G, B: base.B, A: alpha}
+					app.ui.download.statusDot.Refresh()
+				})
+			}
+		}
+	}()
+}
+
+// stopStatusPulse stops the pulse goroutine, if any, and waits for it to exit
+// so none of its writes to the status dot can overlap the caller's. Must be
+// called on the UI thread. Waiting is safe there because fyne.Do never blocks
+// the pulse goroutine on the UI thread.
+func (app *DownloaderApp) stopStatusPulse() {
+	if app.stopPulse == nil {
+		return
+	}
+	close(app.stopPulse)
+	<-app.pulseDone
+	app.stopPulse, app.pulseDone = nil, nil
 }
 
 // setProgress queues a new target percentage for the smooth progress interpolation

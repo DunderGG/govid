@@ -216,6 +216,7 @@ type DownloaderApp struct {
 	cancelMu   sync.Mutex                         // Guards cancelFn updates and reads
 	cancelFn   context.CancelFunc                 // Function used to signal yt-dlp to stop
 	stopPulse  chan struct{}                      // Closed to stop the status dot pulse goroutine
+	pulseDone  chan struct{}                      // Closed by the pulse goroutine when it exits
 	uiManager  *UIManager                         // Owns secondary window state (About, Help, History, Prefs, PP)
 	prefSvc    *PreferenceService                 // Centralised preference loading and persistence
 	historySvc *HistoryService                    // Download history persistence
