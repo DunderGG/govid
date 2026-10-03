@@ -140,6 +140,21 @@ func TestSetProgressNowRequestsSnap(t *testing.T) {
 	}
 }
 
+func TestDownloadStatsResetClearsPreviousDownload(t *testing.T) {
+	stats := &DownloadStats{}
+	stats.recordSize("15.2MiB")
+	stats.setTarget(0.8, false)
+
+	stats.reset()
+
+	if size, raw, unit := stats.sizeSnapshot(); size != "" || raw != 0 || unit != "" {
+		t.Errorf("sizeSnapshot() = (%q, %v, %q), want zero values", size, raw, unit)
+	}
+	if pct, snap := stats.takeTarget(); pct != 0 || !snap {
+		t.Errorf("takeTarget() = (%v, %v), want (0, true)", pct, snap)
+	}
+}
+
 // runSmootherFor runs the progress smoother for d and returns once it has
 // exited. The test driver runs fyne.Do synchronously on the smoother's
 // goroutine, so the widget may only be read after this returns.

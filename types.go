@@ -191,6 +191,19 @@ func (s *DownloadStats) takeTarget() (pct float64, snap bool) {
 	return s.targetPct, snap
 }
 
+// reset clears the metrics of the previous download and requests a snap of
+// the progress bar back to 0, so a download that fails before reporting
+// progress does not inherit the previous one's size and speed.
+func (s *DownloadStats) reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastSize = ""
+	s.downloadedRaw = 0
+	s.unit = ""
+	s.targetPct = 0
+	s.snapPending = true
+}
+
 // recordSize stores the latest downloaded size reported by yt-dlp, e.g. "15.2MiB".
 func (s *DownloadStats) recordSize(size string) {
 	s.mu.Lock()

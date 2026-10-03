@@ -65,7 +65,7 @@ func (app *DownloaderApp) startDownload() {
 
 	// Reset UI and stats for new session.
 	app.updateStatus("Status: Initializing...")
-	app.setProgressNow(0)
+	app.stats.reset()
 	app.clearTerminalOutput()
 	app.ui.download.cancelBtn.Enable()
 	app.ui.download.downloadBtn.Disable()
@@ -145,8 +145,8 @@ func (app *DownloaderApp) startDownload() {
 				app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", index+1, len(urls)), colInfo)
 			}
 			if index > 0 {
-				// Reset progress UI between URLs.
-				app.setProgressNow(0)
+				// Reset progress UI and stats between URLs.
+				app.stats.reset()
 				fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
 			}
 
