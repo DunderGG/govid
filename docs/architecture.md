@@ -117,7 +117,7 @@ Widgets are wired with callbacks in `UIManager.createUI()` and accessed through 
 Owns the primary window reference (`mainWindow`) plus the five singleton secondary windows (About, Help, History, Preferences, Post-Processing). Calling a `show*` method re-focuses an already-open window rather than opening a duplicate, via the shared `focusOrCreate`/`onWindowClosed` helpers. `UIManager` holds no direct service references — every service access is bridged through injected callbacks (`onLoadHistory`, `onCheckDependencies`, `onSavePreferences`, etc.), wired once in `newDownloaderApp`.
 
 Beyond the five `show*` methods, `UIManager` also owns:
-- **`createUI()`** — builds the main window layout, split into focused helpers (`buildHeader`, `configureEntryMode`, `wireToggleHandlers`, `loadMainWindowState`, `wireActionButtons`, `buildInputCard`, `buildStatusCard`, `buildLogPane`, `buildFooter`).
+- **`createUI()`** — builds the main window layout, split into focused helpers (`buildHeader`, `configureEntryMode`, `wireToggleHandlers`, `wireActionButtons`, `buildInputCard`, `buildStatusCard`, `buildLogPane`, `buildFooter`).
 - **`createMainMenu()`** — builds the menu bar.
 - **`savePreferences`, `resetPreferences`, `rebuildUI`** — preference persistence and full UI-rebuild-on-reset, used by `showPreferences`.
 - **`checkDependencies`, `runUpdateInUI`** — thin delegates to the injected `onCheckDependencies`/`onRunUpdate` callbacks for the startup tool check and the "Update yt-dlp" menu action.

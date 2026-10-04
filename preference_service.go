@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
+	"runtime"
 
 	"fyne.io/fyne/v2"
 )
@@ -62,6 +64,7 @@ const (
 // scattering magic literals throughout the codebase.
 const (
 	defaultThemeMode         = "Dark"
+	defaultQuality           = "Best Quality"
 	defaultSavePrefs         = true
 	defaultSmoothMotionMode  = "Balanced"
 	defaultSmoothFPS         = 60.0
@@ -126,7 +129,7 @@ func NewPreferenceService(store fyne.Preferences) *PreferenceService {
 // Load reads every stored preference and returns an AppPreferences with
 // fallback defaults applied for any key that has not been explicitly set.
 func (prefSvc *PreferenceService) Load() AppPreferences {
-	return AppPreferences{
+	p := AppPreferences{
 		SavePrefs:         prefSvc.store.BoolWithFallback(prefSavePrefs, defaultSavePrefs),
 		SavedPath:         prefSvc.store.String(prefSavedPath),
 		Format:            prefSvc.store.String(prefFormat),
@@ -159,6 +162,46 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		UpscaleTarget:     prefSvc.store.StringWithFallback(prefUpscaleTarget, defaultUpscaleTarget),
 		GPUBackend:        prefSvc.store.StringWithFallback(prefGPUBackend, defaultGPUBackend),
 	}
+	return resolveDefaults(p)
+}
+
+// resolveDefaults fills the save path, format, and quality when they are
+// empty. Unlike the fixed defaults applied in Load, an explicitly stored
+// empty value also falls back, since none of the three is usable empty.
+// The save path and format defaults depend on the install location and
+// platform, so they are computed rather than constant.
+func resolveDefaults(p AppPreferences) AppPreferences {
+	if p.SavedPath == "" {
+		p.SavedPath = defaultSavePath()
+	}
+	if p.Format == "" {
+		p.Format = defaultFormat()
+	}
+	if p.Quality == "" {
+		p.Quality = defaultQuality
+	}
+	return p
+}
+
+// defaultFormat returns MP4 on Windows and macOS, where it plays natively,
+// and MKV elsewhere.
+func defaultFormat() string {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		return "MP4"
+	}
+	return "MKV"
+}
+
+// defaultSavePath returns the directory containing the executable, falling
+// back to the working directory, or "" if neither can be determined.
+func defaultSavePath() string {
+	if exePath, err := os.Executable(); err == nil {
+		return filepath.Dir(exePath)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		return cwd
+	}
+	return ""
 }
 
 // Save writes the given AppPreferences to the Fyne store.

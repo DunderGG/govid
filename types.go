@@ -60,8 +60,8 @@ func NewDownloadControls() *DownloadControls {
 	return &DownloadControls{
 		entry:       widget.NewEntry(),
 		path:        widget.NewEntry(),
-		format:      widget.NewSelect(nil, nil),
-		quality:     widget.NewSelect(nil, nil),
+		format:      widget.NewSelect([]string{"MP4", "MKV", "WebM", "MP3", "M4A"}, nil),
+		quality:     widget.NewSelect([]string{"Best Quality", "1080p", "720p", "480p", "360p"}, nil),
 		saveLog:     widget.NewCheck("Save output to log file", nil),
 		notify:      widget.NewCheck("Notify on Completion", nil),
 		autoRetry:   widget.NewCheck("Auto-retry", nil),
@@ -87,10 +87,19 @@ type PreferenceControls struct {
 
 // NewPreferenceControls constructs the Preferences dialog's widgets.
 func NewPreferenceControls() *PreferenceControls {
+	maxSpeed := widget.NewEntry()
+	maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
+
+	themeMode := widget.NewRadioGroup([]string{"Dark", "Light"}, nil)
+	themeMode.Horizontal = true
+
+	cookies := widget.NewEntry()
+	cookies.SetPlaceHolder("Path to cookies.txt (optional)")
+
 	return &PreferenceControls{
-		maxSpeed:  widget.NewEntry(),
-		themeMode: widget.NewRadioGroup([]string{"Dark", "Light"}, nil),
-		cookies:   widget.NewEntry(),
+		maxSpeed:  maxSpeed,
+		themeMode: themeMode,
+		cookies:   cookies,
 		savePrefs: widget.NewCheck("Save preferences between sessions", nil),
 		logLimit:  widget.NewSelect([]string{"100", "200", "500", "1000", "5000", "Unlimited"}, nil),
 	}
@@ -128,17 +137,23 @@ func NewPostProcessControls() *PostProcessControls {
 	sharpenSlider := widget.NewSlider(0, 2)
 	sharpenSlider.Step = 0.1
 
+	smoothModeRadio := widget.NewRadioGroup([]string{"Precise (slow)", "Balanced", "Fast"}, nil)
+	smoothModeRadio.Horizontal = true
+
+	denoiseModeRadio := widget.NewRadioGroup([]string{"NLMeans (HQ, slow)", "hqdn3d (Balanced)"}, nil)
+	denoiseModeRadio.Horizontal = true
+
 	return &PostProcessControls{
 		enablePostProcess: widget.NewCheck("Post-Processing", nil),
 		smoothMotion:      widget.NewCheck("Enabled", nil),
-		smoothMotionMode:  widget.NewRadioGroup([]string{"Precise (slow)", "Balanced", "Fast"}, nil),
+		smoothMotionMode:  smoothModeRadio,
 		smoothMotionFPS:   smoothFPSSlider,
 		sharpen:           widget.NewCheck("Sharpen Video", nil),
 		sharpenAmount:     sharpenSlider,
 		normalizeAudio:    widget.NewCheck("Normalize Audio", nil),
 		vividMode:         widget.NewCheck("Vivid Mode", nil),
 		denoise:           widget.NewCheck("Denoise", nil),
-		denoiseMode:       widget.NewRadioGroup([]string{"NLMeans (HQ, slow)", "hqdn3d (Balanced)"}, nil),
+		denoiseMode:       denoiseModeRadio,
 		hdrToSdr:          widget.NewCheck("HDR to SDR", nil),
 		deband:            widget.NewCheck("Fix Banding", nil),
 		autoCrop:          widget.NewCheck("Auto-Crop", nil),

@@ -21,9 +21,7 @@ import (
 	"fmt"
 	"image/color"
 	"net/url"
-	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 
@@ -358,22 +356,9 @@ func (manager *UIManager) showPreferences() {
 	}
 
 	ui := manager.ui
-	prefs := manager.onLoadPreferences()
-
-	// Log Buffer Limit
-	ui.prefs.logLimit.SetSelected(prefs.LogLimit)
-
-	// Speed Limit field
-	ui.prefs.maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
-	ui.prefs.maxSpeed.SetText(prefs.MaxSpeed)
-
-	// Theme Mode field — horizontal radio group for a simple two-option toggle.
-	ui.prefs.themeMode.Horizontal = true
-	ui.prefs.themeMode.SetSelected(prefs.ThemeMode)
-
-	// Cookies field
-	ui.prefs.cookies.SetPlaceHolder("Path to cookies.txt (optional)")
-	ui.prefs.cookies.SetText(prefs.CookiesPath)
+	// Reload the persisted values so the window never shows edits that were
+	// discarded by closing it without saving.
+	applyGeneralPrefs(ui, manager.onLoadPreferences())
 
 	cookiesBrowse := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
 		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
@@ -391,9 +376,6 @@ func (manager *UIManager) showPreferences() {
 		ui.prefs.cookies.SetText("")
 	})
 	cookiesRow := container.NewBorder(nil, nil, nil, container.NewHBox(cookiesBrowse, cookiesClear), ui.prefs.cookies)
-
-	// Save Preferences toggle.
-	ui.prefs.savePrefs.SetChecked(prefs.SavePrefs)
 
 	form := &widget.Form{
 		Items: []*widget.FormItem{
@@ -491,29 +473,9 @@ func (manager *UIManager) showPostProcessing() {
 	}
 
 	ui := manager.ui
-	prefs := manager.onLoadPreferences()
-
-	// Reload all post-processing prefs so the window always shows persisted state.
-	ui.postProcess.smoothMotion.SetChecked(prefs.SmoothMotion)
-	ui.postProcess.smoothMotionMode.Horizontal = true
-	ui.postProcess.smoothMotionMode.SetSelected(prefs.SmoothMotionMode)
-	ui.postProcess.smoothMotionFPS.SetValue(prefs.SmoothFPS)
-	ui.postProcess.sharpen.SetChecked(prefs.Sharpen)
-	ui.postProcess.sharpenAmount.SetValue(prefs.SharpenAmount)
-	ui.postProcess.vividMode.SetChecked(prefs.VividMode)
-	ui.postProcess.deband.SetChecked(prefs.Deband)
-	ui.postProcess.hdrToSdr.SetChecked(prefs.HDRToSDR)
-	ui.postProcess.denoise.SetChecked(prefs.Denoise)
-	ui.postProcess.denoiseMode.Horizontal = true
-	ui.postProcess.denoiseMode.SetSelected(prefs.DenoiseMode)
-	ui.postProcess.deinterlace.SetChecked(prefs.Deinterlace)
-	ui.postProcess.stabilize.SetChecked(prefs.Stabilize)
-	ui.postProcess.autoCrop.SetChecked(prefs.AutoCrop)
-	ui.postProcess.upscaleVideo.SetChecked(prefs.UpscaleVideo)
-	ui.postProcess.upscaleTarget.SetSelected(prefs.UpscaleTarget)
-	ui.postProcess.normalizeAudio.SetChecked(prefs.NormalizeAudio)
-	ui.postProcess.nightMode.SetChecked(prefs.NightMode)
-	ui.postProcess.gpuBackend.SetSelected(prefs.GPUBackend)
+	// Reload the persisted values so the window never shows edits that were
+	// discarded by closing it without applying.
+	applyPostProcessPrefs(ui, manager.onLoadPreferences())
 
 	// FPS slider for smooth motion — use a bound float so the label updates live.
 	fpsBinding := binding.NewFloat()
@@ -761,7 +723,6 @@ func (manager *UIManager) createUI() {
 
 	manager.configureEntryMode()
 	manager.wireToggleHandlers()
-	manager.loadMainWindowState(prefs)
 	manager.wireActionButtons(prefs.ThemeMode)
 
 	header := buildHeader()
@@ -855,36 +816,6 @@ func (manager *UIManager) wireToggleHandlers() {
 	ui.download.path.SetPlaceHolder("Download folder...")
 	ui.download.path.OnChanged = func(text string) {
 		manager.savePreferences(text)
-	}
-}
-
-// loadMainWindowState applies the saved path, format, and quality preferences
-// to their widgets, falling back to platform/OS defaults when unset.
-func (manager *UIManager) loadMainWindowState(prefs AppPreferences) {
-	ui := manager.ui
-
-	if prefs.SavedPath != "" {
-		ui.download.path.SetText(prefs.SavedPath)
-	} else if exePath, err := os.Executable(); err == nil {
-		ui.download.path.SetText(filepath.Dir(exePath))
-	} else if cwd, err := os.Getwd(); err == nil {
-		ui.download.path.SetText(cwd)
-	}
-
-	ui.download.format.Options = []string{"MP4", "MKV", "WebM", "MP3", "M4A"}
-	if prefs.Format != "" {
-		ui.download.format.SetSelected(prefs.Format)
-	} else if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-		ui.download.format.SetSelected("MP4")
-	} else {
-		ui.download.format.SetSelected("MKV")
-	}
-
-	ui.download.quality.Options = []string{"Best Quality", "1080p", "720p", "480p", "360p"}
-	if prefs.Quality != "" {
-		ui.download.quality.SetSelected(prefs.Quality)
-	} else {
-		ui.download.quality.SetSelected("Best Quality")
 	}
 }
 

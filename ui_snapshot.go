@@ -12,7 +12,9 @@
 //
 // Value → widget:
 //   - applyPreferencesToWidgets: called at startup, after loading govid.json,
-//     and by Restore Defaults.
+//     and by Restore Defaults. It is composed of applyMainWindowPrefs,
+//     applyGeneralPrefs, and applyPostProcessPrefs; the Preferences and
+//     Post-Processing dialogs call their own group when they open.
 package main
 
 import "strings"
@@ -108,44 +110,65 @@ func newSessionConfig(ui *UIWidgets, urls []string, savePath, trimStart, trimEnd
 	}
 }
 
-// applyPreferencesToWidgets writes the values from an AppPreferences struct
-// into the corresponding UI widgets. Called at startup and after a reset.
+// applyPreferencesToWidgets writes every value from an AppPreferences struct
+// into the corresponding UI widgets. It is the only writer of preference
+// values into widgets: the Preferences and Post-Processing dialogs reload
+// their own group through applyGeneralPrefs and applyPostProcessPrefs.
 func applyPreferencesToWidgets(ui *UIWidgets, p AppPreferences) {
+	applyMainWindowPrefs(ui, p)
+	applyGeneralPrefs(ui, p)
+	applyPostProcessPrefs(ui, p)
+}
+
+// applyMainWindowPrefs writes the preferences shown on the main window. An
+// empty save path, format, or quality leaves the widget unchanged; Load
+// already resolves those to their platform defaults.
+func applyMainWindowPrefs(ui *UIWidgets, p AppPreferences) {
+	if p.SavedPath != "" {
+		ui.download.path.SetText(p.SavedPath)
+	}
 	if p.Format != "" {
 		ui.download.format.SetSelected(p.Format)
 	}
 	if p.Quality != "" {
 		ui.download.quality.SetSelected(p.Quality)
 	}
-	if p.SavedPath != "" {
-		ui.download.path.SetText(p.SavedPath)
-	}
-	ui.prefs.themeMode.SetSelected(p.ThemeMode)
-	ui.prefs.savePrefs.SetChecked(p.SavePrefs)
-	ui.postProcess.smoothMotion.SetChecked(p.SmoothMotion)
-	ui.postProcess.smoothMotionMode.SetSelected(p.SmoothMotionMode)
-	ui.postProcess.smoothMotionFPS.SetValue(p.SmoothFPS)
-	ui.postProcess.sharpen.SetChecked(p.Sharpen)
-	ui.postProcess.sharpenAmount.SetValue(p.SharpenAmount)
-	ui.postProcess.normalizeAudio.SetChecked(p.NormalizeAudio)
-	ui.postProcess.vividMode.SetChecked(p.VividMode)
-	ui.postProcess.denoise.SetChecked(p.Denoise)
-	ui.postProcess.denoiseMode.SetSelected(p.DenoiseMode)
-	ui.postProcess.hdrToSdr.SetChecked(p.HDRToSDR)
-	ui.postProcess.deband.SetChecked(p.Deband)
-	ui.postProcess.autoCrop.SetChecked(p.AutoCrop)
-	ui.postProcess.stabilize.SetChecked(p.Stabilize)
-	ui.postProcess.deinterlace.SetChecked(p.Deinterlace)
-	ui.postProcess.nightMode.SetChecked(p.NightMode)
-	ui.postProcess.upscaleVideo.SetChecked(p.UpscaleVideo)
-	ui.postProcess.upscaleTarget.SetSelected(p.UpscaleTarget)
-	ui.postProcess.gpuBackend.SetSelected(p.GPUBackend)
-	ui.prefs.cookies.SetText(p.CookiesPath)
 	ui.download.batchMode.SetChecked(p.BatchMode)
 	ui.download.saveLog.SetChecked(p.SaveLog)
 	ui.download.notify.SetChecked(p.Notify)
 	ui.download.autoRetry.SetChecked(p.AutoRetry)
 	ui.postProcess.enablePostProcess.SetChecked(p.EnablePostProcess)
+}
+
+// applyGeneralPrefs writes the preferences shown in the Preferences dialog.
+func applyGeneralPrefs(ui *UIWidgets, p AppPreferences) {
+	ui.prefs.savePrefs.SetChecked(p.SavePrefs)
 	ui.prefs.logLimit.SetSelected(p.LogLimit)
 	ui.prefs.maxSpeed.SetText(p.MaxSpeed)
+	ui.prefs.themeMode.SetSelected(p.ThemeMode)
+	ui.prefs.cookies.SetText(p.CookiesPath)
+}
+
+// applyPostProcessPrefs writes the preferences shown in the Post-Processing
+// dialog. The master enable toggle lives on the main window and is written
+// by applyMainWindowPrefs instead.
+func applyPostProcessPrefs(ui *UIWidgets, p AppPreferences) {
+	ui.postProcess.gpuBackend.SetSelected(p.GPUBackend)
+	ui.postProcess.smoothMotion.SetChecked(p.SmoothMotion)
+	ui.postProcess.smoothMotionMode.SetSelected(p.SmoothMotionMode)
+	ui.postProcess.smoothMotionFPS.SetValue(p.SmoothFPS)
+	ui.postProcess.vividMode.SetChecked(p.VividMode)
+	ui.postProcess.sharpen.SetChecked(p.Sharpen)
+	ui.postProcess.sharpenAmount.SetValue(p.SharpenAmount)
+	ui.postProcess.deband.SetChecked(p.Deband)
+	ui.postProcess.hdrToSdr.SetChecked(p.HDRToSDR)
+	ui.postProcess.denoise.SetChecked(p.Denoise)
+	ui.postProcess.denoiseMode.SetSelected(p.DenoiseMode)
+	ui.postProcess.deinterlace.SetChecked(p.Deinterlace)
+	ui.postProcess.stabilize.SetChecked(p.Stabilize)
+	ui.postProcess.autoCrop.SetChecked(p.AutoCrop)
+	ui.postProcess.upscaleVideo.SetChecked(p.UpscaleVideo)
+	ui.postProcess.upscaleTarget.SetSelected(p.UpscaleTarget)
+	ui.postProcess.normalizeAudio.SetChecked(p.NormalizeAudio)
+	ui.postProcess.nightMode.SetChecked(p.NightMode)
 }

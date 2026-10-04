@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 )
 
@@ -51,6 +52,40 @@ func TestPreferenceServiceSharpenAmountRoundtrip(t *testing.T) {
 	loaded := prefSvc.Load()
 	if math.Abs(loaded.SharpenAmount-1.5) > 0.001 {
 		t.Errorf("loaded.SharpenAmount = %v, want 1.5", loaded.SharpenAmount)
+	}
+}
+
+func TestLoadResolvesRuntimeDefaults(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(store fyne.Preferences)
+		want  AppPreferences
+	}{
+		{"unset", func(fyne.Preferences) {},
+			AppPreferences{SavedPath: defaultSavePath(), Format: defaultFormat(), Quality: defaultQuality}},
+		{"stored empty", func(store fyne.Preferences) {
+			store.SetString(prefSavedPath, "")
+			store.SetString(prefFormat, "")
+			store.SetString(prefQuality, "")
+		}, AppPreferences{SavedPath: defaultSavePath(), Format: defaultFormat(), Quality: defaultQuality}},
+		{"stored values kept", func(store fyne.Preferences) {
+			store.SetString(prefSavedPath, "/videos")
+			store.SetString(prefFormat, "WebM")
+			store.SetString(prefQuality, "720p")
+		}, AppPreferences{SavedPath: "/videos", Format: "WebM", Quality: "720p"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := test.NewApp().Preferences()
+			tt.setup(store)
+
+			got := NewPreferenceService(store).Load()
+
+			if got.SavedPath != tt.want.SavedPath || got.Format != tt.want.Format || got.Quality != tt.want.Quality {
+				t.Errorf("Load() path/format/quality = %q/%q/%q, want %q/%q/%q",
+					got.SavedPath, got.Format, got.Quality, tt.want.SavedPath, tt.want.Format, tt.want.Quality)
+			}
+		})
 	}
 }
 
