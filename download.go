@@ -12,6 +12,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"image/color"
 	"regexp"
 	"strings"
 	"time"
@@ -222,19 +223,17 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		app.depSvc.Resolve("ffmpeg"),
 	)
 
-	selection := app.ui.download.format.Selected
-	quality := app.ui.download.quality.Selected
-
-	dl := engine.Run(ctx, DownloadRequest{
+	req := DownloadRequest{
 		URL:         rawURL,
 		SavePath:    savePath,
-		Format:      selection,
-		Quality:     quality,
+		Format:      app.ui.download.format.Selected,
+		Quality:     app.ui.download.quality.Selected,
 		TrimStart:   trimStart,
 		TrimEnd:     trimEnd,
 		MaxSpeed:    limit,
 		CookiesPath: strings.TrimSpace(app.ui.prefs.cookies.Text),
-	}, DownloadOptions{
+	}
+	dl := engine.Run(ctx, req, DownloadOptions{
 		AutoRetry: app.ui.download.autoRetry.Checked,
 		Index:     index,
 		Total:     total,
@@ -244,111 +243,154 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		OnProgress: app.updateProgress,
 	})
 
-	cmdErr := dl.Err
-	extension := dl.Extension
-	result := dl.Scan
-	finalPaths := dl.FinalPaths
-
-	if cmdErr == nil {
-		postProcessed := app.ui.postProcess.enablePostProcess.Checked
-		rec := DownloadRecord{
-			URL:           rawURL,
-			FinalPaths:    finalPaths,
-			SavePath:      savePath,
-			Format:        selection,
-			Quality:       quality,
-			PostProcessed: postProcessed,
-		}
-		if historyErr := app.historySvc.AppendAll(rec); historyErr != nil {
-			app.appendOutput(
-				fmt.Sprintf("[SYSTEM] Warning: failed to record history: %v", historyErr),
-				colWarning,
-			)
-		}
+	if dl.Err == nil {
+		app.recordHistory(req, dl.FinalPaths)
 	}
+	app.reportDownloadResult(ctx, dl, time.Since(startTime))
+	return dl.FinalPaths
+}
 
-	durationTotal := time.Since(startTime).Seconds()
-	durationFormatted := fmt.Sprintf("%.2fs", durationTotal)
+// recordHistory appends one history entry per finalized output file, logging
+// a warning (rather than failing the download) if the history write fails.
+func (app *DownloaderApp) recordHistory(req DownloadRequest, finalPaths []string) {
+	rec := DownloadRecord{
+		URL:           req.URL,
+		FinalPaths:    finalPaths,
+		SavePath:      req.SavePath,
+		Format:        req.Format,
+		Quality:       req.Quality,
+		PostProcessed: app.ui.postProcess.enablePostProcess.Checked,
+	}
+	if err := app.historySvc.AppendAll(rec); err != nil {
+		app.appendOutput(
+			fmt.Sprintf("[SYSTEM] Warning: failed to record history: %v", err),
+			colWarning,
+		)
+	}
+}
 
+// reportDownloadResult writes the COMPLETE/ABORTED summary to the log and
+// updates the status label, status dot, progress bar, and (on failure) the
+// session-failed flag and notification. It blocks until the UI updates are
+// committed, so the summary is fully rendered before the caller starts
+// post-processing and overwrites the status.
+func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadResult, elapsed time.Duration) {
 	lastSize, downloadedRaw, unit := app.stats.sizeSnapshot()
-	var avgSpeed string
-	if durationTotal > 0 && downloadedRaw > 0 {
-		avg := downloadedRaw / durationTotal
-		avgSpeed = fmt.Sprintf("%.2f%s/s", avg, unit)
-	} else {
-		avgSpeed = "N/A"
-	}
+	elapsedStr := fmt.Sprintf("%.2fs", elapsed.Seconds())
+	avgSpeed := averageSpeed(downloadedRaw, elapsed.Seconds(), unit)
 
-	// uiDone is closed inside fyne.Do once all UI updates for this download are
-	// committed. Waiting on it ensures the "DOWNLOAD COMPLETE" block is fully
-	// rendered before the caller starts post-processing and overwrites the status.
 	uiDone := make(chan struct{})
 	fyne.Do(func() {
+		defer close(uiDone)
 		app.ui.download.cancelBtn.Disable()
-		if cmdErr != nil {
-			if ctx.Err() == context.Canceled {
-				app.appendOutput("────────────────────────────────────────", colAbortedBorder)
-				app.appendOutput("DOWNLOAD ABORTED", colWarning)
-				app.appendOutput(fmt.Sprintf("   ├─ Runtime:    %s", durationFormatted), colWarning)
-				app.appendOutput(fmt.Sprintf("   ├─ Avg Speed:  %s", avgSpeed), colWarning)
-				app.appendOutput(fmt.Sprintf("   └─ Downloaded: %s", lastSize), colWarning)
-				app.appendOutput("────────────────────────────────────────", colAbortedBorder)
-				app.updateStatus("Status: Canceled.")
-				app.setStatusIndicator("canceled")
-			} else {
-				app.updateStatus("Status: Failed. Check output below.")
-				app.setStatusIndicator("failed")
-				app.ppFailed.Store(1)
-				if app.ui.download.notify.Checked {
-					fyne.CurrentApp().SendNotification(&fyne.Notification{
-						Title:   "GoVid — Download Failed",
-						Content: "The download encountered an error. Check the log for details.",
-					})
-				}
-			}
-		} else {
-			// Build a human-readable format line, e.g. "WEBM+M4A → MP4 (remuxed)".
-			outExt := strings.ToUpper(extension)
-			formatLine := outExt
-			if len(result.sourceExts) > 0 {
-				seen := map[string]bool{}
-				var unique []string
-				for _, e := range result.sourceExts {
-					exts := strings.ToUpper(e)
-					if !seen[exts] {
-						seen[exts] = true
-						unique = append(unique, exts)
-					}
-				}
-				srcStr := strings.Join(unique, "+")
-				switch {
-				case result.wasConverted:
-					formatLine = fmt.Sprintf("%s → %s (converted)", srcStr, outExt)
-				case srcStr != outExt:
-					formatLine = fmt.Sprintf("%s → %s (remuxed)", srcStr, outExt)
-				default:
-					formatLine = fmt.Sprintf("%s (original)", outExt)
-				}
-			}
 
-			app.appendOutput("────────────────────────────────────────", colSuccessBorder)
-			app.appendOutput("DOWNLOAD COMPLETE", colSuccess)
-			app.appendOutput(fmt.Sprintf("   ├─ Duration:   %s", durationFormatted), colSuccess)
-			app.appendOutput(fmt.Sprintf("   ├─ Avg Speed:  %s", avgSpeed), colSuccess)
-			app.appendOutput(fmt.Sprintf("   ├─ Downloaded: %s", lastSize), colSuccess)
-			app.appendOutput(fmt.Sprintf("   └─ Format:     %s", formatLine), colSuccess)
-			app.appendOutput("────────────────────────────────────────", colSuccessBorder)
+		switch {
+		case dl.Err == nil:
+			app.logDownloadSummary("DOWNLOAD COMPLETE", []summaryRow{
+				{"Duration", elapsedStr},
+				{"Avg Speed", avgSpeed},
+				{"Downloaded", lastSize},
+				{"Format", describeOutputFormat(dl.Extension, dl.Scan)},
+			}, colSuccess, colSuccessBorder)
 			app.updateStatus("Status: Success!")
 			app.setProgressNow(1)
 			app.setStatusIndicator("success")
+		case ctx.Err() == context.Canceled:
+			app.logDownloadSummary("DOWNLOAD ABORTED", []summaryRow{
+				{"Runtime", elapsedStr},
+				{"Avg Speed", avgSpeed},
+				{"Downloaded", lastSize},
+			}, colWarning, colAbortedBorder)
+			app.updateStatus("Status: Canceled.")
+			app.setStatusIndicator("canceled")
+		default:
+			app.updateStatus("Status: Failed. Check output below.")
+			app.setStatusIndicator("failed")
+			app.ppFailed.Store(1)
+			if app.ui.download.notify.Checked {
+				fyne.CurrentApp().SendNotification(&fyne.Notification{
+					Title:   "GoVid — Download Failed",
+					Content: "The download encountered an error. Check the log for details.",
+				})
+			}
 		}
-
-		close(uiDone)
 	})
-	// Wait for the UI updates to commit before returning,
-	// ensuring the final status is visible before any post-processing starts.
 	<-uiDone
-	return finalPaths
+}
+
+// summaryBorder frames the post-download summary block in the log.
+const summaryBorder = "────────────────────────────────────────"
+
+// summaryRow is one labelled value in a post-download summary block.
+type summaryRow struct {
+	label string
+	value string
+}
+
+// logDownloadSummary writes a bordered summary block: a title line followed
+// by the rows rendered as a tree (see summaryLines).
+func (app *DownloaderApp) logDownloadSummary(title string, rows []summaryRow, textCol, borderCol color.Color) {
+	app.appendOutput(summaryBorder, borderCol)
+	app.appendOutput(title, textCol)
+	for _, line := range summaryLines(rows) {
+		app.appendOutput(line, textCol)
+	}
+	app.appendOutput(summaryBorder, borderCol)
+}
+
+// summaryLines renders rows as aligned tree branches, e.g.
+// "   ├─ Avg Speed:  1.20MiB/s", with "└─" on the last row.
+func summaryLines(rows []summaryRow) []string {
+	lines := make([]string, len(rows))
+	for i, row := range rows {
+		branch := "├─"
+		if i == len(rows)-1 {
+			branch = "└─"
+		}
+		lines[i] = fmt.Sprintf("   %s %-11s %s", branch, row.label+":", row.value)
+	}
+	return lines
+}
+
+// averageSpeed formats downloaded/seconds as e.g. "1.25MiB/s", or "N/A" when
+// either value is zero (nothing downloaded, or no measurable elapsed time).
+func averageSpeed(downloaded, seconds float64, unit string) string {
+	if seconds <= 0 || downloaded <= 0 {
+		return "N/A"
+	}
+	return fmt.Sprintf("%.2f%s/s", downloaded/seconds, unit)
+}
+
+// describeOutputFormat builds the human-readable format line for the
+// download summary, e.g. "WEBM+M4A → MP4 (remuxed)". extension is the final
+// output extension; scan supplies the source extensions yt-dlp reported and
+// whether ffmpeg re-encoded them. With no source extensions it returns just
+// the upper-cased output extension.
+func describeOutputFormat(extension string, scan scanResult) string {
+	outExt := strings.ToUpper(extension)
+	if len(scan.sourceExts) == 0 {
+		return outExt
+	}
+
+	seen := map[string]bool{}
+	var unique []string
+	for _, ext := range scan.sourceExts {
+		ext = strings.ToUpper(ext)
+		if !seen[ext] {
+			seen[ext] = true
+			unique = append(unique, ext)
+		}
+	}
+	srcStr := strings.Join(unique, "+")
+
+	switch {
+	case scan.wasConverted:
+		return fmt.Sprintf("%s → %s (converted)", srcStr, outExt)
+	case srcStr != outExt:
+		return fmt.Sprintf("%s → %s (remuxed)", srcStr, outExt)
+	default:
+		return fmt.Sprintf("%s (original)", outExt)
+	}
 }
 
 // validateTimestamp checks that a trim time entry is either empty (meaning no trim)

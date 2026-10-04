@@ -147,6 +147,67 @@ func TestValidateTimestamp(t *testing.T) {
 	}
 }
 
+// ── Download summary formatting ──────────────────────────────────────────────
+
+func TestDescribeOutputFormat(t *testing.T) {
+	tests := []struct {
+		name      string
+		extension string
+		scan      scanResult
+		want      string
+	}{
+		{"no source info", "mp4", scanResult{}, "MP4"},
+		{"original", "mp4", scanResult{sourceExts: []string{"mp4"}}, "MP4 (original)"},
+		{"remuxed merge", "mp4", scanResult{sourceExts: []string{"webm", "m4a"}}, "WEBM+M4A → MP4 (remuxed)"},
+		{"converted", "mp4", scanResult{sourceExts: []string{"webm"}, wasConverted: true}, "WEBM → MP4 (converted)"},
+		{"duplicate sources collapsed", "mkv", scanResult{sourceExts: []string{"webm", "WEBM", "m4a"}}, "WEBM+M4A → MKV (remuxed)"},
+		{"same ext but converted", "mp4", scanResult{sourceExts: []string{"mp4"}, wasConverted: true}, "MP4 → MP4 (converted)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := describeOutputFormat(tt.extension, tt.scan); got != tt.want {
+				t.Errorf("describeOutputFormat(%q, %+v) = %q, want %q", tt.extension, tt.scan, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSummaryLines(t *testing.T) {
+	got := summaryLines([]summaryRow{
+		{"Runtime", "1.50s"},
+		{"Avg Speed", "N/A"},
+		{"Downloaded", "10.00MiB"},
+	})
+	want := []string{
+		"   ├─ Runtime:    1.50s",
+		"   ├─ Avg Speed:  N/A",
+		"   └─ Downloaded: 10.00MiB",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("summaryLines() =\n%q\nwant\n%q", got, want)
+	}
+	if got := summaryLines(nil); len(got) != 0 {
+		t.Errorf("summaryLines(nil) = %q, want empty", got)
+	}
+}
+
+func TestAverageSpeed(t *testing.T) {
+	tests := []struct {
+		downloaded, seconds float64
+		unit                string
+		want                string
+	}{
+		{10, 4, "MiB", "2.50MiB/s"},
+		{0, 4, "MiB", "N/A"},
+		{10, 0, "MiB", "N/A"},
+	}
+	for _, tt := range tests {
+		if got := averageSpeed(tt.downloaded, tt.seconds, tt.unit); got != tt.want {
+			t.Errorf("averageSpeed(%v, %v, %q) = %q, want %q", tt.downloaded, tt.seconds, tt.unit, got, tt.want)
+		}
+	}
+}
+
 func TestStartDownloadRejectsInvalidInput(t *testing.T) {
 	tests := []struct {
 		name  string
