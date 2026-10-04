@@ -44,14 +44,20 @@ const (
 
 // ── Processing-load description thresholds ───────────────────────────────────
 // Boundaries used by computeProcessingLoad to map a raw cost score to a
-// human-readable label. The visual block indicator in ui.go uses its own
-// (slightly different) thresholds aligned to the five block positions.
+// human-readable label. The visual block indicator uses loadBlockThresholds
+// instead (see below).
 const (
 	loadThresholdLight     = 20
 	loadThresholdModerate  = 50
 	loadThresholdHeavy     = 80
 	loadThresholdVeryHeavy = 120
 )
+
+// loadBlockThresholds are the costs above which each successive block of the
+// Post-Processing window's load indicator lights up, one per colour in
+// colLoadPalette. They are spaced for a useful visual spread across the
+// loadThreshold* scale above, and tuned by feel like the cost constants.
+var loadBlockThresholds = [...]int{15, 35, 65, 100, 130}
 
 // PostProcessSettings is a plain-value snapshot of the post-processing UI
 // state, decoupling buildPostProcessFilters, computeProcessingLoad, and

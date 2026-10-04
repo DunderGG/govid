@@ -4,13 +4,15 @@
 //   - Thin delegates to UIManager for secondary windows (History, About,
 //     Preferences, Post-Processing, GoVid Guide). The main window layout
 //     itself (createUI) and the main menu bar live in ui_manager.go.
-//   - roundedCard: shared card-style container helper used by UIManager.
+//   - Shared layout helpers used by UIManager: roundedCard, accentBar,
+//     sectionHeader, sectionDivider, and fixedWidth.
 package main
 
 import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -75,4 +77,28 @@ func accentBar() *canvas.Rectangle {
 	bar := canvas.NewRectangle(accentCyan)
 	bar.SetMinSize(fyne.NewSize(4, 0))
 	return bar
+}
+
+// sectionHeader creates a small bold accent-coloured title for a section of
+// a form.
+func sectionHeader(text string) fyne.CanvasObject {
+	label := canvas.NewText(text, accentCyan)
+	label.TextStyle = fyne.TextStyle{Bold: true}
+	label.TextSize = 12
+	return label
+}
+
+// sectionDivider creates a thin, centred accent line with extra vertical
+// padding, used between form sections.
+func sectionDivider() fyne.CanvasObject {
+	line := canvas.NewRectangle(accentCyan)
+	line.SetMinSize(fyne.NewSize(500, 1))
+	return container.NewPadded(container.NewCenter(line))
+}
+
+// fixedWidth wraps obj so it is laid out at the given width (and its own
+// minimum height) instead of stretching to fill its container.
+func fixedWidth(obj fyne.CanvasObject, width float32) fyne.CanvasObject {
+	size := fyne.NewSize(width, obj.MinSize().Height)
+	return container.New(layout.NewGridWrapLayout(size), obj)
 }

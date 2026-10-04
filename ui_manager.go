@@ -472,48 +472,101 @@ func (manager *UIManager) showPostProcessing() {
 		return
 	}
 
-	ui := manager.ui
 	// Reload the persisted values so the window never shows edits that were
 	// discarded by closing it without applying.
-	applyPostProcessPrefs(ui, manager.onLoadPreferences())
+	applyPostProcessPrefs(manager.ui, manager.onLoadPreferences())
 
-	// FPS slider for smooth motion — use a bound float so the label updates live.
-	fpsBinding := binding.NewFloat()
-	fpsBinding.Set(ui.postProcess.smoothMotionFPS.Value)
-	fpsLabel := widget.NewLabelWithData(binding.FloatToStringWithFormat(fpsBinding, "%.0f FPS"))
-	ui.postProcess.smoothMotionFPS.Step = 1
-	ui.postProcess.smoothMotionFPS.OnChanged = func(v float64) {
-		fpsBinding.Set(v)
+	// Live readouts of the two sliders' values, shown beside them.
+	fpsValue := binding.NewFloat()
+	sharpenValue := binding.NewFloat()
+
+	loadIndicator, refreshLoad := manager.buildLoadIndicator()
+	manager.wirePostProcessHandlers(refreshLoad, fpsValue, sharpenValue)
+	refreshLoad() // seed with the current state
+
+	title := widget.NewLabelWithStyle("Post-Processing Filters", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
+	scroll := container.NewScroll(manager.buildPostProcessForm(fpsValue, sharpenValue))
+	footer := manager.buildPostProcessFooter(loadIndicator)
+	// Border layout: title pinned top, footer pinned bottom, scroll fills the rest.
+	content := container.NewBorder(title, footer, nil, nil, scroll)
+
+	manager.ppWindow = fyne.CurrentApp().NewWindow("Post-Processing Settings")
+	manager.ppWindow.SetContent(container.NewPadded(content))
+	manager.ppWindow.Resize(fyne.NewSize(680, 580))
+	manager.ppWindow.SetFixedSize(false)
+	manager.ppWindow.SetOnClosed(onWindowClosed(&manager.ppWindow))
+	manager.ppWindow.Show()
+}
+
+// wirePostProcessHandlers attaches the Post-Processing window's OnChanged
+// handlers: every control calls refresh so the load indicator stays live,
+// the slider readouts track their sliders, and each option's sub-controls
+// are enabled only while the option is checked.
+func (manager *UIManager) wirePostProcessHandlers(refresh func(), fpsValue, sharpenValue binding.Float) {
+	pp := manager.ui.postProcess
+
+	bindDependents(pp.smoothMotion, refresh, pp.smoothMotionMode, pp.smoothMotionFPS)
+	bindDependents(pp.sharpen, refresh, pp.sharpenAmount)
+	bindDependents(pp.denoise, refresh, pp.denoiseMode)
+	bindDependents(pp.upscaleVideo, refresh, pp.upscaleTarget)
+
+	fpsValue.Set(pp.smoothMotionFPS.Value)
+	pp.smoothMotionFPS.OnChanged = func(v float64) {
+		fpsValue.Set(v)
 	}
-	if !ui.postProcess.smoothMotion.Checked {
-		ui.postProcess.smoothMotionMode.Disable()
-		ui.postProcess.smoothMotionFPS.Disable()
+	sharpenValue.Set(pp.sharpenAmount.Value)
+	pp.sharpenAmount.OnChanged = func(v float64) {
+		sharpenValue.Set(v)
+		refresh()
 	}
 
-	// Sharpening slider — bind to float for live label updates.
-	sharpenBinding := binding.NewFloat()
-	sharpenBinding.Set(ui.postProcess.sharpenAmount.Value)
-	sharpenLabel := widget.NewLabelWithData(binding.FloatToStringWithFormat(sharpenBinding, "%.1fx"))
-	ui.postProcess.sharpenAmount.Step = 0.1
-	if !ui.postProcess.sharpen.Checked {
-		ui.postProcess.sharpenAmount.Disable()
+	onSelect := func(_ string) { refresh() }
+	pp.smoothMotionMode.OnChanged = onSelect
+	pp.denoiseMode.OnChanged = onSelect
+	pp.upscaleTarget.OnChanged = onSelect
+
+	for _, toggle := range []*widget.Check{
+		pp.vividMode, pp.deband, pp.hdrToSdr, pp.deinterlace,
+		pp.stabilize, pp.autoCrop, pp.normalizeAudio, pp.nightMode,
+	} {
+		toggle.OnChanged = func(_ bool) { refresh() }
 	}
+}
 
-	// Live processing-load indicator — 5 colored blocks, each lighting up at a
-	// cost threshold. The thresholds are arbitrary and based on testing with a variety of videos and filter combinations,
-	// but they should give a rough relative indication of how intensive the current settings are.
-	blockEmpty := colLoadEmpty
-	blockColors := colLoadPalette
-	// Cost thresholds that light up each successive block. These are spaced
-	// to give a useful visual spread across the loadThreshold* scale in postprocess.go.
-	blockThresholds := []int{15, 35, 65, 100, 130}
+// bindDependents enables dependents only while toggle is checked, applying
+// the toggle's current state immediately, and calls refresh after every
+// change of the toggle.
+func bindDependents(toggle *widget.Check, refresh func(), dependents ...fyne.Disableable) {
+	setEnabled := func(enabled bool) {
+		for _, dependent := range dependents {
+			if enabled {
+				dependent.Enable()
+			} else {
+				dependent.Disable()
+			}
+		}
+	}
+	setEnabled(toggle.Checked)
+	toggle.OnChanged = func(checked bool) {
+		setEnabled(checked)
+		refresh()
+	}
+}
 
-	blocks := make([]*canvas.Rectangle, 5)
+// buildLoadIndicator builds the live "Estimated Processing Load" section:
+// a row of coloured blocks that light up as the cost of the selected filters
+// passes each of loadBlockThresholds, a description of the load, and a file
+// size warning. The returned refresh function recomputes all three from the
+// current widget state.
+func (manager *UIManager) buildLoadIndicator() (fyne.CanvasObject, func()) {
+	blocks := make([]*canvas.Rectangle, len(loadBlockThresholds))
+	blockBar := container.NewGridWithColumns(len(blocks))
 	for i := range blocks {
-		block := canvas.NewRectangle(blockEmpty)
+		block := canvas.NewRectangle(colLoadEmpty)
 		block.SetMinSize(fyne.NewSize(0, 14))
 		block.CornerRadius = 3
 		blocks[i] = block
+		blockBar.Add(block)
 	}
 
 	loadDesc := binding.NewString()
@@ -526,191 +579,113 @@ func (manager *UIManager) showPostProcessing() {
 	sizeWarnLabel.TextStyle = fyne.TextStyle{Italic: true}
 	sizeWarnLabel.Wrapping = fyne.TextWrapWord
 
-	refreshLoad := func() {
+	pp := manager.ui.postProcess
+	refresh := func() {
 		cost, desc := computeProcessingLoad(newPostProcessSettings(manager.ui))
 		loadDesc.Set(desc)
-		for idx, block := range blocks {
-			if cost > blockThresholds[idx] {
-				block.FillColor = blockColors[idx]
+		for i, block := range blocks {
+			if cost > loadBlockThresholds[i] {
+				block.FillColor = colLoadPalette[i]
 			} else {
-				block.FillColor = blockEmpty
+				block.FillColor = colLoadEmpty
 			}
 			block.Refresh()
 		}
-		upscale := ui.postProcess.upscaleVideo.Checked
-		smooth := ui.postProcess.smoothMotion.Checked
-		switch {
-		case upscale && smooth:
-			sizeWarn.Set("⚠ Upscaling + Smooth Motion will greatly increase file size")
-		case upscale:
-			sizeWarn.Set("⚠ Upscaling significantly increases file size (bigger frames)")
-		case smooth:
-			sizeWarn.Set("⚠ Smooth Motion increases file size (more frames)")
-		default:
-			sizeWarn.Set("")
-		}
+		sizeWarn.Set(sizeWarning(pp.upscaleVideo.Checked, pp.smoothMotion.Checked))
 	}
 
-	blockBar := container.NewGridWithColumns(5,
-		blocks[0], blocks[1], blocks[2], blocks[3], blocks[4],
-	)
-
-	ui.postProcess.smoothMotion.OnChanged = func(checked bool) {
-		if checked {
-			ui.postProcess.smoothMotionMode.Enable()
-			ui.postProcess.smoothMotionFPS.Enable()
-		} else {
-			ui.postProcess.smoothMotionMode.Disable()
-			ui.postProcess.smoothMotionFPS.Disable()
-		}
-		refreshLoad()
-	}
-	ui.postProcess.smoothMotionMode.OnChanged = func(_ string) { refreshLoad() }
-
-	// Denoise mode is only relevant when denoise is enabled.
-	if !ui.postProcess.denoise.Checked {
-		ui.postProcess.denoiseMode.Disable()
-	}
-	ui.postProcess.denoise.OnChanged = func(checked bool) {
-		if checked {
-			ui.postProcess.denoiseMode.Enable()
-		} else {
-			ui.postProcess.denoiseMode.Disable()
-		}
-		refreshLoad()
-	}
-	ui.postProcess.denoiseMode.OnChanged = func(_ string) { refreshLoad() }
-
-	ui.postProcess.sharpen.OnChanged = func(checked bool) {
-		if checked {
-			ui.postProcess.sharpenAmount.Enable()
-		} else {
-			ui.postProcess.sharpenAmount.Disable()
-		}
-		refreshLoad()
-	}
-	ui.postProcess.sharpenAmount.OnChanged = func(v float64) {
-		sharpenBinding.Set(v)
-		refreshLoad()
-	}
-
-	// Upscale target is only relevant when upscale is enabled.
-	if !ui.postProcess.upscaleVideo.Checked {
-		ui.postProcess.upscaleTarget.Disable()
-	}
-	ui.postProcess.upscaleVideo.OnChanged = func(checked bool) {
-		if checked {
-			ui.postProcess.upscaleTarget.Enable()
-		} else {
-			ui.postProcess.upscaleTarget.Disable()
-		}
-		refreshLoad()
-	}
-	ui.postProcess.upscaleTarget.OnChanged = func(_ string) { refreshLoad() }
-
-	// Simple toggles — just refresh the load indicator.
-	ui.postProcess.vividMode.OnChanged = func(_ bool) { refreshLoad() }
-	ui.postProcess.deband.OnChanged = func(_ bool) { refreshLoad() }
-	ui.postProcess.hdrToSdr.OnChanged = func(_ bool) { refreshLoad() }
-	ui.postProcess.deinterlace.OnChanged = func(_ bool) { refreshLoad() }
-	ui.postProcess.stabilize.OnChanged = func(_ bool) { refreshLoad() }
-	ui.postProcess.autoCrop.OnChanged = func(_ bool) { refreshLoad() }
-	ui.postProcess.normalizeAudio.OnChanged = func(_ bool) { refreshLoad() }
-	ui.postProcess.nightMode.OnChanged = func(_ bool) { refreshLoad() }
-
-	refreshLoad() // seed with the current state
-
-	// sectionDivider creates a very thin, subtle line with extra vertical padding.
-	sectionDivider := func() fyne.CanvasObject {
-		line := canvas.NewRectangle(accentCyan)
-		line.SetMinSize(fyne.NewSize(500, 1))
-		return container.NewPadded(container.NewCenter(line))
-	}
-
-	// sectionHeader creates a small bold label used as an inline section title.
-	sectionHeader := func(text string) fyne.CanvasObject {
-		label := canvas.NewText(text, accentCyan)
-		label.TextStyle = fyne.TextStyle{Bold: true}
-		label.TextSize = 12
-		return label
-	}
-
-	form := &widget.Form{
-		Items: []*widget.FormItem{
-			// ── GPU ACCELERATION ─────────────────────────────────────────────────────
-			{Text: "", Widget: sectionHeader("GPU ACCELERATION")},
-			{Text: "Encoder Backend", Widget: container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.postProcess.gpuBackend.MinSize().Height)), ui.postProcess.gpuBackend), HintText: "GPU-accelerated re-encoding; falls back to CPU if unavailable"},
-			{Text: "", Widget: sectionDivider()},
-			// ── MOTION ─────────────────────────────────────────────────
-			{Text: "", Widget: sectionHeader("MOTION ENHANCEMENT")},
-			{Text: "Smooth Motion", Widget: ui.postProcess.smoothMotion, HintText: "Interpolate frames for fluid playback (slow)"},
-			{Text: "Smoothing Mode", Widget: ui.postProcess.smoothMotionMode, HintText: "Precise/Balanced use motion vectors, Fast uses blending"},
-			{Text: "Target FPS", Widget: container.NewHBox(container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.postProcess.smoothMotionFPS.MinSize().Height)), ui.postProcess.smoothMotionFPS), fpsLabel), HintText: "Standard is 60, cinematic is 24, high-refresh is 120"},
-			{Text: "", Widget: sectionDivider()},
-			// ── VIDEO ──────────────────────────────────────────────────
-			{Text: "", Widget: sectionHeader("VIDEO ENHANCEMENT")},
-			{Text: "Vivid Mode", Widget: ui.postProcess.vividMode, HintText: "Boost brightness, contrast, and saturation"},
-			{Text: "Sharpen Video", Widget: ui.postProcess.sharpen, HintText: "CAS (Contrast Adaptive Sharpening) — sharpens edges without haloing or noise amplification"},
-			{Text: "Sharpen Intensity", Widget: container.NewHBox(container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.postProcess.sharpenAmount.MinSize().Height)), ui.postProcess.sharpenAmount), sharpenLabel), HintText: "1.0x is gentle, 1.5x is moderate, 2.0x is strong"},
-			{Text: "Fix Banding", Widget: ui.postProcess.deband, HintText: "Remove gradient banding steps in skies and dark scenes (deband)"},
-			{Text: "HDR to SDR", Widget: ui.postProcess.hdrToSdr, HintText: "Tone-map 4K HDR content for standard monitors (zscale + Hable tonemap)"},
-			{Text: "", Widget: sectionDivider()},
-			// ── NOISE & ARTIFACTS ───────────────────────────────────────────
-			{Text: "", Widget: sectionHeader("NOISE & ARTIFACTS")},
-			{Text: "Denoise", Widget: ui.postProcess.denoise, HintText: "HQ noise reduction for low-quality or grainy footage"},
-			{Text: "Denoise Mode", Widget: ui.postProcess.denoiseMode, HintText: "NLMeans: highest quality, very slow | hqdn3d: spatial + temporal denoising, fast and effective"},
-			{Text: "Deinterlace", Widget: ui.postProcess.deinterlace, HintText: "Remove combing artifacts from archival or TV-rip content (bwdif)"},
-			{Text: "Stabilize", Widget: ui.postProcess.stabilize, HintText: "Smooth out shaky handheld footage (deshake)"},
-			{Text: "Auto-Crop", Widget: ui.postProcess.autoCrop, HintText: "Detect and remove black letterbox/pillarbox bars automatically"},
-			{Text: "", Widget: sectionDivider()},
-			// ── UPSCALING ────────────────────────────────────────────────
-			{Text: "", Widget: sectionHeader("UPSCALING")},
-			{Text: "Upscale Video", Widget: ui.postProcess.upscaleVideo, HintText: "Enlarge the video using a high-quality Lanczos resampler"},
-			{Text: "Target Resolution", Widget: container.New(layout.NewGridWrapLayout(fyne.NewSize(200, ui.postProcess.upscaleTarget.MinSize().Height)), ui.postProcess.upscaleTarget), HintText: "2× doubles both dimensions; fixed targets set a specific height"},
-			{Text: "", Widget: sectionDivider()},
-			// ── AUDIO ──────────────────────────────────────────────────
-			{Text: "", Widget: sectionHeader("AUDIO ENHANCEMENT")},
-			{Text: "Normalize Audio", Widget: ui.postProcess.normalizeAudio, HintText: "Loudness normalization via the loudnorm filter"},
-			{Text: "Night Mode", Widget: ui.postProcess.nightMode, HintText: "Dynamic compression to balance quiet dialogue and loud effects (dynaudnorm)"},
-		},
-	}
-
-	applyBtn := widget.NewButtonWithIcon("Apply", theme.ConfirmIcon(), func() {
-		manager.savePreferences(ui.download.path.Text)
-	})
-
-	applyCloseBtn := widget.NewButtonWithIcon("Apply & Close", theme.ConfirmIcon(), func() {
-		manager.savePreferences(ui.download.path.Text)
-		manager.ppWindow.Close()
-	})
-	applyCloseBtn.Importance = widget.HighImportance
-
-	buttons := container.NewGridWithColumns(2, applyBtn, applyCloseBtn)
-
-	notice := widget.NewLabelWithStyle("⚠️ Most filters require FFmpeg and trigger a full re-encode.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
-
-	// Live processing-load indicator.
-	loadSection := container.NewVBox(
+	indicator := container.NewVBox(
 		widget.NewSeparator(),
 		widget.NewLabelWithStyle("Estimated Processing Load", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
 		blockBar,
 		loadLabel,
 		sizeWarnLabel,
 	)
+	return indicator, refresh
+}
 
-	title := widget.NewLabelWithStyle("Post-Processing Filters", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
-	footer := container.NewVBox(loadSection, widget.NewSeparator(), buttons, notice)
+// sizeWarning returns the file-size warning for the filters that add pixels
+// (upscale) or frames (smooth motion), or "" when neither is selected.
+func sizeWarning(upscale, smooth bool) string {
+	switch {
+	case upscale && smooth:
+		return "⚠ Upscaling + Smooth Motion will greatly increase file size"
+	case upscale:
+		return "⚠ Upscaling significantly increases file size (bigger frames)"
+	case smooth:
+		return "⚠ Smooth Motion increases file size (more frames)"
+	default:
+		return ""
+	}
+}
 
-	scroll := container.NewScroll(form)
-	// Border layout: title pinned top, footer pinned bottom, scroll fills the rest.
-	content := container.NewBorder(title, footer, nil, nil, scroll)
+// buildPostProcessForm lays out the Post-Processing window's filter controls
+// in titled sections. fpsValue and sharpenValue back the slider readouts.
+func (manager *UIManager) buildPostProcessForm(fpsValue, sharpenValue binding.Float) *widget.Form {
+	pp := manager.ui.postProcess
 
-	manager.ppWindow = fyne.CurrentApp().NewWindow("Post-Processing Settings")
-	manager.ppWindow.SetContent(container.NewPadded(content))
-	manager.ppWindow.Resize(fyne.NewSize(680, 580))
-	manager.ppWindow.SetFixedSize(false)
-	manager.ppWindow.SetOnClosed(onWindowClosed(&manager.ppWindow))
-	manager.ppWindow.Show()
+	fpsLabel := widget.NewLabelWithData(binding.FloatToStringWithFormat(fpsValue, "%.0f FPS"))
+	sharpenLabel := widget.NewLabelWithData(binding.FloatToStringWithFormat(sharpenValue, "%.1fx"))
+
+	return &widget.Form{
+		Items: []*widget.FormItem{
+			// ── GPU ACCELERATION ─────────────────────────────────────────────────────
+			{Text: "", Widget: sectionHeader("GPU ACCELERATION")},
+			{Text: "Encoder Backend", Widget: fixedWidth(pp.gpuBackend, 200), HintText: "GPU-accelerated re-encoding; falls back to CPU if unavailable"},
+			{Text: "", Widget: sectionDivider()},
+			// ── MOTION ─────────────────────────────────────────────────
+			{Text: "", Widget: sectionHeader("MOTION ENHANCEMENT")},
+			{Text: "Smooth Motion", Widget: pp.smoothMotion, HintText: "Interpolate frames for fluid playback (slow)"},
+			{Text: "Smoothing Mode", Widget: pp.smoothMotionMode, HintText: "Precise/Balanced use motion vectors, Fast uses blending"},
+			{Text: "Target FPS", Widget: container.NewHBox(fixedWidth(pp.smoothMotionFPS, 200), fpsLabel), HintText: "Standard is 60, cinematic is 24, high-refresh is 120"},
+			{Text: "", Widget: sectionDivider()},
+			// ── VIDEO ──────────────────────────────────────────────────
+			{Text: "", Widget: sectionHeader("VIDEO ENHANCEMENT")},
+			{Text: "Vivid Mode", Widget: pp.vividMode, HintText: "Boost brightness, contrast, and saturation"},
+			{Text: "Sharpen Video", Widget: pp.sharpen, HintText: "CAS (Contrast Adaptive Sharpening) — sharpens edges without haloing or noise amplification"},
+			{Text: "Sharpen Intensity", Widget: container.NewHBox(fixedWidth(pp.sharpenAmount, 200), sharpenLabel), HintText: "1.0x is gentle, 1.5x is moderate, 2.0x is strong"},
+			{Text: "Fix Banding", Widget: pp.deband, HintText: "Remove gradient banding steps in skies and dark scenes (deband)"},
+			{Text: "HDR to SDR", Widget: pp.hdrToSdr, HintText: "Tone-map 4K HDR content for standard monitors (zscale + Hable tonemap)"},
+			{Text: "", Widget: sectionDivider()},
+			// ── NOISE & ARTIFACTS ───────────────────────────────────────────
+			{Text: "", Widget: sectionHeader("NOISE & ARTIFACTS")},
+			{Text: "Denoise", Widget: pp.denoise, HintText: "HQ noise reduction for low-quality or grainy footage"},
+			{Text: "Denoise Mode", Widget: pp.denoiseMode, HintText: "NLMeans: highest quality, very slow | hqdn3d: spatial + temporal denoising, fast and effective"},
+			{Text: "Deinterlace", Widget: pp.deinterlace, HintText: "Remove combing artifacts from archival or TV-rip content (bwdif)"},
+			{Text: "Stabilize", Widget: pp.stabilize, HintText: "Smooth out shaky handheld footage (deshake)"},
+			{Text: "Auto-Crop", Widget: pp.autoCrop, HintText: "Detect and remove black letterbox/pillarbox bars automatically"},
+			{Text: "", Widget: sectionDivider()},
+			// ── UPSCALING ────────────────────────────────────────────────
+			{Text: "", Widget: sectionHeader("UPSCALING")},
+			{Text: "Upscale Video", Widget: pp.upscaleVideo, HintText: "Enlarge the video using a high-quality Lanczos resampler"},
+			{Text: "Target Resolution", Widget: fixedWidth(pp.upscaleTarget, 200), HintText: "2× doubles both dimensions; fixed targets set a specific height"},
+			{Text: "", Widget: sectionDivider()},
+			// ── AUDIO ──────────────────────────────────────────────────
+			{Text: "", Widget: sectionHeader("AUDIO ENHANCEMENT")},
+			{Text: "Normalize Audio", Widget: pp.normalizeAudio, HintText: "Loudness normalization via the loudnorm filter"},
+			{Text: "Night Mode", Widget: pp.nightMode, HintText: "Dynamic compression to balance quiet dialogue and loud effects (dynaudnorm)"},
+		},
+	}
+}
+
+// buildPostProcessFooter assembles the area pinned below the filter form:
+// the load indicator, the Apply / Apply & Close buttons, and the re-encode
+// notice.
+func (manager *UIManager) buildPostProcessFooter(loadIndicator fyne.CanvasObject) fyne.CanvasObject {
+	applyBtn := widget.NewButtonWithIcon("Apply", theme.ConfirmIcon(), func() {
+		manager.savePreferences(manager.ui.download.path.Text)
+	})
+
+	applyCloseBtn := widget.NewButtonWithIcon("Apply & Close", theme.ConfirmIcon(), func() {
+		manager.savePreferences(manager.ui.download.path.Text)
+		manager.ppWindow.Close()
+	})
+	applyCloseBtn.Importance = widget.HighImportance
+
+	buttons := container.NewGridWithColumns(2, applyBtn, applyCloseBtn)
+	notice := widget.NewLabelWithStyle("⚠️ Most filters require FFmpeg and trigger a full re-encode.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
+
+	return container.NewVBox(loadIndicator, widget.NewSeparator(), buttons, notice)
 }
 
 // ── Main window ────────────────────────────────────────────────────────────────
