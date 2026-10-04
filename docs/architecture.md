@@ -94,7 +94,7 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `cancelFn context.CancelFunc` | Cancels the active download context |
 | `stopPulse` | Channel closed to stop the status-dot animation goroutine |
 | `onLogLine func(string, color.Color)` | Renders log lines through `UIManager.appendLogLine` |
-| `ppFailed atomic.Int32` | Counts post-processing failures across concurrent workers |
+| `sessionFailed atomic.Bool` | Set when any download or post-processing job in the session fails; turns the download button into "Retry" |
 | `isRunning atomic.Bool` | Prevents close without confirmation while jobs are active |
 
 ---

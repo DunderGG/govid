@@ -130,7 +130,7 @@ func (app *DownloaderApp) resetSession() {
 	app.ui.download.downloadBtn.Disable()
 	app.ui.download.downloadBtn.SetText("Download Now!")
 	app.setStatusIndicator(StatusActive)
-	app.ppFailed.Store(0)
+	app.sessionFailed.Store(false)
 	app.isRunning.Store(true)
 }
 
@@ -183,7 +183,7 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 // relabelling it "Retry" if any job in the session failed.
 func (app *DownloaderApp) finishSessionUI() {
 	fyne.Do(func() {
-		if app.ppFailed.Load() > 0 {
+		if app.sessionFailed.Load() {
 			app.ui.download.downloadBtn.SetText("Retry")
 		}
 		app.ui.download.downloadBtn.Enable()
@@ -389,7 +389,7 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 		default:
 			app.updateStatus("Status: Failed. Check output below.")
 			app.setStatusIndicator(StatusFailed)
-			app.ppFailed.Store(1)
+			app.sessionFailed.Store(true)
 			if app.ui.download.notify.Checked {
 				fyne.CurrentApp().SendNotification(&fyne.Notification{
 					Title:   "GoVid — Download Failed",

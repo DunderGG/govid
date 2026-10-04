@@ -53,7 +53,7 @@ group Session Initialisation
     App -> App  : savePreferences(savePath)
     App -> UI   : reset log, progress bar, status → "Initializing…"
     App -> UI   : setStatusIndicator("active")
-    App -> App  : ppFailed.Store(0)
+    App -> App  : sessionFailed.Store(false)
     alt saveLog.Checked
         App -> LS : OpenSessionLog(savePath)\n  — open timestamped session log
         LS  --> App : log path
@@ -151,7 +151,7 @@ group loop [for each URL in queue]
         else cmdErr != nil (failure)
             App -> UI : appendOutput("DOWNLOAD FAILED")
             App -> UI : setStatusIndicator("failed")
-            App -> App : ppFailed.Store(1)
+            App -> App : sessionFailed.Store(true)
             alt notify.Checked
                 App -> OS : SendNotification("Download Failed")
             end
@@ -201,7 +201,7 @@ alt hasPostProcess && len(allFinalPaths) > 0 && not cancelled
                 App -> App : guard.release()
                 App -> App : engine.retryWithCPU(ctx, job, cb, reason)\n  — rebuilds args with BackendOff, re-runs runJob()
             else FFmpeg failure (CPU job)
-                App -> App : ppFailed.Store(1)
+                App -> App : sessionFailed.Store(true)
                 App -> OS  : os.Remove(tmpOutput)  [clean up partial]
                 App -> UI  : appendOutput("[SYSTEM] FFmpeg failed…", red)
             else GPU stall watchdog fires
@@ -235,7 +235,7 @@ end
 group Teardown
     App -> LS  : CloseSessionLog()
     App -> App : stopQueue()  — cancels queueCtx → stops progress smoother
-    alt ppFailed > 0
+    alt sessionFailed
         App -> UI : downloadBtn.SetText("Retry")
     end
     App -> UI  : downloadBtn.Enable()

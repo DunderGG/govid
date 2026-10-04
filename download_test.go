@@ -328,8 +328,8 @@ func TestRunYtDlpSuccessRecordsHistory(t *testing.T) {
 			t.Errorf("log missing %q:\n%s", line, logs)
 		}
 	}
-	if h.app.ppFailed.Load() != 0 {
-		t.Error("ppFailed set after a successful download")
+	if h.app.sessionFailed.Load() {
+		t.Error("sessionFailed set after a successful download")
 	}
 
 	entries := h.history(t)
@@ -349,8 +349,8 @@ func TestRunYtDlpFailure(t *testing.T) {
 	if got := h.app.ui.download.status.Text; got != "Status: Failed. Check output below." {
 		t.Errorf("status = %q", got)
 	}
-	if h.app.ppFailed.Load() != 1 {
-		t.Error("ppFailed not set after a failed download")
+	if !h.app.sessionFailed.Load() {
+		t.Error("sessionFailed not set after a failed download")
 	}
 	if !strings.Contains(h.joinedLogs(), "ERROR: fake tool failure") {
 		t.Errorf("yt-dlp error not forwarded to the log:\n%s", h.joinedLogs())
@@ -381,8 +381,8 @@ func TestRunYtDlpCancel(t *testing.T) {
 	if !strings.Contains(h.joinedLogs(), "DOWNLOAD ABORTED") {
 		t.Errorf("log missing abort summary:\n%s", h.joinedLogs())
 	}
-	if h.app.ppFailed.Load() != 0 {
-		t.Error("ppFailed set after a user cancellation")
+	if h.app.sessionFailed.Load() {
+		t.Error("sessionFailed set after a user cancellation")
 	}
 	if entries := h.history(t); len(entries) != 0 {
 		t.Errorf("history = %+v, want no entries for a canceled download", entries)

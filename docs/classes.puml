@@ -33,7 +33,7 @@ package "Application Core" #F0F4F8 {
         +stopPulse : chan struct{}
         +uiManager : *UIManager
         +prefSvc : *PreferenceService
-        +ppFailed : atomic.Int32
+        +sessionFailed : atomic.Bool
         +isRunning : atomic.Bool
         --
         +SetCancelFunc(cancel context.CancelFunc)

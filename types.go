@@ -252,8 +252,9 @@ type DownloaderApp struct {
 	gpuSvc     *GPUCapabilityService              // GPU backend capability detection and cache
 	onLogLine  func(line string, col color.Color) // Renders a log line in the UI; set to uiManager.appendLogLine
 
-	// Track processing failures across concurrent workers so we can adjust the
-	// Retry button text at the end of the batch.
-	ppFailed  atomic.Int32
-	isRunning atomic.Bool // true while a download or post-processing session is active
+	// sessionFailed is set when any download or post-processing job in the
+	// session fails, so the download button offers "Retry" when it ends.
+	// Post-processing workers set it concurrently.
+	sessionFailed atomic.Bool
+	isRunning     atomic.Bool // true while a download or post-processing session is active
 }

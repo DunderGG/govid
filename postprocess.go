@@ -189,7 +189,7 @@ func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfF
 	engine.ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks{
 		OnLog:     app.appendOutput,
 		OnStatus:  app.updateStatus,
-		OnFailure: func() { app.ppFailed.Store(1) },
+		OnFailure: func() { app.sessionFailed.Store(true) },
 	})
 }
 
