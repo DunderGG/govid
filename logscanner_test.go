@@ -121,8 +121,8 @@ func TestWatchOutputColorsStderrBySeverity(t *testing.T) {
 		}
 	}
 	for line, col := range collector.colors {
-		if strings.HasPrefix(line, "[Merger]") && (col == colError || col == colWarning || col == colDebug) {
-			t.Errorf("color for %q = %v, want default foreground", line, col)
+		if strings.HasPrefix(line, "[Merger]") && col != nil {
+			t.Errorf("color for %q = %v, want nil (default foreground)", line, col)
 		}
 	}
 }

@@ -1033,10 +1033,14 @@ func (manager *UIManager) buildLogPane() *container.Scroll {
 // appendLogLine renders one line in the graphical log view, trimming the
 // oldest lines once the buffer limit is exceeded. It is registered on
 // DownloaderApp as the onLogLine callback so appendOutput never touches
-// widgets directly.
+// widgets directly. A nil col means "default text colour" and is resolved to
+// the current theme's foreground here, on the UI side.
 func (manager *UIManager) appendLogLine(line string, col color.Color) {
 	ui := manager.ui
 	fyne.Do(func() {
+		if col == nil {
+			col = theme.Color(theme.ColorNameForeground)
+		}
 		label := canvas.NewText(line, col)
 		label.TextSize = theme.TextSize()
 

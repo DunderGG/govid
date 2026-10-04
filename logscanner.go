@@ -3,7 +3,8 @@
 // Responsibilities:
 //   - Reads stdout and stderr from an active yt-dlp process concurrently.
 //   - Reports each line to the caller (via ProcessCallbacks.OnLog) with
-//     appropriate colouring.
+//     appropriate colouring. Plain lines carry a nil colour so the UI picks
+//     the theme foreground, keeping this file free of Fyne imports.
 //   - Extracts file-format metadata (source extensions, conversion flag)
 //     for display in the post-download summary.
 //   - Parses percentage and size tokens, reporting them via
@@ -18,8 +19,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"fyne.io/fyne/v2/theme"
 )
 
 // scanResult holds metadata collected while reading a yt-dlp process's output.
@@ -66,7 +65,7 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 					result.sourceExts = append(result.sourceExts, ext)
 				}
 			}
-			cb.OnLog(line, theme.ForegroundColor())
+			cb.OnLog(line, nil) // nil = default foreground, resolved by the UI
 		}
 		if err := scanner.Err(); err != nil {
 			cb.OnLog(fmt.Sprintf("[SYSTEM] stdout read error: %v", err), colWarning)
@@ -92,7 +91,7 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 					}
 				}
 			}
-			var logColor color.Color
+			var logColor color.Color // nil = default foreground, resolved by the UI
 			switch {
 			case strings.Contains(line, "ERROR:"):
 				logColor = colError
@@ -100,8 +99,6 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 				logColor = colWarning
 			case strings.Contains(line, "[debug]"):
 				logColor = colDebug
-			default:
-				logColor = theme.ForegroundColor()
 			}
 			cb.OnLog(line, logColor)
 		}

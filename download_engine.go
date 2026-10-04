@@ -183,6 +183,7 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 // importing Fyne. The caller wires these to its own log/status/progress methods.
 type ProcessCallbacks struct {
 	// OnLog is called for every message the engine wants to show in the log view.
+	// col is nil for plain output lines that should use the theme foreground.
 	OnLog func(line string, col color.Color)
 	// OnStatus is called to update the short status label.
 	OnStatus func(msg string)
