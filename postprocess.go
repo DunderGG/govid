@@ -76,30 +76,6 @@ type PostProcessSettings struct {
 	NightMode        bool
 }
 
-// newPostProcessSettings snapshots the post-processing widgets into a
-// PostProcessSettings value.
-func newPostProcessSettings(ui *UIWidgets) PostProcessSettings {
-	return PostProcessSettings{
-		SmoothMotion:     ui.postProcess.smoothMotion.Checked,
-		SmoothMotionMode: ui.postProcess.smoothMotionMode.Selected,
-		SmoothMotionFPS:  ui.postProcess.smoothMotionFPS.Value,
-		Sharpen:          ui.postProcess.sharpen.Checked,
-		SharpenAmount:    ui.postProcess.sharpenAmount.Value,
-		VividMode:        ui.postProcess.vividMode.Checked,
-		Deband:           ui.postProcess.deband.Checked,
-		HDRToSDR:         ui.postProcess.hdrToSdr.Checked,
-		Denoise:          ui.postProcess.denoise.Checked,
-		DenoiseMode:      ui.postProcess.denoiseMode.Selected,
-		Deinterlace:      ui.postProcess.deinterlace.Checked,
-		Stabilize:        ui.postProcess.stabilize.Checked,
-		AutoCrop:         ui.postProcess.autoCrop.Checked,
-		UpscaleVideo:     ui.postProcess.upscaleVideo.Checked,
-		UpscaleTarget:    ui.postProcess.upscaleTarget.Selected,
-		NormalizeAudio:   ui.postProcess.normalizeAudio.Checked,
-		NightMode:        ui.postProcess.nightMode.Checked,
-	}
-}
-
 // buildPostProcessFilters returns the video filter (vfFilters) and audio
 // filter (afFilters) slices to be passed to applyFFmpegFilters for the given
 // settings.

@@ -182,34 +182,6 @@ type SessionConfig struct {
 	PP PostProcessSettings
 }
 
-// newSessionConfig snapshots the widgets relevant to a download session,
-// mirroring newPostProcessSettings.
-func newSessionConfig(ui *UIWidgets, urls []string, savePath, trimStart, trimEnd string) SessionConfig {
-	return SessionConfig{
-		URLs:        urls,
-		RawURLField: ui.download.entry.Text,
-		SavePath:    savePath,
-		BatchMode:   ui.download.batchMode.Checked,
-		Format:      ui.download.format.Selected,
-		Quality:     ui.download.quality.Selected,
-		TrimStart:   trimStart,
-		TrimEnd:     trimEnd,
-		MaxSpeed:    strings.TrimSpace(ui.prefs.maxSpeed.Text),
-		CookiesPath: strings.TrimSpace(ui.prefs.cookies.Text),
-
-		SaveLog:            ui.download.saveLog.Checked,
-		Notify:             ui.download.notify.Checked,
-		AutoRetry:          ui.download.autoRetry.Checked,
-		PostProcessEnabled: ui.postProcess.enablePostProcess.Checked,
-
-		SavePrefs: ui.prefs.savePrefs.Checked,
-		LogLimit:  ui.prefs.logLimit.Selected,
-		ThemeMode: ui.prefs.themeMode.Selected,
-
-		PP: newPostProcessSettings(ui),
-	}
-}
-
 // WriteSessionConfig writes the session's starting configuration to the log
 // via writeFn, one line per setting, so a support request can be diagnosed
 // from the log file alone.

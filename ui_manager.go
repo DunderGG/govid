@@ -455,43 +455,10 @@ func (manager *UIManager) showPreferences() {
 	manager.prefsWindow.Show()
 }
 
-// savePreferences collects the current widget state into an AppPreferences
-// struct and delegates persistence to PreferenceService.Save.
+// savePreferences snapshots the current widget state (see snapshotPreferences)
+// and delegates persistence to PreferenceService.Save.
 func (manager *UIManager) savePreferences(savePath string) {
-	ui := manager.ui
-	manager.onSavePreferences(AppPreferences{
-		SavePrefs:         ui.prefs.savePrefs.Checked,
-		SavedPath:         savePath,
-		Format:            ui.download.format.Selected,
-		Quality:           ui.download.quality.Selected,
-		MaxSpeed:          strings.TrimSpace(ui.prefs.maxSpeed.Text),
-		ThemeMode:         ui.prefs.themeMode.Selected,
-		CookiesPath:       strings.TrimSpace(ui.prefs.cookies.Text),
-		LogLimit:          ui.prefs.logLimit.Selected,
-		BatchMode:         ui.download.batchMode.Checked,
-		SaveLog:           ui.download.saveLog.Checked,
-		Notify:            ui.download.notify.Checked,
-		AutoRetry:         ui.download.autoRetry.Checked,
-		EnablePostProcess: ui.postProcess.enablePostProcess.Checked,
-		SmoothMotion:      ui.postProcess.smoothMotion.Checked,
-		SmoothMotionMode:  ui.postProcess.smoothMotionMode.Selected,
-		SmoothFPS:         ui.postProcess.smoothMotionFPS.Value,
-		Sharpen:           ui.postProcess.sharpen.Checked,
-		SharpenAmount:     ui.postProcess.sharpenAmount.Value,
-		NormalizeAudio:    ui.postProcess.normalizeAudio.Checked,
-		VividMode:         ui.postProcess.vividMode.Checked,
-		Denoise:           ui.postProcess.denoise.Checked,
-		DenoiseMode:       ui.postProcess.denoiseMode.Selected,
-		HDRToSDR:          ui.postProcess.hdrToSdr.Checked,
-		Deband:            ui.postProcess.deband.Checked,
-		AutoCrop:          ui.postProcess.autoCrop.Checked,
-		Stabilize:         ui.postProcess.stabilize.Checked,
-		Deinterlace:       ui.postProcess.deinterlace.Checked,
-		NightMode:         ui.postProcess.nightMode.Checked,
-		UpscaleVideo:      ui.postProcess.upscaleVideo.Checked,
-		UpscaleTarget:     ui.postProcess.upscaleTarget.Selected,
-		GPUBackend:        ui.postProcess.gpuBackend.Selected,
-	})
+	manager.onSavePreferences(snapshotPreferences(manager.ui, savePath))
 }
 
 // resetPreferences clears the stored preference data and resets the log

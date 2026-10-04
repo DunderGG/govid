@@ -3,7 +3,6 @@
 // Sections:
 //   - File I/O: save-folder launcher.
 //   - UI updates: status label, log output, status dot animation, progress bar.
-//   - Preference management: applyPreferencesToWidgets.
 //   - External tools: background GPU capability detection.
 package main
 
@@ -241,50 +240,6 @@ func (app *DownloaderApp) runProgressSmoother(ctx context.Context) {
 			}
 		}
 	}
-}
-
-// ── Preference management ────────────────────────────────────────────────────
-
-// applyPreferencesToWidgets writes the values from an AppPreferences struct
-// into the corresponding UI widgets. Called at startup and after a reset.
-func applyPreferencesToWidgets(ui *UIWidgets, p AppPreferences) {
-	if p.Format != "" {
-		ui.download.format.SetSelected(p.Format)
-	}
-	if p.Quality != "" {
-		ui.download.quality.SetSelected(p.Quality)
-	}
-	if p.SavedPath != "" {
-		ui.download.path.SetText(p.SavedPath)
-	}
-	ui.prefs.themeMode.SetSelected(p.ThemeMode)
-	ui.prefs.savePrefs.SetChecked(p.SavePrefs)
-	ui.postProcess.smoothMotion.SetChecked(p.SmoothMotion)
-	ui.postProcess.smoothMotionMode.SetSelected(p.SmoothMotionMode)
-	ui.postProcess.smoothMotionFPS.SetValue(p.SmoothFPS)
-	ui.postProcess.sharpen.SetChecked(p.Sharpen)
-	ui.postProcess.sharpenAmount.SetValue(p.SharpenAmount)
-	ui.postProcess.normalizeAudio.SetChecked(p.NormalizeAudio)
-	ui.postProcess.vividMode.SetChecked(p.VividMode)
-	ui.postProcess.denoise.SetChecked(p.Denoise)
-	ui.postProcess.denoiseMode.SetSelected(p.DenoiseMode)
-	ui.postProcess.hdrToSdr.SetChecked(p.HDRToSDR)
-	ui.postProcess.deband.SetChecked(p.Deband)
-	ui.postProcess.autoCrop.SetChecked(p.AutoCrop)
-	ui.postProcess.stabilize.SetChecked(p.Stabilize)
-	ui.postProcess.deinterlace.SetChecked(p.Deinterlace)
-	ui.postProcess.nightMode.SetChecked(p.NightMode)
-	ui.postProcess.upscaleVideo.SetChecked(p.UpscaleVideo)
-	ui.postProcess.upscaleTarget.SetSelected(p.UpscaleTarget)
-	ui.postProcess.gpuBackend.SetSelected(p.GPUBackend)
-	ui.prefs.cookies.SetText(p.CookiesPath)
-	ui.download.batchMode.SetChecked(p.BatchMode)
-	ui.download.saveLog.SetChecked(p.SaveLog)
-	ui.download.notify.SetChecked(p.Notify)
-	ui.download.autoRetry.SetChecked(p.AutoRetry)
-	ui.postProcess.enablePostProcess.SetChecked(p.EnablePostProcess)
-	ui.prefs.logLimit.SetSelected(p.LogLimit)
-	ui.prefs.maxSpeed.SetText(p.MaxSpeed)
 }
 
 // ── External tools ───────────────────────────────────────────────────────────
