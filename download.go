@@ -129,7 +129,7 @@ func (app *DownloaderApp) resetSession() {
 	app.ui.download.cancelBtn.Enable()
 	app.ui.download.downloadBtn.Disable()
 	app.ui.download.downloadBtn.SetText("Download Now!")
-	app.setStatusIndicator("active")
+	app.setStatusIndicator(StatusActive)
 	app.ppFailed.Store(0)
 	app.isRunning.Store(true)
 }
@@ -241,19 +241,19 @@ func (app *DownloaderApp) runPostProcessing(queueCtx context.Context, stopQueue 
 	app.SetCancelFunc(stopQueue)
 	fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
 	app.updateStatus("Status: Post-processing...")
-	app.setStatusIndicator("processing")
+	app.setStatusIndicator(StatusProcessing)
 
 	app.applyFFmpegFilters(queueCtx, paths, session.vfFilters, session.afFilters)
 
 	fyne.Do(func() { app.ui.download.cancelBtn.Disable() })
 	if queueCtx.Err() != nil {
 		app.updateStatus("Status: Canceled.")
-		app.setStatusIndicator("canceled")
+		app.setStatusIndicator(StatusCanceled)
 		app.appendOutput("Post-processing canceled by user.", colWarning)
 		return
 	}
 	app.updateStatus("Status: Done.")
-	app.setStatusIndicator("success")
+	app.setStatusIndicator(StatusSuccess)
 }
 
 // notifyCompletion sends the end-of-session system notification when
@@ -377,7 +377,7 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 			}, colSuccess, colSuccessBorder)
 			app.updateStatus("Status: Success!")
 			app.setProgressNow(1)
-			app.setStatusIndicator("success")
+			app.setStatusIndicator(StatusSuccess)
 		case ctx.Err() == context.Canceled:
 			app.logDownloadSummary("DOWNLOAD ABORTED", []summaryRow{
 				{"Runtime", elapsedStr},
@@ -385,10 +385,10 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 				{"Downloaded", lastSize},
 			}, colWarning, colAbortedBorder)
 			app.updateStatus("Status: Canceled.")
-			app.setStatusIndicator("canceled")
+			app.setStatusIndicator(StatusCanceled)
 		default:
 			app.updateStatus("Status: Failed. Check output below.")
-			app.setStatusIndicator("failed")
+			app.setStatusIndicator(StatusFailed)
 			app.ppFailed.Store(1)
 			if app.ui.download.notify.Checked {
 				fyne.CurrentApp().SendNotification(&fyne.Notification{

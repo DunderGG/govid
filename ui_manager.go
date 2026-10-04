@@ -58,7 +58,7 @@ type UIManager struct {
 	// construction.
 	onLog                func(line string, col color.Color)                                                                          // appends a line to the terminal output panel
 	onStatus             func(msg string)                                                                                            // updates the short status label
-	onSetStatusIndicator func(state string)                                                                                          // updates the status dot color
+	onSetStatusIndicator func(state StatusState)                                                                                     // updates the status dot color
 	onStartDownload      func()                                                                                                      // begins a download/batch run
 	onOpenFolder         func()                                                                                                      // opens the save destination in the system file manager
 	onRequestCancel      func() bool                                                                                                 // cancels the active download or post-process job
@@ -164,13 +164,13 @@ func (manager *UIManager) checkDependencies() {
 // goroutine and reports progress via UpdateCallbacks.
 func (manager *UIManager) runUpdateInUI() {
 	manager.onLog("[SYSTEM] Starting yt-dlp update...", colSystem)
-	manager.onSetStatusIndicator("active")
+	manager.onSetStatusIndicator(StatusActive)
 	manager.onStatus("Status: Updating yt-dlp...")
 	manager.onRunUpdate(UpdateCallbacks{
 		OnLog:     manager.onLog,
 		OnStatus:  manager.onStatus,
-		OnSuccess: func() { manager.onSetStatusIndicator("success") },
-		OnFailure: func() { manager.onSetStatusIndicator("failed") },
+		OnSuccess: func() { manager.onSetStatusIndicator(StatusSuccess) },
+		OnFailure: func() { manager.onSetStatusIndicator(StatusFailed) },
 	})
 }
 

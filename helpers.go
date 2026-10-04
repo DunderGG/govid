@@ -102,30 +102,43 @@ func (app *DownloaderApp) updateProgress(pct float64, size string) {
 	}
 }
 
-// setStatusIndicator updates the status dot color to reflect the current
-// download state. It also manages the pulse goroutine:
-//   - "active"   → starts or continues the pulsing animation (cyan)
-//   - "idle"     → stops pulsing, shows grey
-//   - "success"  → stops pulsing, shows green
-//   - "failed"   → stops pulsing, shows red
-//   - "canceled" → stops pulsing, shows orange
-func (app *DownloaderApp) setStatusIndicator(state string) {
+// StatusState is the state shown by the status dot next to the status label.
+type StatusState int
+
+const (
+	// StatusIdle shows a grey dot: nothing is running.
+	StatusIdle StatusState = iota
+	// StatusActive pulses cyan while a download or yt-dlp update runs.
+	StatusActive
+	// StatusProcessing pulses purple while post-processing runs, to
+	// distinguish it from downloading.
+	StatusProcessing
+	// StatusSuccess shows a green dot.
+	StatusSuccess
+	// StatusFailed shows a red dot.
+	StatusFailed
+	// StatusCanceled shows an orange dot.
+	StatusCanceled
+)
+
+// setStatusIndicator updates the status dot to reflect state, starting the
+// pulse animation for the running states and stopping it for the others.
+func (app *DownloaderApp) setStatusIndicator(state StatusState) {
 	fyne.Do(func() {
 		app.stopStatusPulse()
 
 		switch state {
-		case "active":
+		case StatusActive:
 			app.startStatusPulse(accentCyan)
-		case "processing":
-			// Pulsing purple to distinguish post-processing from active download.
+		case StatusProcessing:
 			app.startStatusPulse(colDotProcessing)
-		case "success":
+		case StatusSuccess:
 			app.ui.download.statusDot.FillColor = colDotSuccess
-		case "failed":
+		case StatusFailed:
 			app.ui.download.statusDot.FillColor = colDotFailed
-		case "canceled":
+		case StatusCanceled:
 			app.ui.download.statusDot.FillColor = colDotCanceled
-		default: // "idle"
+		default: // StatusIdle
 			app.ui.download.statusDot.FillColor = colDotIdle
 		}
 		app.ui.download.statusDot.Refresh()
