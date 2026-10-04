@@ -241,7 +241,7 @@ func IsErrorLine(line string) bool {
 // "Unlimited") to an integer. Returns defaultLogBufferLimit for any
 // unrecognised value.
 func ParseBufferLimit(s string) int {
-	if s == "Unlimited" {
+	if s == logLimitUnlimited {
 		return math.MaxInt32
 	}
 	n, err := strconv.Atoi(s)

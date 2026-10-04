@@ -42,8 +42,8 @@ func NewDownloadEngine(ytDlpPath, ffmpegPath string) *DownloadEngine {
 type DownloadRequest struct {
 	URL         string
 	SavePath    string
-	Format      string // e.g. "MP4", "MKV", "WebM", "MP3", "M4A"
-	Quality     string // e.g. "Best Quality", "1080p", "720p"
+	Format      string // one of formatOptions
+	Quality     string // one of qualityOptions
 	TrimStart   string // HH:MM:SS or empty
 	TrimEnd     string // HH:MM:SS or empty
 	MaxSpeed    string // e.g. "5M" or empty
@@ -70,28 +70,28 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 
 	height := ""
 	switch req.Quality {
-	case "1080p":
+	case quality1080p:
 		height = "1080"
-	case "720p":
+	case quality720p:
 		height = "720"
-	case "480p":
+	case quality480p:
 		height = "480"
-	case "360p":
+	case quality360p:
 		height = "360"
 	}
 
 	selection := req.Format
-	if strings.Contains(selection, "MP3") {
+	if strings.Contains(selection, formatMP3) {
 		formatFlag = "bestaudio/best"
 		extension = "mp3"
-	} else if strings.Contains(selection, "M4A") {
+	} else if strings.Contains(selection, formatM4A) {
 		formatFlag = "bestaudio[ext=m4a]/bestaudio/best"
 		extension = "m4a"
 	} else {
 		if height != "" {
 			formatFlag = fmt.Sprintf("bestvideo[height<=%s]+bestaudio/best[height<=%s]/best", height, height)
 		}
-		if strings.Contains(selection, "WebM") {
+		if strings.Contains(selection, formatWebM) {
 			extension = "webm"
 			if height != "" {
 				formatFlag = fmt.Sprintf(
@@ -101,7 +101,7 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 			} else {
 				formatFlag = "bestvideo[vcodec^=vp9]+bestaudio[acodec=opus]/bestvideo[vcodec^=av01]+bestaudio[acodec=opus]/bestvideo+bestaudio/best"
 			}
-		} else if strings.Contains(selection, "MKV") {
+		} else if strings.Contains(selection, formatMKV) {
 			extension = "mkv"
 		}
 	}

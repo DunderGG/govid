@@ -166,7 +166,7 @@ func inferOriginalTitle(filename, quality string) string {
 	base := strings.TrimSuffix(filename, filepath.Ext(filename))
 	base = strings.TrimPrefix(base, "GoVid_")
 	base = strings.TrimSuffix(base, "_TRIM")
-	if quality != "" && quality != "Best Quality" {
+	if quality != "" && quality != qualityBest {
 		base = strings.TrimSuffix(base, "_"+quality)
 	}
 	return base

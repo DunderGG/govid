@@ -319,9 +319,13 @@ func gpuEncoderPlan(backend GPUBackend) EncoderPlan {
 
 // ── UI label mapping ─────────────────────────────────────────────────────────
 
+// gpuBackendLabelAuto is BackendAuto's label, named because it doubles as the
+// default GPU backend preference.
+const gpuBackendLabelAuto = "Auto (Recommended)"
+
 // backendLabels maps each GPUBackend to its display label in the UI.
 var backendLabels = map[GPUBackend]string{
-	BackendAuto:         "Auto (Recommended)",
+	BackendAuto:         gpuBackendLabelAuto,
 	BackendOff:          "Off",
 	BackendNVIDIA:       "NVIDIA",
 	BackendIntel:        "Intel",

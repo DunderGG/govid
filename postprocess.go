@@ -89,13 +89,13 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 	if ppSetting.SmoothMotion {
 		fps := int(ppSetting.SmoothMotionFPS)
 		switch ppSetting.SmoothMotionMode {
-		case "Fast":
+		case smoothModeFast:
 			// Frame blending — multi-threaded, much faster, slightly less precise.
 			vfFilters = append(vfFilters, fmt.Sprintf("minterpolate=fps=%d:mi_mode=blend", fps))
-		case "Balanced":
+		case smoothModeBalanced:
 			// MCI without variant-size blocks — ~40% faster than Precise, similar quality.
 			vfFilters = append(vfFilters, fmt.Sprintf("minterpolate=fps=%d:mi_mode=mci:vsbmc=0:mc_mode=obmc", fps))
-		default: // "Precise (slow)"
+		default: // smoothModePrecise
 			vfFilters = append(vfFilters, fmt.Sprintf("minterpolate=fps=%d:mi_mode=mci", fps))
 		}
 	}
@@ -127,11 +127,11 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 	}
 	if ppSetting.Denoise {
 		switch ppSetting.DenoiseMode {
-		case "NLMeans (HQ, slow)":
+		case denoiseModeNLMeans:
 			// s=2.0 is noticeably more effective on compressed web video than the
 			// default s=1.0. Research size (15) must always exceed patch size (7).
 			vfFilters = append(vfFilters, "nlmeans=2.0:7:5:15:9")
-		default: // hqdn3d (Balanced)
+		default: // denoiseModeHQDN3D
 			// hqdn3d applies both spatial and temporal denoising in one pass.
 			// luma_spatial=4, chroma_spatial=3, luma_tmp=6, chroma_tmp=4.5
 			vfFilters = append(vfFilters, "hqdn3d=4:3:6:4.5")
@@ -153,13 +153,13 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 		// -2 keeps width proportional and divisible by 2.
 		// if(gte(ih,TARGET),ih,TARGET) → keep original height when input >= target.
 		switch ppSetting.UpscaleTarget {
-		case "1080p":
+		case upscale1080p:
 			vfFilters = append(vfFilters, "scale=-2:if(gte(ih\\,1080)\\,ih\\,1080):flags=lanczos")
-		case "1440p":
+		case upscale1440p:
 			vfFilters = append(vfFilters, "scale=-2:if(gte(ih\\,1440)\\,ih\\,1440):flags=lanczos")
-		case "4K (2160p)":
+		case upscale4K:
 			vfFilters = append(vfFilters, "scale=-2:if(gte(ih\\,2160)\\,ih\\,2160):flags=lanczos")
-		default: // "2× (Double)" — no meaningful ceiling; always doubles
+		default: // upscaleDouble — no meaningful ceiling; always doubles
 			vfFilters = append(vfFilters, "scale=iw*2:ih*2:flags=lanczos")
 		}
 	}
@@ -340,19 +340,19 @@ func computeProcessingLoad(ppSettings PostProcessSettings) (int, string) {
 
 	if ppSettings.SmoothMotion {
 		switch ppSettings.SmoothMotionMode {
-		case "Fast":
+		case smoothModeFast:
 			cost += costSmoothMotionFast
-		case "Balanced":
+		case smoothModeBalanced:
 			cost += costSmoothMotionBalanced
-		default: // "Precise (slow)"
+		default: // smoothModePrecise
 			cost += costSmoothMotionPrecise
 		}
 	}
 	if ppSettings.Denoise {
 		switch ppSettings.DenoiseMode {
-		case "NLMeans (HQ, slow)":
+		case denoiseModeNLMeans:
 			cost += costDenoiseNLMeans
-		default: // hqdn3d (Balanced)
+		default: // denoiseModeHQDN3D
 			cost += costDenoiseHQDN3D
 		}
 	}
@@ -361,7 +361,7 @@ func computeProcessingLoad(ppSettings PostProcessSettings) (int, string) {
 	}
 	if ppSettings.UpscaleVideo {
 		switch ppSettings.UpscaleTarget {
-		case "4K (2160p)":
+		case upscale4K:
 			cost += costUpscale4K
 		default:
 			cost += costUpscaleDefault

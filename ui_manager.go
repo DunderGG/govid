@@ -307,8 +307,15 @@ func (manager *UIManager) showConfigHelp() {
 	items := []helpItem{
 		{"Video URL", "Paste any URL supported by yt-dlp, such as a **YouTube**, **Vimeo**, or **Twitter/X** link."},
 		{"Save Destination", "The folder where the downloaded file will be saved. GoVid remembers this between sessions."},
-		{"Output Format", "The container format for the downloaded file:\n  * **MP4** – widely compatible, recommended for most uses\n  * **MKV** – flexible container, ideal for high-quality archiving\n  * **WebM** – open format, good for web use\n  * **MP3** – audio only, compressed\n  * **M4A** – audio only, Apple/iTunes compatible"},
-		{"Max Quality", "Sets the maximum resolution yt-dlp will request:\n  * **Best Quality** – downloads the highest resolution available\n  * **1080p** / **720p** / **480p** / **360p** – caps the resolution to save space or bandwidth"},
+		{"Output Format", "The container format for the downloaded file:\n" +
+			"  * **" + formatMP4 + "** – widely compatible, recommended for most uses\n" +
+			"  * **" + formatMKV + "** – flexible container, ideal for high-quality archiving\n" +
+			"  * **" + formatWebM + "** – open format, good for web use\n" +
+			"  * **" + formatMP3 + "** – audio only, compressed\n" +
+			"  * **" + formatM4A + "** – audio only, Apple/iTunes compatible"},
+		{"Max Quality", "Sets the maximum resolution yt-dlp will request:\n" +
+			"  * **" + qualityBest + "** – downloads the highest resolution available\n" +
+			"  * **" + strings.Join(qualityOptions[1:], "** / **") + "** – caps the resolution to save space or bandwidth"},
 		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\n\nAccepted formats:\n  * `HH:MM:SS` (e.g. 01:30:00)\n  * `MM:SS` (e.g. 01:30)\n  * `Seconds` (e.g. 90)\n\nEither field can be used alone:\n  * **Trim Start only** → downloads from that point to the end\n  * **Trim End only** → downloads from the start to that point"},
 		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a **GoVid_log_YYYY-MM-DD.txt** file in your save destination folder. Errors are also mirrored to a separate **GoVid_errors_YYYY-MM-DD.txt** file."},
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
@@ -318,7 +325,10 @@ func (manager *UIManager) showConfigHelp() {
 		{"Post-Processing", "Found in **Tools → Post-Processing**. Enhance your downloads using FFmpeg. Most filters trigger a full re-encode.\n\n⚠️ **WebM files** use VP9 encoding which is significantly slower than H.264 — use MKV for faster post-processing."},
 		{"Cancel", "Stops the active download immediately. In batch mode, it skips the current URL and moves on to the next one."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
-		{"JSON Configuration", "For advanced users, GoVid supports loading settings from a `govid.json` file located in the application folder.\n\n**Supported Values:**\n* **format**: `MP4`, `MKV`, `WebM`, `MP3`, `M4A`\n* **quality**: `Best Quality`, `1080p`, `720p`, `480p`, `360p`\n* **path**: Any valid absolute folder path\n* **maxSpeed**: Numeric value with unit, e.g., `50K`, `5M`, `1G` (or blank for unlimited)"},
+		{"JSON Configuration", "For advanced users, GoVid supports loading settings from a `govid.json` file located in the application folder.\n\n**Supported Values:**\n" +
+			"* **format**: " + codeList(formatOptions) + "\n" +
+			"* **quality**: " + codeList(qualityOptions) + "\n" +
+			"* **path**: Any valid absolute folder path\n* **maxSpeed**: Numeric value with unit, e.g., `50K`, `5M`, `1G` (or blank for unlimited)"},
 	}
 
 	content := container.NewVBox()
@@ -352,6 +362,12 @@ func (manager *UIManager) showConfigHelp() {
 	manager.helpWindow.Resize(fyne.NewSize(550, 500))
 	manager.helpWindow.SetOnClosed(onWindowClosed(&manager.helpWindow))
 	manager.helpWindow.Show()
+}
+
+// codeList renders options as a comma-separated list of Markdown code spans,
+// e.g. "`MP4`, `MKV`".
+func codeList(options []string) string {
+	return "`" + strings.Join(options, "`, `") + "`"
 }
 
 // showPreferences opens a window for general application settings.

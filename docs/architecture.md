@@ -54,6 +54,7 @@ govid/
 │
 ├── ── UI ──────────────────────────────────────────────────────────
 ├── ui.go                   Thin DownloaderApp delegates to UIManager's secondary windows; shared roundedCard/accentBar helpers
+├── options.go              Named labels and option lists for every enum-like selector (format, quality, theme, PP modes…)
 ├── helpers.go              Thread-safe UI updates, applyPreferencesToWidgets, cancellation callback guard, GPU detection kickoff
 │
 ├── ── Assets / Platform ───────────────────────────────────────────

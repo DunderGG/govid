@@ -60,8 +60,8 @@ func NewDownloadControls() *DownloadControls {
 	return &DownloadControls{
 		entry:       widget.NewEntry(),
 		path:        widget.NewEntry(),
-		format:      widget.NewSelect([]string{"MP4", "MKV", "WebM", "MP3", "M4A"}, nil),
-		quality:     widget.NewSelect([]string{"Best Quality", "1080p", "720p", "480p", "360p"}, nil),
+		format:      widget.NewSelect(formatOptions, nil),
+		quality:     widget.NewSelect(qualityOptions, nil),
 		saveLog:     widget.NewCheck("Save output to log file", nil),
 		notify:      widget.NewCheck("Notify on Completion", nil),
 		autoRetry:   widget.NewCheck("Auto-retry", nil),
@@ -90,7 +90,7 @@ func NewPreferenceControls() *PreferenceControls {
 	maxSpeed := widget.NewEntry()
 	maxSpeed.SetPlaceHolder("e.g. 5M (Unlimited if blank)")
 
-	themeMode := widget.NewRadioGroup([]string{"Dark", "Light"}, nil)
+	themeMode := widget.NewRadioGroup(themeOptions, nil)
 	themeMode.Horizontal = true
 
 	cookies := widget.NewEntry()
@@ -101,7 +101,7 @@ func NewPreferenceControls() *PreferenceControls {
 		themeMode: themeMode,
 		cookies:   cookies,
 		savePrefs: widget.NewCheck("Save preferences between sessions", nil),
-		logLimit:  widget.NewSelect([]string{"100", "200", "500", "1000", "5000", "Unlimited"}, nil),
+		logLimit:  widget.NewSelect(logLimitOptions, nil),
 	}
 }
 
@@ -137,10 +137,10 @@ func NewPostProcessControls() *PostProcessControls {
 	sharpenSlider := widget.NewSlider(0, 2)
 	sharpenSlider.Step = 0.1
 
-	smoothModeRadio := widget.NewRadioGroup([]string{"Precise (slow)", "Balanced", "Fast"}, nil)
+	smoothModeRadio := widget.NewRadioGroup(smoothModeOptions, nil)
 	smoothModeRadio.Horizontal = true
 
-	denoiseModeRadio := widget.NewRadioGroup([]string{"NLMeans (HQ, slow)", "hqdn3d (Balanced)"}, nil)
+	denoiseModeRadio := widget.NewRadioGroup(denoiseModeOptions, nil)
 	denoiseModeRadio.Horizontal = true
 
 	return &PostProcessControls{
@@ -161,7 +161,7 @@ func NewPostProcessControls() *PostProcessControls {
 		deinterlace:       widget.NewCheck("Deinterlace", nil),
 		nightMode:         widget.NewCheck("Night Mode", nil),
 		upscaleVideo:      widget.NewCheck("Upscale Video", nil),
-		upscaleTarget:     widget.NewSelect([]string{"2× (Double)", "1080p", "1440p", "4K (2160p)"}, nil),
+		upscaleTarget:     widget.NewSelect(upscaleTargetOptions, nil),
 		gpuBackend:        widget.NewSelect(GPUBackendOptions(), nil),
 	}
 }

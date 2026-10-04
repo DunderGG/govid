@@ -63,17 +63,17 @@ const (
 // Named so they can be used for both Load fallbacks and UI resets without
 // scattering magic literals throughout the codebase.
 const (
-	defaultThemeMode         = "Dark"
-	defaultQuality           = "Best Quality"
+	defaultThemeMode         = themeDark
+	defaultQuality           = qualityBest
 	defaultSavePrefs         = true
-	defaultSmoothMotionMode  = "Balanced"
+	defaultSmoothMotionMode  = smoothModeBalanced
 	defaultSmoothFPS         = 60.0
-	defaultDenoiseMode       = "hqdn3d (Balanced)"
+	defaultDenoiseMode       = denoiseModeHQDN3D
 	defaultLogLimit          = "200"
-	defaultUpscaleTarget     = "2× (Double)"
+	defaultUpscaleTarget     = upscaleDouble
 	defaultSharpenAmount     = 1.0
 	defaultEnablePostProcess = true
-	defaultGPUBackend        = "Auto (Recommended)"
+	defaultGPUBackend        = gpuBackendLabelAuto
 )
 
 // AppPreferences is a plain value struct that mirrors every user preference.
@@ -187,9 +187,9 @@ func resolveDefaults(p AppPreferences) AppPreferences {
 // and MKV elsewhere.
 func defaultFormat() string {
 	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-		return "MP4"
+		return formatMP4
 	}
-	return "MKV"
+	return formatMKV
 }
 
 // defaultSavePath returns the directory containing the executable, falling
