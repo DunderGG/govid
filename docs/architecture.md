@@ -33,7 +33,7 @@ It provides a graphical interface, real-time progress feedback, optional FFmpeg 
 ```
 govid/
 ├── main.go                 Entry point; constructs DownloaderApp, wires close-intercept, calls ShowAndRun
-├── types.go                Central struct definitions (DownloaderApp, UIWidgets, DownloadStats, AppConfig, PostProcessJob)
+├── types.go                Shared app and widget types (DownloaderApp, UIWidgets and its control groups, DownloadStats)
 │
 ├── ── Services / Engines ──────────────────────────────────────────
 ├── download_engine.go      DownloadEngine — yt-dlp arg builder and retry executor
@@ -384,7 +384,7 @@ paths and can process multiple files concurrently.
 | Session log | `<save dir>/GoVid_log_YYYY-MM-DD.txt` | Plain text | `LogService` |
 | Error log | `<save dir>/GoVid_errors_YYYY-MM-DD.txt` | Plain text | `LogService` |
 | Download history | `<exe dir>/download_history.json` | JSON array | `HistoryService` |
-| Override config | `<cwd>/govid.json` | JSON object | `PreferenceService` (`LoadFromFile` / `MergeConfig`); `AppConfig` is defined in `types.go` |
+| Override config | `<cwd>/govid.json` | JSON object | `PreferenceService` (`LoadFromFile` / `MergeConfig`); `AppConfig` is defined in `preference_service.go` |
 
 ---
 

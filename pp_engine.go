@@ -7,6 +7,7 @@
 //     parseRationalFPS — ffprobe wrappers and FPS/duration maths.
 //   - Argument builders: buildFFmpegArgs, buildFFmpegArgsForBackend — pure
 //     helpers that construct the FFmpeg command-line for each post-processing job.
+//   - PostProcessJob: the inputs for one file's FFmpeg pass.
 //   - PPCallbacks: bridge that lets the engine report events to the UI layer.
 package main
 
@@ -114,6 +115,20 @@ func (guard *gpuJobGuard) release() {
 	if guard.acquired {
 		<-guard.engine.gpuSem
 	}
+}
+
+// PostProcessJob holds the inputs for a single file's FFmpeg post-processing pass.
+type PostProcessJob struct {
+	inputPath   string
+	tmpOutput   string
+	finalPath   string // destination after FFmpeg succeeds; may differ from inputPath (e.g. .webm → .mkv)
+	ffmpegArgs  []string
+	vfFilters   []string // active video filters, for summary logging
+	afFilters   []string // active audio filters, for summary logging
+	threads     int      // thread count assigned to this job
+	encodeMode  string   // human-readable encode strategy, for summary logging
+	totalFrames int64    // total video frames, for progress percentage (0 = unknown)
+	usedGPU     bool     // true if ffmpegArgs uses a GPU encoder; enables one CPU retry on failure
 }
 
 // PPCallbacks lets PPEngine report events back to the UI layer.

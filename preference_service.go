@@ -5,7 +5,7 @@
 //     making the full set of configurable options visible in one place.
 //   - PreferenceService: reads from and writes to the Fyne Preferences store,
 //     applying fallbacks where appropriate. Has no dependency on any UI widget.
-//   - LoadFromFile / MergeConfig: load and merge a govid.json config override
+//   - AppConfig, LoadFromFile / MergeConfig: load and merge a govid.json config override
 //     into AppPreferences without touching any widget.
 //   - savePreferences: thin DownloaderApp delegate to UIManager.savePreferences.
 //   - Named constants for every preference key and default value.
@@ -272,6 +272,14 @@ func (app *DownloaderApp) savePreferences(savePath string) {
 }
 
 // ── Config file ──────────────────────────────────────────────────────────────
+
+// AppConfig represents the JSON configuration file structure.
+type AppConfig struct {
+	Format   string `json:"format"`
+	Quality  string `json:"quality"`
+	Path     string `json:"path"`
+	MaxSpeed string `json:"maxSpeed"`
+}
 
 // parseAppConfig unmarshals raw JSON bytes into an AppConfig.
 //

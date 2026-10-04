@@ -257,25 +257,3 @@ type DownloaderApp struct {
 	ppFailed  atomic.Int32
 	isRunning atomic.Bool // true while a download or post-processing session is active
 }
-
-// AppConfig represents the JSON configuration file structure.
-type AppConfig struct {
-	Format   string `json:"format"`
-	Quality  string `json:"quality"`
-	Path     string `json:"path"`
-	MaxSpeed string `json:"maxSpeed"`
-}
-
-// PostProcessJob holds the inputs for a single file's FFmpeg post-processing pass.
-type PostProcessJob struct {
-	inputPath   string
-	tmpOutput   string
-	finalPath   string // destination after FFmpeg succeeds; may differ from inputPath (e.g. .webm → .mkv)
-	ffmpegArgs  []string
-	vfFilters   []string // active video filters, for summary logging
-	afFilters   []string // active audio filters, for summary logging
-	threads     int      // thread count assigned to this job
-	encodeMode  string   // human-readable encode strategy, for summary logging
-	totalFrames int64    // total video frames, for progress percentage (0 = unknown)
-	usedGPU     bool     // true if ffmpegArgs uses a GPU encoder; enables one CPU retry on failure
-}
