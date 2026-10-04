@@ -21,50 +21,108 @@ import (
 	"fyne.io/fyne/v2/dialog"
 )
 
-// startDownload prepares the application for a new download session. It validates
-// inputs, resets metrics/visuals, initializes log files if requested, and
-// launches the background goroutines for progress interpolation and yt-dlp execution.
+// downloadSession holds the inputs of one download session. They are read
+// from the widgets once, on the UI thread, when the session starts.
+type downloadSession struct {
+	urls      []string
+	savePath  string
+	trimStart string
+	trimEnd   string
+	vfFilters []string // post-processing video filters; nil when post-processing is off
+	afFilters []string // post-processing audio filters; nil when post-processing is off
+}
+
+// hasPostProcess reports whether any post-processing filter is active.
+func (session downloadSession) hasPostProcess() bool {
+	return len(session.vfFilters) > 0 || len(session.afFilters) > 0
+}
+
+// isBatch reports whether the session downloads more than one URL.
+func (session downloadSession) isBatch() bool {
+	return len(session.urls) > 1
+}
+
+// startDownload validates the inputs of a new download session, resets the UI
+// for it, and launches the progress smoother and the session goroutine.
 func (app *DownloaderApp) startDownload() {
-	savePath := strings.TrimSpace(app.ui.download.path.Text)
-	trimStart := strings.TrimSpace(app.ui.download.trimStart.Text)
-	trimEnd := strings.TrimSpace(app.ui.download.trimEnd.Text)
+	session, err := app.readSession()
+	if err != nil {
+		dialog.ShowError(err, app.window)
+		return
+	}
 
-	// Collect the URL(s) to download.
-	var urls []string
-	if app.ui.download.batchMode.Checked {
-		for _, line := range strings.Split(app.ui.download.entry.Text, "\n") {
-			if url := strings.TrimSpace(line); url != "" {
-				urls = append(urls, url)
-			}
-		}
-		if len(urls) == 0 {
-			dialog.ShowError(fmt.Errorf("no URLs entered"), app.window)
-			return
-		}
-	} else {
-		rawURL := strings.TrimSpace(app.ui.download.entry.Text)
+	app.savePreferences(session.savePath)
+	app.resetSession()
+	app.openSessionLog(session)
+
+	// queueCtx never expires on its own; stopQueue (wired to Cancel) ends the
+	// whole session. In batch mode each URL gets a child of queueCtx so Cancel
+	// can skip one item without stopping the queue (see downloadItem).
+	queueCtx, stopQueue := context.WithCancel(context.Background())
+	app.SetCancelFunc(stopQueue)
+
+	// The smoother owns the progress bar until the session ends.
+	go app.runProgressSmoother(queueCtx)
+	go app.runSession(queueCtx, stopQueue, session)
+}
+
+// readSession reads and validates the session inputs from the widgets. The
+// returned error is suitable for showing to the user as-is.
+func (app *DownloaderApp) readSession() (downloadSession, error) {
+	urls, err := collectURLs(app.ui.download.entry.Text, app.ui.download.batchMode.Checked)
+	if err != nil {
+		return downloadSession{}, err
+	}
+
+	session := downloadSession{
+		urls:      urls,
+		savePath:  strings.TrimSpace(app.ui.download.path.Text),
+		trimStart: strings.TrimSpace(app.ui.download.trimStart.Text),
+		trimEnd:   strings.TrimSpace(app.ui.download.trimEnd.Text),
+	}
+	if session.savePath == "" {
+		return downloadSession{}, fmt.Errorf("save path cannot be empty")
+	}
+	// Either trim bound may be used alone; each must be empty or valid.
+	if validateTimestamp(session.trimStart) != nil || validateTimestamp(session.trimEnd) != nil {
+		return downloadSession{}, fmt.Errorf("invalid trim time format — use HH:MM:SS, MM:SS, or plain seconds")
+	}
+
+	// Build the filters once: they are the same for every URL in the session.
+	if app.ui.postProcess.enablePostProcess.Checked {
+		session.vfFilters, session.afFilters = buildPostProcessFilters(newPostProcessSettings(app.ui))
+	}
+	return session, nil
+}
+
+// collectURLs extracts the URLs to download from the URL entry's text. In
+// batch mode every non-blank line is a URL; otherwise the whole trimmed text
+// is a single URL. It returns an error when no URL was entered.
+func collectURLs(text string, batch bool) ([]string, error) {
+	if !batch {
+		rawURL := strings.TrimSpace(text)
 		if rawURL == "" {
-			dialog.ShowError(fmt.Errorf("URL cannot be empty"), app.window)
-			return
+			return nil, fmt.Errorf("URL cannot be empty")
 		}
-		urls = []string{rawURL}
+		return []string{rawURL}, nil
 	}
 
-	if savePath == "" {
-		dialog.ShowError(fmt.Errorf("save path cannot be empty"), app.window)
-		return
+	var urls []string
+	for _, line := range strings.Split(text, "\n") {
+		if url := strings.TrimSpace(line); url != "" {
+			urls = append(urls, url)
+		}
 	}
-
-	// Trim validation: at least one of trimStart/trimEnd must be provided for trimming,
-	// but either can be used alone.
-	if validateTimestamp(trimStart) != nil || validateTimestamp(trimEnd) != nil {
-		dialog.ShowError(fmt.Errorf("invalid trim time format — use HH:MM:SS, MM:SS, or plain seconds"), app.window)
-		return
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("no URLs entered")
 	}
+	return urls, nil
+}
 
-	app.savePreferences(savePath)
-
-	// Reset UI and stats for new session.
+// resetSession clears the previous session's log, stats, and failure flag,
+// marks a session as running, and puts the buttons and status into their
+// "downloading" state. Must be called on the UI thread.
+func (app *DownloaderApp) resetSession() {
 	app.updateStatus("Status: Initializing...")
 	app.stats.reset()
 	app.clearTerminalOutput()
@@ -74,132 +132,157 @@ func (app *DownloaderApp) startDownload() {
 	app.setStatusIndicator("active")
 	app.ppFailed.Store(0)
 	app.isRunning.Store(true)
+}
 
-	// Initialize logging to file if the option is checked.
-	if app.ui.download.saveLog.Checked {
-		if logPath, err := app.logSvc.OpenSessionLog(savePath); err == nil {
-			app.appendOutput(fmt.Sprintf("[SYSTEM] Logging to: %s", logPath), colSystem)
-			cfg := newSessionConfig(app.ui, urls, savePath, trimStart, trimEnd)
-			app.logSvc.WriteSessionConfig(cfg, app.appendOutput)
-		} else {
-			app.appendOutput(fmt.Sprintf("[ERROR] Failed to create log file: %v", err), colError)
+// openSessionLog starts the on-disk session log and writes the session
+// configuration header to it, when "Save output to log file" is checked.
+func (app *DownloaderApp) openSessionLog(session downloadSession) {
+	if !app.ui.download.saveLog.Checked {
+		return
+	}
+	logPath, err := app.logSvc.OpenSessionLog(session.savePath)
+	if err != nil {
+		app.appendOutput(fmt.Sprintf("[ERROR] Failed to create log file: %v", err), colError)
+		return
+	}
+	app.appendOutput(fmt.Sprintf("[SYSTEM] Logging to: %s", logPath), colSystem)
+	cfg := newSessionConfig(app.ui, session.urls, session.savePath, session.trimStart, session.trimEnd)
+	app.logSvc.WriteSessionConfig(cfg, app.appendOutput)
+}
+
+// runSession downloads every URL in the session, post-processes the results,
+// sends the completion notification, and finally restores the idle UI. It
+// runs on its own goroutine and owns queueCtx until it returns.
+func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context.CancelFunc, session downloadSession) {
+	// Always stop the smoother and re-enable the download button when the
+	// session finishes, regardless of how it ends.
+	defer stopQueue()
+	defer app.SetCancelFunc(nil)
+	defer app.isRunning.Store(false)
+	defer app.finishSessionUI()
+
+	finalPaths := app.runQueue(queueCtx, session)
+
+	switch {
+	case queueCtx.Err() != nil || len(finalPaths) == 0:
+		// Cancelled, or nothing downloaded: nothing to process or announce.
+	case session.hasPostProcess():
+		app.runPostProcessing(queueCtx, stopQueue, finalPaths, session)
+		if queueCtx.Err() == nil {
+			app.notifyCompletion(true, len(finalPaths), len(session.urls))
 		}
+	default:
+		app.notifyCompletion(false, len(finalPaths), len(session.urls))
 	}
 
-	// queueCtx is a child of context.Background(), a context that never expires on its own.
-	// GoRoutines can watch queueCtx.Done() to know when to stop.
-	// Calling stopQueue() marks queueCtx as done, which closes the queueCtx.Done() channel.
-	// In the batch case, each URL's runCtx is a child of queueCtx via a second context.WithCancel(queueCtx).
-	// Cancelling a child only affects that child
-	queueCtx, stopQueue := context.WithCancel(context.Background())
+	// Close the log file here, after post-processing, so FFmpeg output is captured.
+	app.logSvc.CloseSessionLog()
+}
+
+// finishSessionUI re-enables the download button at the end of a session,
+// relabelling it "Retry" if any job in the session failed.
+func (app *DownloaderApp) finishSessionUI() {
+	fyne.Do(func() {
+		if app.ppFailed.Load() > 0 {
+			app.ui.download.downloadBtn.SetText("Retry")
+		}
+		app.ui.download.downloadBtn.Enable()
+	})
+}
+
+// runQueue downloads the session's URLs one after another until the queue is
+// cancelled, and returns the finalized paths of every successful download so
+// post-processing can run over all of them at once.
+func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSession) []string {
+	if session.isBatch() {
+		app.appendOutput(fmt.Sprintf("[SYSTEM] Batch mode: %d URLs queued.", len(session.urls)), colInfo)
+	}
+
+	var finalPaths []string
+	for index := range session.urls {
+		if queueCtx.Err() != nil {
+			break
+		}
+		paths := app.downloadItem(queueCtx, session, index)
+		finalPaths = append(finalPaths, paths...)
+	}
+	return finalPaths
+}
+
+// downloadItem downloads session.urls[index] and returns its finalized paths.
+func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloadSession, index int) []string {
+	// In batch mode, give each URL its own child context so the Cancel
+	// button skips only the active download without killing the queue.
+	// In single-URL mode, runCtx == queueCtx and Cancel stops all.
+	runCtx := queueCtx
+	if session.isBatch() {
+		var skipItem context.CancelFunc
+		runCtx, skipItem = context.WithCancel(queueCtx)
+		defer skipItem() // release the per-item context whether it was cancelled or not
+		app.SetCancelFunc(skipItem)
+		app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", index+1, len(session.urls)), colInfo)
+	}
+	if index > 0 {
+		// Reset progress UI and stats between URLs.
+		app.stats.reset()
+		fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
+	}
+
+	url := session.urls[index]
+	return app.runYtDlp(runCtx, url, session.savePath, session.trimStart, session.trimEnd, index+1, len(session.urls))
+}
+
+// runPostProcessing runs the session's filters over every downloaded file in
+// one pass, so the worker pool can saturate the CPU across concurrent jobs,
+// and reports the outcome in the status label and dot.
+func (app *DownloaderApp) runPostProcessing(queueCtx context.Context, stopQueue context.CancelFunc, paths []string, session downloadSession) {
+	// Re-enable cancel and point it at the queue context so the user can
+	// abort all running FFmpeg jobs at once.
 	app.SetCancelFunc(stopQueue)
+	fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
+	app.updateStatus("Status: Post-processing...")
+	app.setStatusIndicator("processing")
 
-	// Launch the smoothing goroutine, which owns the progress bar until the
-	// session ends.
-	go app.runProgressSmoother(queueCtx)
+	app.applyFFmpegFilters(queueCtx, paths, session.vfFilters, session.afFilters)
 
-	if len(urls) > 1 {
-		app.appendOutput(fmt.Sprintf("[SYSTEM] Batch mode: %d URLs queued.", len(urls)), colInfo)
+	fyne.Do(func() { app.ui.download.cancelBtn.Disable() })
+	if queueCtx.Err() != nil {
+		app.updateStatus("Status: Canceled.")
+		app.setStatusIndicator("canceled")
+		app.appendOutput("Post-processing canceled by user.", colWarning)
+		return
 	}
+	app.updateStatus("Status: Done.")
+	app.setStatusIndicator("success")
+}
 
-	go func() {
-		// Always stop the smoother and re-enable the download button when the
-		// batch finishes, regardless of how it ends.
-		defer stopQueue()
-		defer app.SetCancelFunc(nil)
-		defer app.isRunning.Store(false)
-		defer fyne.Do(func() {
-			if app.ppFailed.Load() > 0 {
-				app.ui.download.downloadBtn.SetText("Retry")
-			}
-			app.ui.download.downloadBtn.Enable()
-		})
+// notifyCompletion sends the end-of-session system notification when
+// "Notify on Completion" is checked.
+func (app *DownloaderApp) notifyCompletion(postProcessed bool, fileCount, urlCount int) {
+	if !app.ui.download.notify.Checked {
+		return
+	}
+	fyne.CurrentApp().SendNotification(completionNotification(postProcessed, fileCount, urlCount))
+}
 
-		// Build filters once — they come from UI state and are the same for every URL.
-		// Skipped entirely when the master post-processing toggle is off.
-		var vfFilters, afFilters []string
-		if app.ui.postProcess.enablePostProcess.Checked {
-			vfFilters, afFilters = buildPostProcessFilters(newPostProcessSettings(app.ui))
+// completionNotification builds the end-of-session notification. After
+// post-processing it counts the processed files; otherwise it counts the
+// queued URLs.
+func completionNotification(postProcessed bool, fileCount, urlCount int) *fyne.Notification {
+	if postProcessed {
+		return &fyne.Notification{
+			Title:   "GoVid — All Done",
+			Content: fmt.Sprintf("%d file(s) downloaded and processed.", fileCount),
 		}
-		hasPostProcess := len(vfFilters) > 0 || len(afFilters) > 0
-
-		// Collect finalized paths from every successful download so post-processing
-		// can run over all of them concurrently at the end of the batch.
-		var allFinalPaths []string
-
-		for index, url := range urls {
-			if queueCtx.Err() != nil {
-				break
-			}
-
-			// In batch mode, give each URL its own child context so the Cancel
-			// button skips only the active download without killing the queue.
-			// In single-URL mode, runCtx == queueCtx and Cancel stops all.
-			runCtx := queueCtx
-			var skipItem context.CancelFunc
-			if len(urls) > 1 {
-				runCtx, skipItem = context.WithCancel(queueCtx)
-				app.SetCancelFunc(skipItem)
-			}
-
-			if len(urls) > 1 {
-				app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", index+1, len(urls)), colInfo)
-			}
-			if index > 0 {
-				// Reset progress UI and stats between URLs.
-				app.stats.reset()
-				fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
-			}
-
-			paths := app.runYtDlp(runCtx, url, savePath, trimStart, trimEnd, index+1, len(urls))
-			allFinalPaths = append(allFinalPaths, paths...)
-
-			if skipItem != nil {
-				skipItem() // release the per-item context whether it was cancelled or not
-			}
-		}
-
-		// Run post-processing over all collected files in one pass so the worker
-		// pool can saturate available CPU cores across multiple concurrent jobs.
-		if hasPostProcess && len(allFinalPaths) > 0 && queueCtx.Err() == nil {
-			// Re-enable cancel and point it at the queue context so the user can
-			// abort all running FFmpeg jobs at once.
-			app.SetCancelFunc(stopQueue)
-			fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
-			app.updateStatus("Status: Post-processing...")
-			app.setStatusIndicator("processing")
-			app.applyFFmpegFilters(queueCtx, allFinalPaths, vfFilters, afFilters)
-			fyne.Do(func() { app.ui.download.cancelBtn.Disable() })
-			if queueCtx.Err() == context.Canceled {
-				app.updateStatus("Status: Canceled.")
-				app.setStatusIndicator("canceled")
-				app.appendOutput("Post-processing canceled by user.", colWarning)
-			} else {
-				app.updateStatus("Status: Done.")
-				app.setStatusIndicator("success")
-				if app.ui.download.notify.Checked {
-					fyne.CurrentApp().SendNotification(&fyne.Notification{
-						Title:   "GoVid — All Done",
-						Content: fmt.Sprintf("%d file(s) downloaded and processed.", len(allFinalPaths)),
-					})
-				}
-			}
-		} else if queueCtx.Err() == nil && len(allFinalPaths) > 0 && app.ui.download.notify.Checked {
-			// No post-processing — notify now that all downloads are finished.
-			count := len(urls)
-			msg := "Your download is ready."
-			if count > 1 {
-				msg = fmt.Sprintf("%d downloads complete.", count)
-			}
-			fyne.CurrentApp().SendNotification(&fyne.Notification{
-				Title:   "GoVid — Download Complete",
-				Content: msg,
-			})
-		}
-
-		// Close the log file here, after post-processing, so FFmpeg output is captured.
-		app.logSvc.CloseSessionLog()
-	}()
+	}
+	msg := "Your download is ready."
+	if urlCount > 1 {
+		msg = fmt.Sprintf("%d downloads complete.", urlCount)
+	}
+	return &fyne.Notification{
+		Title:   "GoVid — Download Complete",
+		Content: msg,
+	}
 }
 
 // runYtDlp gathers UI state into a DownloadRequest, delegates the full

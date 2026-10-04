@@ -147,6 +147,58 @@ func TestValidateTimestamp(t *testing.T) {
 	}
 }
 
+func TestCollectURLs(t *testing.T) {
+	tests := []struct {
+		name    string
+		text    string
+		batch   bool
+		want    []string
+		wantErr bool
+	}{
+		{"single trimmed", "  https://a  ", false, []string{"https://a"}, false},
+		{"single keeps newlines as one URL", "https://a\nhttps://b", false, []string{"https://a\nhttps://b"}, false},
+		{"single empty", " \t ", false, nil, true},
+		{"batch skips blank lines", "https://a\n\n  https://b \n\t\n", true, []string{"https://a", "https://b"}, false},
+		{"batch handles CRLF", "https://a\r\nhttps://b\r\n", true, []string{"https://a", "https://b"}, false},
+		{"batch only blank lines", "\n  \n\t\n", true, nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := collectURLs(tt.text, tt.batch)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("collectURLs(%q, %v) error = %v, wantErr %v", tt.text, tt.batch, err, tt.wantErr)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("collectURLs(%q, %v) = %q, want %q", tt.text, tt.batch, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCompletionNotification(t *testing.T) {
+	tests := []struct {
+		name          string
+		postProcessed bool
+		fileCount     int
+		urlCount      int
+		wantTitle     string
+		wantContent   string
+	}{
+		{"single download", false, 1, 1, "GoVid — Download Complete", "Your download is ready."},
+		{"batch counts URLs", false, 2, 3, "GoVid — Download Complete", "3 downloads complete."},
+		{"post-processed counts files", true, 2, 3, "GoVid — All Done", "2 file(s) downloaded and processed."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := completionNotification(tt.postProcessed, tt.fileCount, tt.urlCount)
+			if got.Title != tt.wantTitle || got.Content != tt.wantContent {
+				t.Errorf("completionNotification(%v, %d, %d) = {%q, %q}, want {%q, %q}",
+					tt.postProcessed, tt.fileCount, tt.urlCount, got.Title, got.Content, tt.wantTitle, tt.wantContent)
+			}
+		})
+	}
+}
+
 // ── Download summary formatting ──────────────────────────────────────────────
 
 func TestDescribeOutputFormat(t *testing.T) {
