@@ -5,8 +5,8 @@
 //     crop detection, filter resolution, and concurrent post-processing jobs.
 //   - Probe methods: probeFrameCount, probeDuration, computeOutputFrameCount,
 //     parseRationalFPS — ffprobe wrappers and FPS/duration maths.
-//   - Argument builders: buildFFmpegArgs, patchThreadCount — pure helpers that
-//     construct and patch the FFmpeg command-line for each post-processing job.
+//   - Argument builders: buildFFmpegArgs, buildFFmpegArgsForBackend — pure
+//     helpers that construct the FFmpeg command-line for each post-processing job.
 //   - PPCallbacks: bridge that lets the engine report events to the UI layer.
 package main
 
@@ -199,10 +199,7 @@ func (engine *PPEngine) resolveAutoCrop(ctx context.Context, inputPath string, f
 func (engine *PPEngine) retryWithCPU(ctx context.Context, job PostProcessJob, cb PPCallbacks, reason string) {
 	cb.OnLog(fmt.Sprintf("[SYSTEM] GPU encode failed (%s) — retrying with CPU.", reason), colWarning)
 
-	job.ffmpegArgs = engine.patchThreadCount(
-		engine.buildFFmpegArgsForBackend(job.inputPath, job.tmpOutput, job.vfFilters, job.afFilters, BackendOff),
-		strconv.Itoa(job.threads),
-	)
+	job.ffmpegArgs = engine.buildFFmpegArgsForBackend(job.inputPath, job.tmpOutput, job.vfFilters, job.afFilters, BackendOff, job.threads)
 	job.encodeMode = PlanEncoder(BackendOff, nil, filepath.Ext(job.tmpOutput)).Label
 	job.usedGPU = false
 	engine.runJob(ctx, job, cb)
@@ -515,19 +512,20 @@ func (engine *PPEngine) parseRationalFPS(s string) float64 {
 
 // ── Argument builders ────────────────────────────────────────────────────────
 
-// buildFFmpegArgs constructs the FFmpeg argument list for a single post-processing
-// job. The -threads placeholder is set to "0" and patched to the real count later.
-func (engine *PPEngine) buildFFmpegArgs(inputPath, tmpOutput string, vfFilters, afFilters []string) []string {
-	return engine.buildFFmpegArgsForBackend(inputPath, tmpOutput, vfFilters, afFilters, engine.GPUBackend)
+// buildFFmpegArgs constructs the FFmpeg argument list for a single
+// post-processing job, using the engine's GPU backend and the job's share
+// of the CPU threads.
+func (engine *PPEngine) buildFFmpegArgs(inputPath, tmpOutput string, vfFilters, afFilters []string, threads int) []string {
+	return engine.buildFFmpegArgsForBackend(inputPath, tmpOutput, vfFilters, afFilters, engine.GPUBackend, threads)
 }
 
 // buildFFmpegArgsForBackend is buildFFmpegArgs with an explicit backend
 // override, used by runJob's strict CPU fallback to rebuild CPU-only args
 // when a GPU-accelerated job fails at runtime.
-func (engine *PPEngine) buildFFmpegArgsForBackend(inputPath, tmpOutput string, vfFilters, afFilters []string, backend GPUBackend) []string {
+func (engine *PPEngine) buildFFmpegArgsForBackend(inputPath, tmpOutput string, vfFilters, afFilters []string, backend GPUBackend, threads int) []string {
 	// Note: -stats_period was added in FFmpeg 4.4; omitting it keeps progress
 	// reporting working on older builds (FFmpeg defaults to 0.5 s anyway).
-	args := []string{"-y", "-threads", "0", "-i", inputPath}
+	args := []string{"-y", "-threads", strconv.Itoa(threads), "-i", inputPath}
 	if len(vfFilters) > 0 {
 		args = append(args, "-vf", strings.Join(vfFilters, ","))
 		plan := PlanEncoder(backend, engine.GPUCapabilities, filepath.Ext(tmpOutput))
@@ -543,18 +541,6 @@ func (engine *PPEngine) buildFFmpegArgsForBackend(inputPath, tmpOutput string, v
 	return append(args, tmpOutput)
 }
 
-// patchThreadCount replaces the value immediately after the "-threads" flag in
-// an FFmpeg argument slice with the given count string.
-func (engine *PPEngine) patchThreadCount(args []string, count string) []string {
-	for argIdx, arg := range args {
-		if arg == "-threads" && argIdx+1 < len(args) {
-			args[argIdx+1] = count
-			return args
-		}
-	}
-	return args
-}
-
 // ApplyFilters runs a concurrent worker pool to post-process each of the given
 // files with the provided video/audio filters. Workers are bounded to
 // runtime.NumCPU() so that total thread load never exceeds available cores.
@@ -565,7 +551,8 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 		return
 	}
 
-	// Build one job per file, skipping files that need no processing.
+	// Plan one job per file, skipping files that need no processing. The
+	// FFmpeg args are built below, once the thread budget is known.
 	var jobs []PostProcessJob
 	for _, inputPath := range filePaths {
 		ext := strings.ToLower(filepath.Ext(inputPath))
@@ -595,7 +582,6 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 			inputPath:   inputPath,
 			tmpOutput:   tmpOutput,
 			finalPath:   finalPath,
-			ffmpegArgs:  engine.buildFFmpegArgs(inputPath, tmpOutput, activeVF, afFilters),
 			vfFilters:   activeVF,
 			afFilters:   afFilters,
 			encodeMode:  encodeMode,
@@ -635,10 +621,10 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 		threadsPerJob = 1
 	}
 
-	// Assign the thread budget to each job and patch each job's FFmpeg thread arg accordingly.
 	for i := range jobs {
-		jobs[i].threads = threadsPerJob
-		jobs[i].ffmpegArgs = engine.patchThreadCount(jobs[i].ffmpegArgs, fmt.Sprintf("%d", threadsPerJob))
+		job := &jobs[i]
+		job.threads = threadsPerJob
+		job.ffmpegArgs = engine.buildFFmpegArgs(job.inputPath, job.tmpOutput, job.vfFilters, job.afFilters, threadsPerJob)
 	}
 
 	// Create a channel to distribute jobs to workers and close it after all jobs are sent.

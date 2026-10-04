@@ -5,6 +5,8 @@ import (
 	"image/color"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -28,7 +30,7 @@ func TestBuildFFmpegArgsForBackend(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			args := engine.buildFFmpegArgsForBackend("in.mp4", "in_pp.mp4", []string{"eq=contrast=1.1"}, nil, tt.backend)
+			args := engine.buildFFmpegArgsForBackend("in.mp4", "in_pp.mp4", []string{"eq=contrast=1.1"}, nil, tt.backend, 4)
 			got := strings.Join(args, " ")
 			if !strings.Contains(got, tt.want) {
 				t.Errorf("buildFFmpegArgsForBackend(...) = %q, want to contain %q", got, tt.want)
@@ -39,10 +41,21 @@ func TestBuildFFmpegArgsForBackend(t *testing.T) {
 
 func TestBuildFFmpegArgsForBackendNoFilters(t *testing.T) {
 	engine := &PPEngine{}
-	args := engine.buildFFmpegArgsForBackend("in.mp4", "in_pp.mp4", nil, nil, BackendNVIDIA)
+	args := engine.buildFFmpegArgsForBackend("in.mp4", "in_pp.mp4", nil, nil, BackendNVIDIA, 4)
 	got := strings.Join(args, " ")
 	if !strings.Contains(got, "-c:v copy") {
 		t.Errorf("buildFFmpegArgsForBackend(...) with no filters = %q, want stream copy", got)
+	}
+}
+
+func TestBuildFFmpegArgsUsesThreadCount(t *testing.T) {
+	engine := &PPEngine{}
+	for _, threads := range []int{1, 6} {
+		args := engine.buildFFmpegArgs("in.mp4", "in_pp.mp4", []string{"deband"}, []string{"loudnorm"}, threads)
+		want := []string{"-y", "-threads", strconv.Itoa(threads), "-i", "in.mp4"}
+		if !slices.Equal(args[:len(want)], want) {
+			t.Errorf("buildFFmpegArgs(..., %d) starts %q, want %q", threads, args[:len(want)], want)
+		}
 	}
 }
 

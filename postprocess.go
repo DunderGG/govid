@@ -178,7 +178,7 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 }
 
 // All PPEngine methods and helpers (detectCropFilter, resolveAutoCrop, runJob,
-// buildFFmpegArgs, patchThreadCount, and the probe functions) live in pp_engine.go.
+// buildFFmpegArgs, and the probe functions) live in pp_engine.go.
 
 // applyFFmpegFilters creates a PPEngine from resolved binary paths and delegates
 // to PPEngine.ApplyFilters, wiring the app's log/status/failure callbacks.
