@@ -11,7 +11,8 @@
 //   - newSessionConfig:       SessionConfig for LogService.WriteSessionConfig.
 //
 // Value → widget:
-//   - applyPreferencesToWidgets: called at startup, after loading govid.json.
+//   - applyPreferencesToWidgets: called at startup, after loading govid.json,
+//     and by Restore Defaults.
 package main
 
 import "strings"

@@ -32,9 +32,13 @@ type LogService struct {
 	preSession  []string // timestamped lines written before a session log file exists; flushed by OpenSessionLog
 }
 
-// NewLogService returns a LogService with the default buffer limit (200 lines).
+// defaultLogBufferLimit is the number of log lines kept in the UI by default.
+// It is the integer form of the defaultLogLimit preference string.
+const defaultLogBufferLimit = 200
+
+// NewLogService returns a LogService with the default buffer limit.
 func NewLogService() *LogService {
-	return &LogService{bufferLimit: 200}
+	return &LogService{bufferLimit: defaultLogBufferLimit}
 }
 
 // ── Session log ──────────────────────────────────────────────────────────────
@@ -234,14 +238,15 @@ func IsErrorLine(line string) bool {
 }
 
 // ParseBufferLimit converts a log-limit preference string (e.g. "200",
-// "Unlimited") to an integer. Returns 200 for any unrecognised value.
+// "Unlimited") to an integer. Returns defaultLogBufferLimit for any
+// unrecognised value.
 func ParseBufferLimit(s string) int {
 	if s == "Unlimited" {
 		return math.MaxInt32
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil || n <= 0 {
-		return 200
+		return defaultLogBufferLimit
 	}
 	return n
 }

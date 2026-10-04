@@ -10,8 +10,8 @@
 //   - showAbout, showHistory, showConfigHelp, showPreferences,
 //     showPostProcessing: self-contained window construction, built from
 //     UIManager's own widget field and injected service callbacks.
-//   - savePreferences, resetPreferences, rebuildUI: preference persistence
-//     and UI-rebuild helpers used by showPreferences.
+//   - savePreferences, restoreDefaults: preference persistence and the
+//     "Restore Defaults" reset used by showPreferences.
 //   - checkDependencies, runUpdateInUI: thin delegates to the injected
 //     dependency-service callbacks for the startup tool check and the
 //     "Update yt-dlp" menu action.
@@ -50,6 +50,10 @@ type UIManager struct {
 	prefsWindow   fyne.Window // owned here for singleton tracking; opened by DownloaderApp
 	ppWindow      fyne.Window // owned here for singleton tracking; opened by DownloaderApp
 	ui            *UIWidgets  // shared widget bag; set by newDownloaderApp after construction
+
+	// restoringDefaults suppresses savePreferences while restoreDefaults is
+	// writing default values into the widgets. Only touched on the UI goroutine.
+	restoringDefaults bool
 
 	// Callbacks bridging DownloaderApp actions and services into the main
 	// window and secondary windows; all set by newDownloaderApp after
@@ -412,16 +416,9 @@ func (manager *UIManager) showPreferences() {
 
 	resetBtn := widget.NewButton("Restore Defaults", func() {
 		dialog.ShowConfirm("Restore Defaults", "Reset all preferences to their default values?", func(ok bool) {
-			if !ok {
-				return
+			if ok {
+				manager.restoreDefaults()
 			}
-			manager.resetPreferences()
-			manager.rebuildUI()
-			ui.prefs.savePrefs.SetChecked(true)
-			ui.prefs.maxSpeed.SetText("")
-			ui.prefs.cookies.SetText("")
-			ui.prefs.themeMode.SetSelected("Dark")
-			ui.prefs.logLimit.SetSelected("200")
 		}, manager.prefsWindow)
 	})
 	resetBtn.Importance = widget.DangerImportance
@@ -456,23 +453,33 @@ func (manager *UIManager) showPreferences() {
 }
 
 // savePreferences snapshots the current widget state (see snapshotPreferences)
-// and delegates persistence to PreferenceService.Save.
+// and delegates persistence to PreferenceService.Save. It does nothing while
+// restoreDefaults is running.
 func (manager *UIManager) savePreferences(savePath string) {
+	if manager.restoringDefaults {
+		return
+	}
 	manager.onSavePreferences(snapshotPreferences(manager.ui, savePath))
 }
 
-// resetPreferences clears the stored preference data and resets the log
-// buffer to its default limit. Call rebuildUI afterwards to complete the
-// visual reset.
-func (manager *UIManager) resetPreferences() {
-	manager.onResetPreferences()
-	manager.onSetLogBufferLimit(200)
-}
+// restoreDefaults clears every stored preference and returns the whole UI to
+// its default state: every preference-backed widget, the log buffer limit, the
+// theme, and the main window layout. The defaults come from loading the
+// freshly cleared store, so no default value is repeated here.
+//
+// Applying the defaults fires the widgets' save-on-change handlers. Saving is
+// suppressed meanwhile so those handlers cannot write a half-updated snapshot
+// back into the store, which is left empty as PreferenceService.Reset intends.
+func (manager *UIManager) restoreDefaults() {
+	manager.restoringDefaults = true
+	defer func() { manager.restoringDefaults = false }()
 
-// rebuildUI applies the default theme and recreates the main window
-// layout. Called after resetPreferences to complete a full application reset.
-func (manager *UIManager) rebuildUI() {
-	applyTheme(fyne.CurrentApp(), defaultThemeMode)
+	manager.onResetPreferences()
+	defaults := manager.onLoadPreferences()
+
+	applyPreferencesToWidgets(manager.ui, defaults)
+	manager.onSetLogBufferLimit(ParseBufferLimit(defaults.LogLimit))
+	applyTheme(fyne.CurrentApp(), defaults.ThemeMode)
 	manager.createUI()
 }
 
