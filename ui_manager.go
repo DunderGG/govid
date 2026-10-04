@@ -405,12 +405,7 @@ func (manager *UIManager) showPreferences() {
 
 			// Apply theme change and rebuild the UI so canvas.Rectangle colors
 			// (which are snapshotted at construction time) get fresh theme values.
-			switch ui.prefs.themeMode.Selected {
-			case "Light":
-				fyne.CurrentApp().Settings().SetTheme(&lightTheme{})
-			default:
-				fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
-			}
+			applyTheme(fyne.CurrentApp(), ui.prefs.themeMode.Selected)
 			manager.createUI()
 		},
 	}
@@ -507,10 +502,10 @@ func (manager *UIManager) resetPreferences() {
 	manager.onSetLogBufferLimit(200)
 }
 
-// rebuildUI applies the default dark theme and recreates the main window
+// rebuildUI applies the default theme and recreates the main window
 // layout. Called after resetPreferences to complete a full application reset.
 func (manager *UIManager) rebuildUI() {
-	fyne.CurrentApp().Settings().SetTheme(&darkTheme{})
+	applyTheme(fyne.CurrentApp(), defaultThemeMode)
 	manager.createUI()
 }
 

@@ -105,16 +105,6 @@ func main() {
 
 	mainApp := app.NewWithID("com.govid.downloader")
 
-	// Apply the user's preferred theme or the custom GoVid theme.
-	themePref := mainApp.Preferences().StringWithFallback(prefThemeMode, defaultThemeMode)
-	switch themePref {
-	case "Light":
-		mainApp.Settings().SetTheme(&lightTheme{})
-	default:
-		// Force the custom theme to use Dark variant for its base
-		mainApp.Settings().SetTheme(&darkTheme{})
-	}
-
 	// Set the custom brand icon using the bundled resource.
 	mainApp.SetIcon(resourceAppiconPng)
 
@@ -123,6 +113,11 @@ func main() {
 	mainWindow.SetIcon(resourceAppiconPng)
 
 	dlApp := newDownloaderApp(mainWindow)
+
+	// Apply the user's preferred theme before any UI is built, so canvas
+	// colours snapshotted at construction time match it.
+	applyTheme(mainApp, dlApp.prefSvc.Load().ThemeMode)
+
 	dlApp.uiManager.createMainMenu()
 	dlApp.uiManager.createUI()
 	dlApp.uiManager.checkDependencies()

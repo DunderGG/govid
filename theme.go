@@ -169,3 +169,14 @@ func (t *lightTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
 func (t *lightTheme) Size(name fyne.ThemeSizeName) float32 {
 	return theme.DefaultTheme().Size(name)
 }
+
+// applyTheme installs the GoVid theme matching mode ("Light" or "Dark") on
+// app. Any value other than "Light" falls back to the dark theme.
+func applyTheme(app fyne.App, mode string) {
+	switch mode {
+	case "Light":
+		app.Settings().SetTheme(&lightTheme{})
+	default:
+		app.Settings().SetTheme(&darkTheme{})
+	}
+}
