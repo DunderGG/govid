@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -167,20 +168,12 @@ func (engine *PPEngine) detectCropFilter(ctx context.Context, inputPath string, 
 	return lastCrop
 }
 
-// resolveAutoCrop replaces the "__autocrop__" sentinel in a vfFilters slice with
-// the actual crop filter detected from the specific file. If detection fails the
+// resolveAutoCrop replaces autoCropSentinel in a vfFilters slice with the
+// actual crop filter detected from the specific file. If detection fails the
 // sentinel is silently dropped so the rest of the filter chain still runs.
 func (engine *PPEngine) resolveAutoCrop(ctx context.Context, inputPath string, filters []string, cb PPCallbacks) []string {
-	hasSentinel := false
-	for _, filter := range filters {
-		if filter == "__autocrop__" {
-			hasSentinel = true
-			break
-		}
-	}
-
 	// If no sentinel is present, return the original filters unchanged.
-	if !hasSentinel {
+	if !slices.Contains(filters, autoCropSentinel) {
 		return filters
 	}
 
@@ -188,7 +181,7 @@ func (engine *PPEngine) resolveAutoCrop(ctx context.Context, inputPath string, f
 	cropFilter := engine.detectCropFilter(ctx, inputPath, cb)
 	var resolved []string
 	for _, filter := range filters {
-		if filter == "__autocrop__" {
+		if filter == autoCropSentinel {
 			if cropFilter != "" {
 				resolved = append(resolved, cropFilter)
 			}
@@ -576,10 +569,9 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 	var jobs []PostProcessJob
 	for _, inputPath := range filePaths {
 		ext := strings.ToLower(filepath.Ext(inputPath))
-		isAudioOnly := ext == ".mp3" || ext == ".m4a"
 
 		activeVF := vfFilters
-		if isAudioOnly {
+		if isAudioOnlyExt(ext) {
 			activeVF = nil // video filters do not apply to audio-only files
 		} else {
 			activeVF = engine.resolveAutoCrop(ctx, inputPath, activeVF, cb)

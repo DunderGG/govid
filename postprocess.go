@@ -59,6 +59,11 @@ const (
 // loadThreshold* scale above, and tuned by feel like the cost constants.
 var loadBlockThresholds = [...]int{15, 35, 65, 100, 130}
 
+// autoCropSentinel stands in for the crop filter in the filter chain built by
+// buildPostProcessFilters. The crop depends on each file's black bars, so
+// PPEngine.resolveAutoCrop replaces it per file once cropdetect has run.
+const autoCropSentinel = "__autocrop__"
+
 // PostProcessSettings is a plain-value snapshot of the post-processing UI
 // state, decoupling buildPostProcessFilters, computeProcessingLoad, and
 // checkPostProcessingEnabled from *UIWidgets.
@@ -144,8 +149,8 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 		vfFilters = append(vfFilters, "deshake")
 	}
 	if ppSetting.AutoCrop {
-		// The actual crop parameters are determined per-file in applyFFmpegFilters.
-		vfFilters = append(vfFilters, "__autocrop__")
+		// The actual crop parameters are determined per file by the engine.
+		vfFilters = append(vfFilters, autoCropSentinel)
 	}
 	if ppSetting.UpscaleVideo {
 		// Use FFmpeg's if() expression to skip rescaling when the video is already

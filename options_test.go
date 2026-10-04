@@ -107,3 +107,24 @@ func TestDefaultsAreValidOptions(t *testing.T) {
 		}
 	}
 }
+
+func TestIsAudioOnlyExt(t *testing.T) {
+	tests := []struct {
+		ext  string
+		want bool
+	}{
+		{"mp3", true},
+		{".mp3", true},
+		{"M4A", true},
+		{".M4a", true},
+		{"mp4", false},
+		{".webm", false},
+		{"", false},
+		{"mp3x", false},
+	}
+	for _, tt := range tests {
+		if got := isAudioOnlyExt(tt.ext); got != tt.want {
+			t.Errorf("isAudioOnlyExt(%q) = %v, want %v", tt.ext, got, tt.want)
+		}
+	}
+}

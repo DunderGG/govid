@@ -73,7 +73,7 @@ func TestBuildPostProcessFiltersSingleOption(t *testing.T) {
 			[]string{"hqdn3d=4:3:6:4.5"}, nil},
 		{"deinterlace", PostProcessSettings{Deinterlace: true}, []string{"bwdif"}, nil},
 		{"stabilize", PostProcessSettings{Stabilize: true}, []string{"deshake"}, nil},
-		{"auto-crop placeholder", PostProcessSettings{AutoCrop: true}, []string{"__autocrop__"}, nil},
+		{"auto-crop placeholder", PostProcessSettings{AutoCrop: true}, []string{autoCropSentinel}, nil},
 		{"upscale 1080p", PostProcessSettings{UpscaleVideo: true, UpscaleTarget: "1080p"},
 			[]string{`scale=-2:if(gte(ih\,1080)\,ih\,1080):flags=lanczos`}, nil},
 		{"upscale 1440p", PostProcessSettings{UpscaleVideo: true, UpscaleTarget: "1440p"},
@@ -116,7 +116,7 @@ func TestBuildPostProcessFiltersAllEnabledOrder(t *testing.T) {
 
 	wantPrefixes := []string{
 		"minterpolate", "cas=", "eq=", "deband", "zscale=t=linear",
-		"hqdn3d", "bwdif", "deshake", "__autocrop__", "scale=",
+		"hqdn3d", "bwdif", "deshake", autoCropSentinel, "scale=",
 	}
 	if len(vf) != len(wantPrefixes) {
 		t.Fatalf("vf has %d filters, want %d: %q", len(vf), len(wantPrefixes), vf)
@@ -164,7 +164,7 @@ func TestEveryBuiltFilterHasShortName(t *testing.T) {
 	for _, s := range settings {
 		vf, af := buildPostProcessFilters(s)
 		for _, filter := range append(vf, af...) {
-			if filter == "__autocrop__" {
+			if filter == autoCropSentinel {
 				continue // replaced by a concrete crop= filter before use
 			}
 			if got := filterShortName(filter); got == filter {

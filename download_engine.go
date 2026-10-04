@@ -143,7 +143,7 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 		}
 	}
 
-	if extension == "mp3" || extension == "m4a" {
+	if isAudioOnlyExt(extension) {
 		args = append(args, "--extract-audio", "--audio-format", extension, "--audio-quality", "0")
 	} else if extension != "" {
 		args = append(args, "--merge-output-format", extension)

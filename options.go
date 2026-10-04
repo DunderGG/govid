@@ -6,8 +6,11 @@
 // these names, so renaming a label in one place cannot silently send a
 // selection down another code path's default branch.
 //
-// GPU backend labels live with the backend definitions in gpu_capability.go.
+// isAudioOnlyExt applies the audio-only formats to file extensions. GPU
+// backend labels live with the backend definitions in gpu_capability.go.
 package main
+
+import "strings"
 
 // Output formats (main window "Output Format").
 const (
@@ -20,6 +23,14 @@ const (
 
 // formatOptions lists the output formats in display order.
 var formatOptions = []string{formatMP4, formatMKV, formatWebM, formatMP3, formatM4A}
+
+// isAudioOnlyExt reports whether a file extension, with or without the
+// leading dot and in any case, is one of the audio-only output formats.
+// Audio-only files get yt-dlp's --extract-audio and skip video filters.
+func isAudioOnlyExt(ext string) bool {
+	ext = strings.TrimPrefix(ext, ".")
+	return strings.EqualFold(ext, formatMP3) || strings.EqualFold(ext, formatM4A)
+}
 
 // Maximum download qualities (main window "Max Quality").
 const (
