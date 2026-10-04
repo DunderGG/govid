@@ -232,27 +232,7 @@ func (manager *UIManager) showHistory() {
 
 	text := widget.NewMultiLineEntry()
 	text.SetPlaceHolder("No download history yet.")
-	var lines []string
-
-	for _, entry := range slices.Backward(entries) {
-		title := entry.OriginalTitle
-		if title == "" {
-			title = entry.FinalFilename
-		}
-		if title == "" {
-			title = entry.URL
-		}
-		lines = append(lines,
-			fmt.Sprintf("%s | %s", entry.DownloadedAt, title),
-			fmt.Sprintf("  URL: %s", entry.URL),
-			fmt.Sprintf("  Saved As: %s", entry.FinalFilename),
-			fmt.Sprintf("  Path: %s", entry.SavedPath),
-			fmt.Sprintf("  Format/Quality: %s / %s", entry.Format, entry.Quality),
-			fmt.Sprintf("  Post-Processed: %t", entry.PostProcessed),
-			"",
-		)
-	}
-	text.SetText(strings.Join(lines, "\n"))
+	text.SetText(formatHistoryEntries(entries))
 	text.Disable()
 
 	scroll := container.NewScroll(text)
@@ -284,6 +264,32 @@ func (manager *UIManager) showHistory() {
 	manager.historyWindow.Resize(fyne.NewSize(800, 500))
 	manager.historyWindow.SetOnClosed(onWindowClosed(&manager.historyWindow))
 	manager.historyWindow.Show()
+}
+
+// formatHistoryEntries renders the download history for the History window,
+// newest first. Each entry is a title line followed by indented details and
+// a blank separator line. The title falls back to the file name, then the URL.
+func formatHistoryEntries(entries []DownloadHistoryEntry) string {
+	var lines []string
+	for _, entry := range slices.Backward(entries) {
+		title := entry.OriginalTitle
+		if title == "" {
+			title = entry.FinalFilename
+		}
+		if title == "" {
+			title = entry.URL
+		}
+		lines = append(lines,
+			fmt.Sprintf("%s | %s", entry.DownloadedAt, title),
+			fmt.Sprintf("  URL: %s", entry.URL),
+			fmt.Sprintf("  Saved As: %s", entry.FinalFilename),
+			fmt.Sprintf("  Path: %s", entry.SavedPath),
+			fmt.Sprintf("  Format/Quality: %s / %s", entry.Format, entry.Quality),
+			fmt.Sprintf("  Post-Processed: %t", entry.PostProcessed),
+			"",
+		)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // showConfigHelp opens a scrollable window explaining all configuration options.
@@ -360,68 +366,21 @@ func (manager *UIManager) showPreferences() {
 	// discarded by closing it without saving.
 	applyGeneralPrefs(ui, manager.onLoadPreferences())
 
-	cookiesBrowse := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
-		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			if err != nil || reader == nil {
-				return
-			}
-			ui.prefs.cookies.SetText(reader.URI().Path())
-			reader.Close()
-		}, manager.prefsWindow)
-		// Filter for common cookie file extensions
-		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".cookies", ".dat"}))
-		fileDialog.Show()
-	})
-	cookiesClear := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
-		ui.prefs.cookies.SetText("")
-	})
-	cookiesRow := container.NewBorder(nil, nil, nil, container.NewHBox(cookiesBrowse, cookiesClear), ui.prefs.cookies)
-
 	form := &widget.Form{
 		Items: []*widget.FormItem{
 			{Text: "Save Preferences", Widget: ui.prefs.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
 			{Text: "Log Buffer Limit", Widget: ui.prefs.logLimit, HintText: "Max lines kept in the log view; older entries are removed from the top"},
 			{Text: "Max Download Speed", Widget: ui.prefs.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.prefs.themeMode, HintText: "Restart may be required for some changes"},
-			{Text: "Cookies File", Widget: cookiesRow, HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
+			{Text: "Cookies File", Widget: manager.buildCookiesRow(), HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
 		},
-		OnSubmit: func() {
-			manager.onSetLogBufferLimit(ParseBufferLimit(ui.prefs.logLimit.Selected))
-			manager.savePreferences(ui.download.path.Text)
-
-			// Apply theme change and rebuild the UI so canvas.Rectangle colors
-			// (which are snapshotted at construction time) get fresh theme values.
-			applyTheme(fyne.CurrentApp(), ui.prefs.themeMode.Selected)
-			manager.createUI()
-		},
+		OnSubmit: manager.submitPreferences,
 	}
 
-	resetBtn := widget.NewButton("Restore Defaults", func() {
-		dialog.ShowConfirm("Restore Defaults", "Reset all preferences to their default values?", func(ok bool) {
-			if ok {
-				manager.restoreDefaults()
-			}
-		}, manager.prefsWindow)
-	})
+	resetBtn := widget.NewButton("Restore Defaults", manager.confirmRestoreDefaults)
 	resetBtn.Importance = widget.DangerImportance
 
-	loadConfigBtn := widget.NewButtonWithIcon("Load from Config (govid.json)", theme.SettingsIcon(), func() {
-		config, err := manager.onLoadConfigFile(configFileName)
-		if err != nil {
-			dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), manager.prefsWindow)
-			return
-		}
-		merged, errs := manager.onMergeConfig(config, manager.onLoadPreferences(), ui.download.format.Options, ui.download.quality.Options)
-		applyPreferencesToWidgets(ui, merged)
-		manager.onSavePreferences(merged)
-		if len(errs) > 0 {
-			dialog.ShowCustom("Config Loaded with Warnings", "OK",
-				widget.NewLabel(fmt.Sprintf("some settings were skipped:\n- %s", strings.Join(errs, "\n- "))),
-				manager.prefsWindow)
-		} else {
-			dialog.ShowInformation("Config Loaded", "Preferences updated from govid.json", manager.prefsWindow)
-		}
-	})
+	loadConfigBtn := widget.NewButtonWithIcon("Load from Config (govid.json)", theme.SettingsIcon(), manager.loadConfigFile)
 
 	manager.prefsWindow = fyne.CurrentApp().NewWindow("Preferences")
 	manager.prefsWindow.SetContent(container.NewPadded(container.NewVBox(
@@ -432,6 +391,74 @@ func (manager *UIManager) showPreferences() {
 	manager.prefsWindow.Resize(fyne.NewSize(500, 360))
 	manager.prefsWindow.SetOnClosed(onWindowClosed(&manager.prefsWindow))
 	manager.prefsWindow.Show()
+}
+
+// buildCookiesRow lays out the cookies-file entry with a browse button that
+// picks a cookie file and a button that clears the entry.
+func (manager *UIManager) buildCookiesRow() fyne.CanvasObject {
+	cookies := manager.ui.prefs.cookies
+
+	browseBtn := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {
+		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if err != nil || reader == nil {
+				return
+			}
+			cookies.SetText(reader.URI().Path())
+			reader.Close()
+		}, manager.prefsWindow)
+		// Filter for common cookie file extensions
+		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".txt", ".cookies", ".dat"}))
+		fileDialog.Show()
+	})
+	clearBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {
+		cookies.SetText("")
+	})
+	return container.NewBorder(nil, nil, nil, container.NewHBox(browseBtn, clearBtn), cookies)
+}
+
+// submitPreferences handles the Preferences form's Submit: it applies the
+// log buffer limit, saves every preference, and applies the selected theme.
+func (manager *UIManager) submitPreferences() {
+	ui := manager.ui
+	manager.onSetLogBufferLimit(ParseBufferLimit(ui.prefs.logLimit.Selected))
+	manager.savePreferences(ui.download.path.Text)
+
+	// Apply theme change and rebuild the UI so canvas.Rectangle colors
+	// (which are snapshotted at construction time) get fresh theme values.
+	applyTheme(fyne.CurrentApp(), ui.prefs.themeMode.Selected)
+	manager.createUI()
+}
+
+// confirmRestoreDefaults asks the user to confirm, then runs restoreDefaults.
+func (manager *UIManager) confirmRestoreDefaults() {
+	dialog.ShowConfirm("Restore Defaults", "Reset all preferences to their default values?", func(ok bool) {
+		if ok {
+			manager.restoreDefaults()
+		}
+	}, manager.prefsWindow)
+}
+
+// loadConfigFile merges govid.json into the stored preferences, applies the
+// result to the widgets and saves it, then reports any skipped settings.
+func (manager *UIManager) loadConfigFile() {
+	ui := manager.ui
+	config, err := manager.onLoadConfigFile(configFileName)
+	if err != nil {
+		dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), manager.prefsWindow)
+		return
+	}
+
+	merged, errs := manager.onMergeConfig(config, manager.onLoadPreferences(), ui.download.format.Options, ui.download.quality.Options)
+	applyPreferencesToWidgets(ui, merged)
+	manager.onSavePreferences(merged)
+
+	if len(errs) > 0 {
+		dialog.ShowCustom("Config Loaded with Warnings", "OK",
+			widget.NewLabel(fmt.Sprintf("some settings were skipped:\n- %s", strings.Join(errs, "\n- "))),
+			manager.prefsWindow)
+		return
+	}
+	dialog.ShowInformation("Config Loaded", "Preferences updated from govid.json", manager.prefsWindow)
 }
 
 // savePreferences snapshots the current widget state (see snapshotPreferences)
