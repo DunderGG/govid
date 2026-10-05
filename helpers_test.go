@@ -169,7 +169,7 @@ func TestProgressSmootherEasesTowardsTarget(t *testing.T) {
 	app := &DownloaderApp{ui: NewUIWidgets(), stats: &DownloadStats{}}
 
 	app.setProgress(0.5)
-	runSmootherFor(app, 10*fpsInterval*time.Millisecond)
+	runSmootherFor(app, 10*fpsInterval)
 
 	if got := app.ui.download.progress.Value; got <= 0 || got > 0.5 {
 		t.Errorf("progress.Value = %v, want in (0, 0.5]", got)

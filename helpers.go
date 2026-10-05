@@ -214,12 +214,15 @@ func (app *DownloaderApp) setProgressNow(pct float64) {
 	app.stats.setTarget(pct, true)
 }
 
+// fpsInterval is how often runProgressSmoother moves the progress bar.
+const fpsInterval = 20 * time.Millisecond
+
 // runProgressSmoother eases the progress bar towards the target percentage
 // until ctx is cancelled, giving a smooth visual effect. It tracks the
 // displayed value itself rather than reading the widget, so the widget is
 // only ever touched inside fyne.Do.
 func (app *DownloaderApp) runProgressSmoother(ctx context.Context) {
-	ticker := time.NewTicker(time.Duration(fpsInterval) * time.Millisecond)
+	ticker := time.NewTicker(fpsInterval)
 	defer ticker.Stop()
 
 	current := 0.0

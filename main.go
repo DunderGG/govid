@@ -22,9 +22,6 @@ const (
 	// Default window size for the application.
 	windowWidth  = 750
 	windowHeight = 550
-
-	// UI formatting constants.
-	fpsInterval = 20 // Progress smoothing interval (in milliseconds).
 )
 
 var (
