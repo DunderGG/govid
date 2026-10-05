@@ -55,9 +55,6 @@ func (app *DownloaderApp) RequestCancel() bool {
 
 // ── File I/O ─────────────────────────────────────────────────────────────────
 
-// configFileName is the optional JSON override file read by "Load from Config".
-const configFileName = "govid.json"
-
 // openDownloadFolder launches the system file manager pointing at the current
 // save destination. The platform-specific command is provided by openFolderCommand.
 func (app *DownloaderApp) openDownloadFolder() {

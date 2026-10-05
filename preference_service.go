@@ -328,6 +328,9 @@ func isValidOption(value string, options []string) bool {
 	return false
 }
 
+// configFileName is the optional JSON override file read by "Load from Config".
+const configFileName = "govid.json"
+
 // LoadFromFile reads and parses a govid.json config override file at the given
 // path. Returns (*AppConfig, nil) on success or (nil, err) if the file cannot
 // be read or contains invalid JSON.
