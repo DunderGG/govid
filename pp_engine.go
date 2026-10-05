@@ -131,7 +131,8 @@ type PostProcessJob struct {
 	usedGPU     bool     // true if ffmpegArgs uses a GPU encoder; enables one CPU retry on failure
 }
 
-// PPCallbacks lets PPEngine report events back to the UI layer.
+// PPCallbacks lets PPEngine report events back to the UI layer. Every field
+// must be set.
 type PPCallbacks struct {
 	// OnLog is called for every message the engine wants to show in the log view.
 	OnLog func(line string, col color.Color)

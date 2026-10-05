@@ -208,21 +208,6 @@ func TestDependencyRunUpdateFailure(t *testing.T) {
 	}
 }
 
-func TestDependencyRunUpdateToleratesNilCallbacks(t *testing.T) {
-	binDir := t.TempDir()
-	installFakeTool(t, binDir, "yt-dlp")
-	useFakeTool(t, "fail")
-
-	done := make(chan struct{})
-	(&DependencyService{binDir: binDir}).RunUpdate(UpdateCallbacks{OnFailure: func() { close(done) }})
-
-	select {
-	case <-done:
-	case <-time.After(30 * time.Second):
-		t.Fatal("RunUpdate did not finish")
-	}
-}
-
 func TestDependencyUpdateCLIUsesBundledYtDlp(t *testing.T) {
 	// With an empty PATH, the update can only succeed via the bundled binary.
 	isolatePath(t)

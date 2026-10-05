@@ -86,8 +86,8 @@ func (svc *DependencyService) Version(toolName string) (string, error) {
 
 // ── yt-dlp updater ────────────────────────────────────────────────────────────
 
-// UpdateCallbacks bridges yt-dlp update events to the UI layer.
-// Methods are called from a background goroutine; callers that require
+// UpdateCallbacks bridges yt-dlp update events to the UI layer. Every field
+// must be set. Methods are called from a background goroutine; callers that require
 // UI-thread safety must wrap them accordingly (e.g. via fyne.Do internally
 // in appendOutput / updateStatus).
 type UpdateCallbacks struct {
@@ -113,31 +113,17 @@ func (svc *DependencyService) RunUpdate(cb UpdateCallbacks) {
 		out, err := cmd.CombinedOutput()
 
 		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			if cb.OnLog != nil {
-				cb.OnLog(line, colOutputLine)
-			}
+			cb.OnLog(line, colOutputLine)
 		}
 
 		if err != nil {
-			if cb.OnLog != nil {
-				cb.OnLog(fmt.Sprintf("[ERROR] Update failed: %v", err), colError)
-			}
-			if cb.OnStatus != nil {
-				cb.OnStatus("Status: Update failed.")
-			}
-			if cb.OnFailure != nil {
-				cb.OnFailure()
-			}
+			cb.OnLog(fmt.Sprintf("[ERROR] Update failed: %v", err), colError)
+			cb.OnStatus("Status: Update failed.")
+			cb.OnFailure()
 		} else {
-			if cb.OnLog != nil {
-				cb.OnLog("[SYSTEM] yt-dlp is up to date.", colSuccess)
-			}
-			if cb.OnStatus != nil {
-				cb.OnStatus("Status: yt-dlp updated.")
-			}
-			if cb.OnSuccess != nil {
-				cb.OnSuccess()
-			}
+			cb.OnLog("[SYSTEM] yt-dlp is up to date.", colSuccess)
+			cb.OnStatus("Status: yt-dlp updated.")
+			cb.OnSuccess()
 		}
 	}()
 }

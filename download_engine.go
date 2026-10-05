@@ -180,7 +180,8 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 }
 
 // ProcessCallbacks lets the engine report events to the UI layer without
-// importing Fyne. The caller wires these to its own log/status/progress methods.
+// importing Fyne. The caller wires these to its own log/status/progress methods;
+// every field must be set.
 type ProcessCallbacks struct {
 	// OnLog is called for every message the engine wants to show in the log view.
 	// col is nil for plain output lines that should use the theme foreground.
