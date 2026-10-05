@@ -185,8 +185,7 @@ func (manager *UIManager) showAbout() {
 	logo.FillMode = canvas.ImageFillContain
 	logo.SetMinSize(fyne.NewSize(80, 80))
 
-	//TODO: theme.PrimaryColor() is deprecated.
-	appName := canvas.NewText("GoVid", theme.PrimaryColor())
+	appName := canvas.NewText("GoVid", accentCyan)
 	appName.TextSize = 24
 	appName.TextStyle = fyne.TextStyle{Bold: true}
 	appName.Alignment = fyne.TextAlignCenter
