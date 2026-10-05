@@ -61,9 +61,10 @@ func TestDependencyCheck(t *testing.T) {
 		bundled      []string
 		wantWarnings []string
 	}{
-		{"all bundled", []string{"yt-dlp", "ffmpeg"}, nil},
-		{"ffmpeg missing", []string{"yt-dlp"}, []string{"'ffmpeg' not found"}},
-		{"nothing installed", nil, []string{"'yt-dlp' not found", "'ffmpeg' not found"}},
+		{"all bundled", []string{"yt-dlp", "ffmpeg", "ffprobe"}, nil},
+		{"ffmpeg missing", []string{"yt-dlp", "ffprobe"}, []string{"'ffmpeg' not found"}},
+		{"optional ffprobe missing", []string{"yt-dlp", "ffmpeg"}, []string{"Optional 'ffprobe' not found"}},
+		{"nothing installed", nil, []string{"'yt-dlp' not found", "'ffmpeg' not found", "'ffprobe' not found"}},
 	}
 
 	for _, tt := range tests {
@@ -94,6 +95,7 @@ func TestDependencyCheckFindsToolsOnPath(t *testing.T) {
 	pathDir := t.TempDir()
 	installFakeTool(t, pathDir, "yt-dlp")
 	installFakeTool(t, pathDir, "ffmpeg")
+	installFakeTool(t, pathDir, "ffprobe")
 	t.Setenv("PATH", pathDir)
 
 	svc := &DependencyService{binDir: t.TempDir()}

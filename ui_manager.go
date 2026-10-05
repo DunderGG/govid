@@ -150,8 +150,8 @@ func (manager *UIManager) createMainMenu() {
 	manager.mainWindow.SetMainMenu(mainMenu)
 }
 
-// checkDependencies verifies that the required external tools — yt-dlp and
-// ffmpeg — are available either in the 'bin' folder beside the executable or
+// checkDependencies verifies that the external tools — yt-dlp, ffmpeg, and
+// the optional ffprobe — are available either in the 'bin' folder beside the executable or
 // in the system PATH. Warnings are printed to the log panel.
 func (manager *UIManager) checkDependencies() {
 	manager.onCheckDependencies(func(msg string) {

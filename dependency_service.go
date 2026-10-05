@@ -59,16 +59,29 @@ func (svc *DependencyService) Resolve(toolName string) string {
 
 // ── Dependency check ──────────────────────────────────────────────────────────
 
-// Check verifies that yt-dlp and ffmpeg are reachable (bundled or in PATH).
-// For each missing tool, onWarning is called with a human-readable message.
+// Check verifies that yt-dlp and ffmpeg, and the optional ffprobe, are
+// reachable (bundled or in PATH). For each missing tool, onWarning is called
+// with a human-readable message.
 func (svc *DependencyService) Check(onWarning func(msg string)) {
 	for _, tool := range []string{"yt-dlp", "ffmpeg"} {
-		_, localErr := os.Stat(svc.LocalPath(tool))
-		_, pathErr := exec.LookPath(tool)
-		if localErr != nil && pathErr != nil {
+		if !svc.available(tool) {
 			onWarning(fmt.Sprintf("[WARNING] '%s' not found in PATH or ./bin/. Please install it.", tool))
 		}
 	}
+	// PPEngine uses ffprobe for frame counts and durations. It is not bundled,
+	// and post-processing still works without it, just without a percentage.
+	if !svc.available("ffprobe") {
+		onWarning("[WARNING] Optional 'ffprobe' not found in PATH or ./bin/. Post-processing progress will not show a percentage.")
+	}
+}
+
+// available reports whether toolName exists in binDir or on the system PATH.
+func (svc *DependencyService) available(toolName string) bool {
+	if _, err := os.Stat(svc.LocalPath(toolName)); err == nil {
+		return true
+	}
+	_, err := exec.LookPath(toolName)
+	return err == nil
 }
 
 // Version runs "<toolName> --version" (resolved via Resolve) and returns its
