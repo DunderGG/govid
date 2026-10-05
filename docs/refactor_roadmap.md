@@ -294,7 +294,9 @@ Minor stale references and signature mismatches within [`refactor_roadmap.md`](r
 
 ## Second Post-Refactor Audit (2026-10-03)
 
-A second pass over the full codebase against this roadmap. `go build`, `go vet`, and `go test ./...` all pass. However, **`go test -race ./...` fails**: 42 data races are reported and 4 tests in `download_test.go` fail under the race detector. CI does not run with `-race`, which is why this has not surfaced. All items below are open. The categories are ordered by priority.
+A second pass over the full codebase against this roadmap. `go build`, `go vet`, and `go test ./...` all pass. However, **`go test -race ./...` fails**: 42 data races are reported and 4 tests in `download_test.go` fail under the race detector. CI does not run with `-race`, which is why this has not surfaced. The categories are ordered by priority.
+
+> **Status (2026-10-05):** All items in Categories 4–8 are done. Each item is struck through with a note naming the commit(s) that fixed it. `go build`, `go vet`, `gofmt -l .`, `go test ./...`, and `go test -race ./...` all pass locally, and CI now runs the race detector, `staticcheck`, and a failing `gofmt` check.
 
 ### Recommended order
 
