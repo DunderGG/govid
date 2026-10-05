@@ -113,7 +113,7 @@ type PostProcessControls struct {
 	normalizeAudio    *widget.Check      // Post-processing: Normalize audio loudness
 	vividMode         *widget.Check      // Post-processing: Color/saturation enhancement
 	denoise           *widget.Check      // Post-processing: Noise reduction
-	denoiseMode       *widget.RadioGroup // Denoise method (NLMeans = HQ, ATADenoise = Fast)
+	denoiseMode       *widget.RadioGroup // Denoise method (NLMeans = HQ, hqdn3d = Fast)
 	hdrToSdr          *widget.Check      // Post-processing: HDR to SDR tone mapping
 	deband            *widget.Check      // Post-processing: Fix gradient banding
 	autoCrop          *widget.Check      // Post-processing: Auto-crop black bars
@@ -241,7 +241,7 @@ type DownloaderApp struct {
 	cancelFn   context.CancelFunc                 // Function used to signal yt-dlp to stop
 	stopPulse  chan struct{}                      // Closed to stop the status dot pulse goroutine
 	pulseDone  chan struct{}                      // Closed by the pulse goroutine when it exits
-	uiManager  *UIManager                         // Owns secondary window state (About, Help, History, Prefs, PP)
+	uiManager  *UIManager                         // Owns the main window layout and all secondary windows
 	prefSvc    *PreferenceService                 // Centralised preference loading and persistence
 	historySvc *HistoryService                    // Download history persistence
 	depSvc     *DependencyService                 // Binary path resolution, dependency checks, and yt-dlp updater

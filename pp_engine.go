@@ -35,9 +35,9 @@ type PPEngine struct {
 	FFmpegPath  string // absolute path to ffmpeg binary
 	FFprobePath string // absolute path to ffprobe binary
 
-	// GPUBackend and GPUCapabilities are zero-value (CPU-only) until the
-	// "Add a user setting" roadmap item wires real detection results and a
-	// user preference through; PlanEncoder always falls back to CPU otherwise.
+	// GPUBackend and GPUCapabilities are set by applyFFmpegFilters from the
+	// user's GPU Acceleration setting and GPUCapabilityService.Detect. Left at
+	// their zero values, PlanEncoder falls back to the CPU encoder.
 	GPUBackend      GPUBackend
 	GPUCapabilities map[GPUBackend]BackendCapability
 

@@ -321,7 +321,7 @@ func runJob(ctx context.Context, job PostProcessJob, cb PPCallbacks) {
 - Use `sync/atomic` types (`atomic.Int32`, `atomic.Bool`) for single scalar values that only need atomic read/write — they are faster and simpler than a mutex for that case.
 - Use channels when goroutines need to hand off work or signal completion.
 
-In GoVid: `sessionFailed` and `isRunning` use `atomic.Bool` (single flags), and `LogManager` uses a `sync.Mutex` (protects multi-field struct writes).
+In GoVid: `sessionFailed` and `isRunning` use `atomic.Bool` (single flags), and `LogService` uses a `sync.Mutex` (protects multi-field struct writes).
 
 ```go
 // ✗ unsynchronised shared state

@@ -1,11 +1,13 @@
-// download.go — Drives the yt-dlp download pipeline.
+// download.go — Drives a download session from the UI.
 //
 // Responsibilities:
-//   - Validates user inputs (URL, timestamps, speed limit).
-//   - Builds the yt-dlp argument list from the current UI state
-//     (format, quality, trim range, speed cap, output template).
-//   - Streams yt-dlp stdout/stderr line-by-line, parses progress
-//     percentages, and updates the UI in real time.
+//   - Reads and validates the session inputs (URLs, save path, trim range)
+//     from the widgets, and resets the UI for a new session.
+//   - Runs the session: downloads each URL through DownloadEngine (runYtDlp
+//     wires the engine's ProcessCallbacks to the UI), then post-processes the
+//     results. Building yt-dlp arguments and executing it live in
+//     download_engine.go; parsing its output lives in logscanner.go.
+//   - Records download history and logs a per-download summary.
 //   - Sends system notifications on completion or failure (when opted in).
 package main
 

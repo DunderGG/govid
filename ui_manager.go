@@ -36,8 +36,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// UIManager owns references to all (non-main, for now) windows and ensures
-// each is a singleton — at most one window instance open at a time. It holds
+// UIManager owns the main window and every secondary window, ensuring each
+// secondary window is a singleton — at most one instance open at a time. It holds
 // no service-type references directly; all service access is bridged in via
 // callbacks so UIManager stays decoupled from the service implementations.
 type UIManager struct {
@@ -45,9 +45,9 @@ type UIManager struct {
 	aboutWindow   fyne.Window
 	helpWindow    fyne.Window
 	historyWindow fyne.Window
-	prefsWindow   fyne.Window // owned here for singleton tracking; opened by DownloaderApp
-	ppWindow      fyne.Window // owned here for singleton tracking; opened by DownloaderApp
-	ui            *UIWidgets  // shared widget bag; set by newDownloaderApp after construction
+	prefsWindow   fyne.Window
+	ppWindow      fyne.Window
+	ui            *UIWidgets // shared widget bag; set by newDownloaderApp after construction
 
 	// restoringDefaults suppresses savePreferences while restoreDefaults is
 	// writing default values into the widgets. Only touched on the UI goroutine.

@@ -5,10 +5,13 @@
 //   - GPUCapabilityService: probes the bundled ffmpeg binary once per app run
 //     and caches, per backend, whether the target H.264 encoder is compiled
 //     into ffmpeg and whether it actually initializes on this machine.
+//   - PlanEncoder: resolves the user's backend setting against the detected
+//     capabilities into the -c:v arguments for a job, falling back to the CPU
+//     encoder when the chosen backend is unavailable.
+//   - Backend labels for the Post-Processing window's GPU Acceleration setting.
+//   - FormatGPUDiagnostics: per-backend availability lines for the session log.
 //
-// Scope: final-encode detection only (docs/gpu-acceleration.md §7). No
-// command-builder integration, user-facing settings, or fallback logic yet —
-// those are separate, later roadmap items.
+// Scope: final-encode acceleration only (docs/gpu-acceleration.md §7).
 package main
 
 import (
@@ -348,7 +351,7 @@ func GPUBackendFromLabel(label string) GPUBackend {
 
 // FormatGPUDiagnostics renders one line per backend applicable to the current
 // runtime.GOOS, reporting whether it is available and, if not, why — for the
-// startup session log and the About window's GPU Acceleration section.
+// startup session log.
 func FormatGPUDiagnostics(capabilities map[GPUBackend]BackendCapability) []string {
 	var lines []string
 	for _, def := range backendDefs {
