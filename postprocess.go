@@ -3,7 +3,7 @@
 // Responsibilities:
 //   - PostProcessSettings: a plain-value snapshot of the post-processing UI
 //     state, and the pure functions that operate on it (buildPostProcessFilters,
-//     computeProcessingLoad, checkPostProcessingEnabled).
+//     computeProcessingLoad).
 //   - Thin applyFFmpegFilters wrapper: collects binary paths and wires
 //     PPCallbacks before delegating to PPEngine.ApplyFilters.
 //   - Shared helpers called by pp_engine.go (same package): formatFFmpegProgress,
@@ -65,8 +65,8 @@ var loadBlockThresholds = [...]int{15, 35, 65, 100, 130}
 const autoCropSentinel = "__autocrop__"
 
 // PostProcessSettings is a plain-value snapshot of the post-processing UI
-// state, decoupling buildPostProcessFilters, computeProcessingLoad, and
-// checkPostProcessingEnabled from *UIWidgets.
+// state, decoupling buildPostProcessFilters and computeProcessingLoad from
+// *UIWidgets.
 type PostProcessSettings struct {
 	SmoothMotion     bool
 	SmoothMotionMode string
@@ -306,8 +306,6 @@ func filterShortName(filterStr string) string {
 		return "Denoise (NLMeans)"
 	case strings.HasPrefix(filterStr, "hqdn3d"):
 		return "Denoise (hqdn3d)"
-	case strings.HasPrefix(filterStr, "atadenoise"):
-		return "Denoise (ATADenoise)"
 	case strings.HasPrefix(filterStr, "zscale=t=linear"):
 		return "HDR to SDR"
 	case filterStr == "deband":
@@ -325,16 +323,6 @@ func filterShortName(filterStr string) string {
 	default:
 		return filterStr
 	}
-}
-
-// checkPostProcessingEnabled reports whether any post-processing filter is
-// currently selected. Used by callers to skip the FFmpeg pass entirely when
-// no filters are active.
-func checkPostProcessingEnabled(s PostProcessSettings) bool {
-	return s.SmoothMotion || s.Sharpen || s.NormalizeAudio ||
-		s.VividMode || s.Denoise || s.HDRToSDR ||
-		s.Deband || s.AutoCrop || s.Stabilize ||
-		s.Deinterlace || s.NightMode || s.UpscaleVideo
 }
 
 // computeProcessingLoad returns a raw cost score and a human-readable

@@ -1,9 +1,9 @@
-// ui.go — Thin DownloaderApp delegates plus shared UI helpers.
+// ui.go — Shared UI helpers.
 //
 // Responsibilities:
-//   - Thin delegates to UIManager for secondary windows (History, About,
-//     Preferences, Post-Processing, GoVid Guide). The main window layout
-//     itself (createUI) and the main menu bar live in ui_manager.go.
+//   - clearTerminalOutput: the DownloaderApp delegate download.go uses to
+//     reset the log view. The main window layout (createUI), the main menu
+//     bar, and every secondary window live in ui_manager.go.
 //   - Shared layout helpers used by UIManager: roundedCard, accentBar,
 //     sectionHeader, sectionDivider, and fixedWidth.
 package main
@@ -16,39 +16,6 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
-
-// showHistory delegates to UIManager which owns the window state.
-func (app *DownloaderApp) showHistory() {
-	app.uiManager.showHistory()
-}
-
-// showPostProcessing delegates to UIManager which owns the window state.
-func (app *DownloaderApp) showPostProcessing() {
-	app.uiManager.showPostProcessing()
-}
-
-// showPreferences delegates to UIManager which owns the window state.
-func (app *DownloaderApp) showPreferences() {
-	app.uiManager.showPreferences()
-}
-
-// showConfigHelp delegates to UIManager which owns the window state.
-func (app *DownloaderApp) showConfigHelp() {
-	app.uiManager.showConfigHelp()
-}
-
-// showPostProcessingButton adds a button to the main UI to open the PP window.
-
-func (app *DownloaderApp) getPostProcessingButton() *widget.Button {
-	return widget.NewButtonWithIcon("Post-Processing", theme.SettingsIcon(), func() {
-		app.showPostProcessing()
-	})
-}
-
-// showAbout delegates to UIManager which owns the window state.
-func (app *DownloaderApp) showAbout() {
-	app.uiManager.showAbout()
-}
 
 // clearTerminalOutput delegates to UIManager which owns the log container.
 func (app *DownloaderApp) clearTerminalOutput() {

@@ -20,6 +20,13 @@ func readFile(t *testing.T, path string) string {
 	return string(data)
 }
 
+// sessionLogOpen reports whether svc currently has a session log file open.
+func sessionLogOpen(svc *LogService) bool {
+	svc.mutex.Lock()
+	defer svc.mutex.Unlock()
+	return svc.file != nil
+}
+
 func TestDailyLogPaths(t *testing.T) {
 	dir := t.TempDir()
 
@@ -48,8 +55,8 @@ func TestSessionLogLifecycle(t *testing.T) {
 	dir := t.TempDir()
 	svc := NewLogService()
 
-	if svc.IsActive() {
-		t.Fatal("IsActive() = true before OpenSessionLog")
+	if sessionLogOpen(svc) {
+		t.Fatal("session log open before OpenSessionLog")
 	}
 
 	path, err := svc.OpenSessionLog(dir)
@@ -59,15 +66,15 @@ func TestSessionLogLifecycle(t *testing.T) {
 	if path != SessionLogPath(dir) {
 		t.Errorf("path = %q, want %q", path, SessionLogPath(dir))
 	}
-	if !svc.IsActive() {
-		t.Error("IsActive() = false after OpenSessionLog")
+	if !sessionLogOpen(svc) {
+		t.Error("session log not open after OpenSessionLog")
 	}
 
 	svc.WriteToFile("hello session")
 	svc.CloseSessionLog()
 
-	if svc.IsActive() {
-		t.Error("IsActive() = true after CloseSessionLog")
+	if sessionLogOpen(svc) {
+		t.Error("session log still open after CloseSessionLog")
 	}
 
 	content := readFile(t, path)

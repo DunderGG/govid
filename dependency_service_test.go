@@ -245,7 +245,7 @@ func TestDependencyUpdateCLIFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("UpdateCLI() = nil, want error for failing tool")
 	}
-	if got := exitCodeFromError(err); got == ExitOK {
-		t.Errorf("exitCodeFromError(%v) = ExitOK, want a failure code", err)
+	if got := exitCodeFromError(err); got == 0 {
+		t.Errorf("exitCodeFromError(%v) = 0, want a failure code", err)
 	}
 }

@@ -88,13 +88,6 @@ func (svc *LogService) CloseSessionLog() {
 	}
 }
 
-// IsActive returns true if the session log file is currently open.
-func (svc *LogService) IsActive() bool {
-	svc.mutex.Lock()
-	defer svc.mutex.Unlock()
-	return svc.file != nil
-}
-
 // WriteToFile appends a timestamped line to the open session log. If no
 // session log is open yet, the formatted line is buffered instead (capped to
 // BufferLimit) and flushed by the next OpenSessionLog call, so nothing

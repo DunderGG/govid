@@ -63,8 +63,8 @@ var backendDefs = []backendDef{
 }
 
 // GPUCapabilityService detects and caches GPU backend capability for the
-// resolved ffmpeg binary. Detection runs once per app run; call Detect to
-// populate the cache and Capability to read a single backend's result.
+// resolved ffmpeg binary. Detection runs once per app run: the first Detect
+// call populates the cache and every call returns a copy of it.
 type GPUCapabilityService struct {
 	ffmpegPath string
 
@@ -116,19 +116,6 @@ func (svc *GPUCapabilityService) Detect(ctx context.Context) map[GPUBackend]Back
 	svc.cache = cache
 	svc.detected = true
 	return svc.cloneCacheLocked()
-}
-
-// Capability returns the cached result for a single backend. ok is false if
-// Detect has not completed yet.
-func (svc *GPUCapabilityService) Capability(backend GPUBackend) (BackendCapability, bool) {
-	svc.mu.Lock()
-	defer svc.mu.Unlock()
-
-	if !svc.detected {
-		return BackendCapability{}, false
-	}
-	bc, ok := svc.cache[backend]
-	return bc, ok
 }
 
 // cloneCacheLocked returns a copy of the cache so callers cannot mutate the

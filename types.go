@@ -17,10 +17,6 @@ import (
 type ExitCode int
 
 const (
-	// ExitOK indicates successful completion.
-	ExitOK ExitCode = 0
-	// ExitUnexpected indicates a non-specific failure.
-	ExitUnexpected ExitCode = 1
 	// ExitUpdateFailed indicates yt-dlp update failed without a specific subprocess code.
 	ExitUpdateFailed ExitCode = 10
 )

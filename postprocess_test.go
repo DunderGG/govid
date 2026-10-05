@@ -183,40 +183,13 @@ func TestFilterShortName(t *testing.T) {
 		{"minterpolate=fps=60:mi_mode=mci:vsbmc=0:mc_mode=obmc", "Smooth Motion (Balanced)"},
 		{"minterpolate=fps=60:mi_mode=mci", "Smooth Motion (Precise)"},
 		{"crop=1920:800:0:140", "Auto-Crop"},
-		{"atadenoise", "Denoise (ATADenoise)"},
+		{"nlmeans=2.0:7:5:15:9", "Denoise (NLMeans)"},
+		{"hqdn3d=4:3:6:4.5", "Denoise (hqdn3d)"},
 		{"unknownfilter=1", "unknownfilter=1"},
 	}
 	for _, tt := range tests {
 		if got := filterShortName(tt.filter); got != tt.want {
 			t.Errorf("filterShortName(%q) = %q, want %q", tt.filter, got, tt.want)
-		}
-	}
-}
-
-func TestCheckPostProcessingEnabled(t *testing.T) {
-	if checkPostProcessingEnabled(PostProcessSettings{SmoothMotionMode: "Fast", SharpenAmount: 2}) {
-		t.Error("checkPostProcessingEnabled(no toggles) = true, want false")
-	}
-
-	toggles := map[string]func(*PostProcessSettings){
-		"SmoothMotion":   func(s *PostProcessSettings) { s.SmoothMotion = true },
-		"Sharpen":        func(s *PostProcessSettings) { s.Sharpen = true },
-		"NormalizeAudio": func(s *PostProcessSettings) { s.NormalizeAudio = true },
-		"VividMode":      func(s *PostProcessSettings) { s.VividMode = true },
-		"Denoise":        func(s *PostProcessSettings) { s.Denoise = true },
-		"HDRToSDR":       func(s *PostProcessSettings) { s.HDRToSDR = true },
-		"Deband":         func(s *PostProcessSettings) { s.Deband = true },
-		"AutoCrop":       func(s *PostProcessSettings) { s.AutoCrop = true },
-		"Stabilize":      func(s *PostProcessSettings) { s.Stabilize = true },
-		"Deinterlace":    func(s *PostProcessSettings) { s.Deinterlace = true },
-		"NightMode":      func(s *PostProcessSettings) { s.NightMode = true },
-		"UpscaleVideo":   func(s *PostProcessSettings) { s.UpscaleVideo = true },
-	}
-	for name, enable := range toggles {
-		var s PostProcessSettings
-		enable(&s)
-		if !checkPostProcessingEnabled(s) {
-			t.Errorf("checkPostProcessingEnabled with only %s = false, want true", name)
 		}
 	}
 }
