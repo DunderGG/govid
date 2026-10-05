@@ -1,0 +1,3 @@
+# Keep Go sources LF on every platform so gofmt -l stays clean even where
+# core.autocrlf=true (the Git for Windows default).
+*.go text eol=lf

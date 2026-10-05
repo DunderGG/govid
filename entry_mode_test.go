@@ -142,7 +142,6 @@ func TestClearTerminalOutputMenuItem(t *testing.T) {
 	}
 }
 
-
 func TestShowPostProcessingRestoresPersistedPrefs(t *testing.T) {
 	_ = test.NewApp()
 	app := newDownloaderApp(test.NewWindow(nil))

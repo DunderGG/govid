@@ -109,4 +109,3 @@ func TestLoadResolvesRuntimeDefaults(t *testing.T) {
 		})
 	}
 }
-

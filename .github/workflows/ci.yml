@@ -33,13 +33,14 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install --yes gcc libgl1-mesa-dev xorg-dev
 
-      - name: Check formatting (advisory)
+      - name: Check formatting
         shell: bash
         run: |
           unformatted=$(gofmt -l .)
           if [ -n "$unformatted" ]; then
-            echo "::warning::These files are not formatted:"
+            echo "::error::These files are not formatted:"
             printf '%s\n' "$unformatted"
+            exit 1
           fi
 
       - name: Vet
