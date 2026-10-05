@@ -479,13 +479,15 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
 ### Category 7 — Dead Code, Stale Comments & Tooling
 
-#### 7.1 Remove dead code
+#### ~~7.1 Remove dead code~~
+* *Done (`5e291ba`). Deleted the unused `DownloaderApp` delegates (only `clearTerminalOutput` remains), `ExitOK`/`ExitUnexpected`, the test-only `checkPostProcessingEnabled`, `LogService.IsActive`, and `GPUCapabilityService.Capability`, and the `atadenoise` case in `filterShortName`.*
 * **Unused `DownloaderApp` delegates in [`ui.go`](../ui.go#L18-L49):** `showHistory`, `showPreferences`, `showConfigHelp`, `showAbout`, `showPostProcessing`, and `getPostProcessingButton` have no production callers. `getPostProcessingButton` is the only caller of `showPostProcessing`. Only `clearTerminalOutput` is used, by `download.go`. Roadmap Phase 6 describes these as "thin delegates", but they can simply be deleted.
 * **`ExitOK`/`ExitUnexpected`** in [`types.go`](../types.go#L18-L25) are never referenced.
 * **Test-only production code:** `checkPostProcessingEnabled` ([`postprocess.go`](../postprocess.go#L343-L351)), `LogService.IsActive` ([`log_service.go`](../log_service.go#L87-L92)), and `GPUCapabilityService.Capability` ([`gpu_capability.go`](../gpu_capability.go#L121-L132)) are only called from tests. Either wire each one in where it was intended (e.g. `hasPostProcess` in `startDownload` could use `checkPostProcessingEnabled`) or delete it.
 * **`atadenoise`** case in `filterShortName` ([`postprocess.go`](../postprocess.go#L322)): no code path generates this filter any more.
 
-#### 7.2 Fix stale file and doc comments
+#### ~~7.2 Fix stale file and doc comments~~
+* *Done (`59a6daa`). Every comment in the table now matches the code. For the GPU diagnostics, the About-window claim was dropped; the diagnostics go to the session log only. The `history_service.go` comment is accurate since 4.7, and `coding_guidelines.md` §2.5 now names `LogService`.*
 | Location | Stale claim | Reality |
 |---|---|---|
 | [`download.go`](../download.go#L1-L9) header | Builds yt-dlp args and streams/parses output | Both now live in `DownloadEngine` / `logscanner.go` |
@@ -501,24 +503,29 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 | [`history_service.go`](../history_service.go#L79-L81) | "single atomic write" | See 4.7 |
 | [`docs/coding_guidelines.md`](coding_guidelines.md) §2.5 | "`LogManager` uses a `sync.Mutex`" | `LogService` |
 
-#### 7.3 Replace deprecated Fyne APIs
+#### ~~7.3 Replace deprecated Fyne APIs~~
+* *Done. `theme.PrimaryColor()` in the About window was replaced in `f3f998d`, and the `theme.ForegroundColor()` calls went away with 5.2. No deprecated Fyne colour accessors remain.*
 * `theme.PrimaryColor()` in [`ui_manager.go`](../ui_manager.go#L186-L187), which already has a `//TODO`. Use `theme.Color(theme.ColorNamePrimary)` or `accentCyan`.
 * `theme.ForegroundColor()` in [`logscanner.go`](../logscanner.go#L69) and [`logscanner.go`](../logscanner.go#L104). Removed as part of 5.2.
 
-#### 7.4 Document or migrate the legacy `prefSmoothMotion = "upscale"` key
+#### ~~7.4 Document or migrate the legacy `prefSmoothMotion = "upscale"` key~~
+* *Done (`a19bb96`). Smooth Motion is now stored under `"smoothMotion"`. `PreferenceService.migrateLegacyKeys` copies a stored `"upscale"` value over and removes the legacy key, which remains documented as `legacyPrefSmoothMotion`.*
 * **File:** [`preference_service.go`](../preference_service.go#L40)
 * **Issue:** The Smooth Motion toggle is stored under the key `"upscale"`, a holdover from before the separate Upscale feature existed. Upscale itself uses `"upscaleVideo"`. This trips up anyone inspecting the preference store.
 * **Fix:** At minimum, add a comment explaining the legacy name. Optionally, add a one-time migration in `Load()` that copies `"upscale"` → `"smoothMotion"`.
 
-#### 7.5 Normalize line endings
+#### ~~7.5 Normalize line endings~~
+* *Done (`39c06c8`). A `.gitattributes` pins `*.go` to `eol=lf`, the sources were renormalized, `gofmt -l .` is clean, and the CI formatting check now fails the build.*
 * **Issue:** `dependency_service.go`, `ui_manager.go`, `entry_mode_test.go`, and `preference_service_test.go` use CRLF, so `gofmt -l .` flags all four (CI only emits a warning). There is no `.gitattributes`.
 * **Fix:** Add a `.gitattributes` with `*.go text eol=lf`, then renormalize (`git add --renormalize .`). Once `gofmt -l .` is clean, consider making the CI formatting check fail the build.
 
-#### 7.6 Strengthen CI
+#### ~~7.6 Strengthen CI~~
+* *Done. CI runs `go test -race ./...` (`1877598`) and `staticcheck` pinned to v0.8.1 (`50fba89`).*
 * **File:** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
 * **Fix:** After 4.1/4.2 land, change the test step to `go test -race ./...`, at least on the Ubuntu runner where cgo is already available. Optionally add `staticcheck` (the locally installed copy was built with Go 1.24 and refuses to analyse this Go 1.26 module, so reinstall it with `go install honnef.co/go/tools/cmd/staticcheck@latest`).
 
-#### 7.7 Minor consistency items
+#### ~~7.7 Minor consistency items~~
+* *Done. Commits: `3aa48eb` made every `UpdateCallbacks` field required (no nil checks), matching `ProcessCallbacks`/`PPCallbacks`. `433056e` made `Check` report a missing `ffprobe`. `fd86c02` moved `fpsInterval` next to `runProgressSmoother`, and `3deee43` moved `configFileName` to `preference_service.go`. `785e693` made `startDownload` call `app.uiManager.savePreferences` directly, with the delegate removed.*
 * `DependencyService.RunUpdate` nil-checks every callback, but no other callback struct consumer does (`ProcessCallbacks`, `PPCallbacks`). Pick one convention.
 * `DependencyService.Check` verifies `yt-dlp` and `ffmpeg` but not `ffprobe`, which `PPEngine` needs for frame counts and duration.
 * `fpsInterval` is declared in `main.go` but used only by the progress smoother in `download.go`. Move it next to its user, or into the 6.1 `startProgressSmoother` helper.
