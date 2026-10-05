@@ -388,7 +388,8 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
 ### Category 6 — New Refactoring Targets (Code)
 
-#### 6.1 Split `startDownload`
+#### ~~6.1 Split `startDownload`~~
+* *Done (`71972a9`). `startDownload` is now a ~25-line composition. It calls `readSession`, which uses the pure, tested `collectURLs`, then `resetSession`, `openSessionLog`, `runProgressSmoother`, and `runSession`. `runSession` drives `runQueue`/`downloadItem`, `runPostProcessing`, and `notifyCompletion`, whose notification text comes from the pure `completionNotification`.*
 * **File:** [`download.go`](../download.go#L26-L230)
 * **Issue:** At ~200 lines, `startDownload` is now the longest function in the codebase. It handles URL collection, validation, UI reset, session-log setup, the progress smoother goroutine, the batch loop with per-item contexts, post-processing, and three notification variants.
 * **Fix:** Extract:
@@ -401,7 +402,8 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
   `startDownload` should become a short composition, the same way `createUI` became one in Phase 6.
 
-#### 6.2 Split `showPostProcessing`
+#### ~~6.2 Split `showPostProcessing`~~
+* *Done (`d11220c`). `showPostProcessing` now composes `applyPostProcessPrefs` (in place of `loadPostProcessState`; see 6.4), `wirePostProcessHandlers`, `buildLoadIndicator`, `buildPostProcessForm`, and `buildPostProcessFooter`. `sectionHeader` and `sectionDivider` moved to `ui.go`. The block thresholds are the package-level `loadBlockThresholds`, next to the `loadThreshold*` constants in `postprocess.go`.*
 * **File:** [`ui_manager.go`](../ui_manager.go#L519-L782)
 * **Issue:** At ~265 lines, this is the largest UI function left. It mixes widget state reload, enable/disable wiring for 13 controls, the load-indicator construction, form layout, and window setup.
 * **Fix:** Apply the same treatment `createUI` got:
@@ -413,17 +415,20 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
   Move the inline `sectionHeader`/`sectionDivider` closures next to `roundedCard`/`accentBar` in `ui.go`. Name the `blockThresholds` slice as a package-level constant next to the `loadThreshold*` constants.
 
-#### 6.3 Split `showPreferences` and extract history formatting
+#### ~~6.3 Split `showPreferences` and extract history formatting~~
+* *Done (`c09910c`). `showPreferences` now uses `buildCookiesRow`, `confirmRestoreDefaults`/`restoreDefaults`, and `loadConfigFile`, which is the `onLoadConfig` flow. History text comes from the pure `formatHistoryEntries`, which has a table-driven test in `ui_manager_test.go`.*
 * **File:** [`ui_manager.go`](../ui_manager.go#L217-L285), [`ui_manager.go`](../ui_manager.go#L349-L461)
 * **Issue:** `showPreferences` (~110 lines) inlines the form, the cookie picker, Restore Defaults, and the whole "Load from Config" flow. `showHistory` builds its display text inline. That text is pure logic, and it was flagged in [audit_review.md](audit_review.md) ("String formatting in history display") but never actioned.
 * **Fix:** Extract `buildCookiesRow`, `onRestoreDefaults`, and `onLoadConfig` from `showPreferences`. Add a pure `formatHistoryEntries([]DownloadHistoryEntry) string` with a table-driven test.
 
-#### 6.4 Single source of truth for preference→widget application
+#### ~~6.4 Single source of truth for preference→widget application~~
+* *Done (`d03ea61`). The format and quality `Options` are set in `NewDownloadControls`. `PreferenceService.Load()` resolves the platform defaults for save path and format. `applyPreferencesToWidgets` is the only writer: it composes `applyMainWindowPrefs`, `applyGeneralPrefs`, and `applyPostProcessPrefs`, and the two dialogs call their own group when they open.*
 * **Files:** [`helpers.go`](../helpers.go#L204-L243), [`ui_manager.go`](../ui_manager.go#L357-L392), [`ui_manager.go`](../ui_manager.go#L527-L546), [`ui_manager.go`](../ui_manager.go#L893-L919)
 * **Issue:** Preferences are written to widgets in four places with overlapping subsets: `applyPreferencesToWidgets`, the top of `showPreferences`, the top of `showPostProcessing`, and `loadMainWindowState`. The subsets have already drifted apart (see 4.6). At startup, `format`/`quality` are applied before their `Options` exist, so `newDownloaderApp` silently drops them and `loadMainWindowState` sets them a second time.
 * **Fix:** Set the `Options` in the widget constructors (`NewDownloadControls`). Make `applyPreferencesToWidgets` the only writer, with platform defaults resolved in `PreferenceService.Load()` or a `resolveDefaults` step. Have the dialogs call it, or a per-group variant such as `applyPostProcessPrefs`.
 
-#### 6.5 Centralize option lists and enum-like strings
+#### ~~6.5 Centralize option lists and enum-like strings~~
+* *Done (`338b92b`). The new `options.go` defines named constants and ordered option slices (`formatOptions`, `qualityOptions`, theme, log-limit, and post-processing mode labels). The widget constructors, preference defaults, the yt-dlp and FFmpeg argument builders, and the `showConfigHelp` text all reference them.*
 * **Files:** [`ui_manager.go`](../ui_manager.go#L904-L917), [`download_engine.go`](../download_engine.go#L71-L107), [`history_service.go`](../history_service.go#L138), [`types.go`](../types.go#L91-L94), [`icons.go`](../icons.go#L79), [`postprocess.go`](../postprocess.go#L109-L182)
 * **Issue:** Many string literals are repeated across files:
   * Format names (`"MP4"`, `"MP3"`…) and quality names (`"Best Quality"`, `"1080p"`…)
@@ -434,32 +439,38 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
   The format and quality lists are also restated in the `showConfigHelp` text. If a UI label is renamed in one place, filter selection silently falls through to the `default` branch.
 * **Fix:** Define named constants plus option slices (e.g. `formatOptions`, `qualityOptions`, `themeDark`/`themeLight`, `smoothModeFast`…) in one place, and reference them from the constructors, the engines, and the help text.
 
-#### 6.6 Deduplicate theme application
+#### ~~6.6 Deduplicate theme application~~
+* *Done (`b930ffa`, together with 5.1). `applyTheme(app fyne.App, mode string)` in `theme.go` is the only `SetTheme` caller. It is used by `main()`, `submitPreferences`, and `restoreDefaults`.*
 * **Files:** [`main.go`](../main.go#L108-L116), [`ui_manager.go`](../ui_manager.go#L406-L413), [`ui_manager.go`](../ui_manager.go#L510-L515)
 * **Issue:** The `switch mode { case "Light": SetTheme(&lightTheme{}) default: SetTheme(&darkTheme{}) }` block appears three times.
 * **Fix:** Add `applyTheme(app fyne.App, mode string)` in `theme.go`.
 
-#### 6.7 Type the status-indicator states and deduplicate the pulse goroutine
+#### ~~6.7 Type the status-indicator states and deduplicate the pulse goroutine~~
+* *Done (`36601e7`). `type StatusState int` with `StatusIdle`, `StatusActive`, `StatusProcessing`, `StatusSuccess`, `StatusFailed`, and `StatusCanceled`. Both pulsing states share `startStatusPulse(base color.RGBA)`, and `onSetStatusIndicator` now takes a `StatusState`.*
 * **File:** [`helpers.go`](../helpers.go#L107-L177)
 * **Issue:** `setStatusIndicator` takes free-form strings (`"active"`, `"processing"`, …) passed from `download.go` and `ui_manager.go`. Its `"active"` and `"processing"` branches are two copies of the same ~20-line pulse goroutine that differ only in colour.
 * **Fix:** Add `type StatusState int` with named constants (or string constants), and extract `startPulse(base color.RGBA)`. Update the `onSetStatusIndicator` callback type to match.
 
-#### 6.8 Name the auto-crop sentinel and the audio-only check
+#### ~~6.8 Name the auto-crop sentinel and the audio-only check~~
+* *Done (`072b90b`). `const autoCropSentinel` lives in `postprocess.go`. `isAudioOnlyExt(ext)` in `options.go` is used by both `DownloadEngine.BuildArgs` and `PPEngine.ApplyFilters`.*
 * **Files:** [`postprocess.go`](../postprocess.go#L166), [`pp_engine.go`](../pp_engine.go#L169-L199), [`pp_engine.go`](../pp_engine.go#L577-L578), [`download_engine.go`](../download_engine.go#L146)
 * **Issue:** The `"__autocrop__"` magic string appears in three places across two files. The "mp3 or m4a means audio-only" rule is written out separately in `DownloadEngine.BuildArgs` and `PPEngine.ApplyFilters`.
 * **Fix:** Add `const autoCropSentinel = "__autocrop__"` and `func isAudioOnlyExt(ext string) bool`.
 
-#### 6.9 Thread count passed directly instead of patched
+#### ~~6.9 Thread count passed directly instead of patched~~
+* *Done (`168525d`). The per-job thread count is computed before the jobs are built and passed into `buildFFmpegArgs`/`buildFFmpegArgsForBackend`. `patchThreadCount` was deleted.*
 * **File:** [`pp_engine.go`](../pp_engine.go#L524-L562), [`pp_engine.go`](../pp_engine.go#L645-L649)
 * **Issue:** `buildFFmpegArgs` emits a `-threads 0` placeholder that `patchThreadCount` rewrites later, both in `ApplyFilters` and in `retryWithCPU`. That is two passes over the argument slice and a hidden coupling between the builder and the patcher.
 * **Fix:** Compute `threadsPerJob` before building jobs and pass it to `buildFFmpegArgsForBackend`. Then delete `patchThreadCount`.
 
-#### 6.10 Move single-owner types next to their owners
+#### ~~6.10 Move single-owner types next to their owners~~
+* *Done (`5c8806a`). `AppConfig` moved to `preference_service.go` and `PostProcessJob` to `pp_engine.go`.*
 * **File:** [`types.go`](../types.go#L193-L213)
 * **Issue:** `AppConfig` belongs to `preference_service.go` and `PostProcessJob` belongs to `pp_engine.go`, but both live in `types.go`. Meanwhile every newer type (`DownloadRequest`, `SessionConfig`, `DownloadRecord`, …) is defined in its owner's file.
 * **Fix:** Move both types. `types.go` then contains only the shared app/widget types.
 
-#### 6.11 Rename `ppFailed`
+#### ~~6.11 Rename `ppFailed`~~
+* *Done (`2a688d4`). Renamed to `sessionFailed` and changed to an `atomic.Bool`.*
 * **Files:** [`types.go`](../types.go#L187-L189), [`download.go`](../download.go#L328)
 * **Issue:** `ppFailed` is also set when a *download* fails (`runYtDlp` stores 1 on yt-dlp failure). It means "any job in this session failed", so the name misleads.
 * **Fix:** Rename it to `sessionFailed` (or `jobFailed`) and change it from `atomic.Int32` to `atomic.Bool`, since it is only ever 0/1.
