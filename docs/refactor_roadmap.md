@@ -354,27 +354,32 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
 ### Category 5 — Missed or Incomplete Roadmap Items (Code)
 
-#### 5.1 `main.go` still reads the theme preference directly
+#### ~~5.1 `main.go` still reads the theme preference directly~~
+* *Done (`b930ffa`). `main()` now applies the startup theme with `applyTheme(mainApp, dlApp.prefSvc.Load().ThemeMode)`. The only remaining direct store access is the `NewPreferenceService(fyne.CurrentApp().Preferences())` construction in `newDownloaderApp`.*
 * **File:** [`main.go`](../main.go#L108-L116)
 * **Issue:** This was missed by Category 1. `main()` calls `mainApp.Preferences().StringWithFallback(prefThemeMode, defaultThemeMode)` directly instead of going through `PreferenceService`.
 * **Fix:** Construct the `PreferenceService` before `newDownloaderApp` (or have `newDownloaderApp` return the loaded prefs) and use `prefs.ThemeMode`. Combine this with 6.6 (`applyTheme`).
 
-#### 5.2 `DownloadEngine` still imports Fyne
+#### ~~5.2 `DownloadEngine` still imports Fyne~~
+* *Done (`625059f`). Plain output lines are reported with a `nil` colour, and `UIManager.appendLogLine` substitutes the theme foreground. Neither `logscanner.go` nor `download_engine.go` imports Fyne.*
 * **File:** [`logscanner.go`](../logscanner.go#L22)
 * **Issue:** The roadmap and the `ProcessCallbacks` doc both say the engine reports events "without importing Fyne". But `watchOutput` imports `fyne.io/fyne/v2/theme` and calls `theme.ForegroundColor()`, a deprecated API, for plain output lines.
 * **Fix:** Give these lines a named palette colour (e.g. reuse `colOutputLine`), or pass `nil` and let `appendLogLine` substitute the theme foreground. That puts the theme lookup on the UI side and removes the Fyne import from the engine.
 
-#### 5.3 `runYtDlp` is not yet a thin wrapper
+#### ~~5.3 `runYtDlp` is not yet a thin wrapper~~
+* *Done (`dd7ca23`). `runYtDlp` is now ~40 lines: it builds the request, calls `engine.Run`, then calls `recordHistory` and `reportDownloadResult`. The summary is built by `logDownloadSummary` and the pure `describeOutputFormat`, which has a table-driven test.*
 * **File:** [`download.go`](../download.go#L239-L379)
 * **Issue:** The roadmap describes `runYtDlp` as "a thin wrapper", but it is still ~140 lines. About 70 of those build the COMPLETE/ABORTED summary and the "WEBM+M4A → MP4 (remuxed)" format line inline inside `fyne.Do`.
 * **Fix:** Extract a pure, table-testable `describeOutputFormat(extension string, scan scanResult) string` and a `logDownloadSummary(...)` helper. Then `runYtDlp` is just: build the request, call `engine.Run`, record history, report the result.
 
-#### 5.4 Services still depend on `*UIWidgets`
+#### ~~5.4 Services still depend on `*UIWidgets`~~
+* *Done (`c354052`). `newSessionConfig`, `newPostProcessSettings`, `applyPreferencesToWidgets`, and the new `snapshotPreferences` now live in `ui_snapshot.go`. No service or engine file references `*UIWidgets`.*
 * **Files:** [`log_service.go`](../log_service.go#L181-L207), [`postprocess.go`](../postprocess.go#L79-L101)
 * **Issue:** `newSessionConfig` and `newPostProcessSettings` are UI→value translators, but they live in service and engine files. As a result, `log_service.go` and `postprocess.go` can't be reasoned about, or moved into their own package later, without the widget bag.
 * **Fix:** Move both translators (and `applyPreferencesToWidgets` from `helpers.go`) into one UI-side file, e.g. `ui_snapshot.go`, alongside `UIManager.savePreferences`, which already does the same widget→struct job for `AppPreferences`.
 
-#### 5.5 Remaining hard-coded preference defaults
+#### ~~5.5 Remaining hard-coded preference defaults~~
+* *Done (`d240597`). `LogService` uses a shared `defaultLogBufferLimit` constant for both `NewLogService` and `ParseBufferLimit`. Restore Defaults is now `UIManager.restoreDefaults`, which calls `Reset()` and then applies `onLoadPreferences()`, so no default value is repeated in UI code.*
 * **Files:** [`ui_manager.go`](../ui_manager.go#L418-L431), [`ui_manager.go`](../ui_manager.go#L505-L508), [`log_service.go`](../log_service.go#L35-L38), [`log_service.go`](../log_service.go#L262-L271)
 * **Issue:** "Restore Defaults" hard-codes `"Dark"` and `"200"`, `resetPreferences` hard-codes `200`, and `NewLogService`/`ParseBufferLimit` each hard-code `200`. These duplicate `defaultThemeMode` and `defaultLogLimit` in `preference_service.go`.
 * **Fix:** Use `defaultThemeMode` and `defaultLogLimit`, and add a `defaultLogBufferLimit = 200` int constant shared by `LogService`. Better still, have the reset handler call `applyPreferencesToWidgets(ui, manager.onLoadPreferences())` after `Reset()` so no defaults are repeated at all.
