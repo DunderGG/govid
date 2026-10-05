@@ -211,7 +211,7 @@ The package-level `UpdateYtDlpCLI()` replaces the old `updateYtDlp()` free funct
 
 1. ~~**Move `showPreferences` to UIManager**~~ — *Done. See Phase 5 UIManager step 1 above.*
 
-2. ~~**Move `loadConfigFromFile` / `applyConfig` to `PreferenceService`**~~ — *Done. `LoadFromFile(path) (*AppConfig, error)` and `MergeConfig(cfg, base, validFormats, validQualities) (AppPreferences, []string)` added to `preference_service.go`. `loadConfigFile` and `applyConfig` removed from `helpers.go`. The "Load from Config" button in `ui.go` (now `ui_manager.go`) calls the `onLoadConfigFile`/`onMergeConfig`/`onSavePreferences` callbacks (see UIManager step 5), `applyPreferencesToWidgets`, and `prefSvc.Save` directly. `applyPreferencesToWidgets` gained guarded writes for `Format`, `Quality`, and `SavedPath` (skipped when empty to preserve platform-specific defaults at startup).*
+2. ~~**Move `loadConfigFromFile` / `applyConfig` to `PreferenceService`**~~ — *Done. `LoadFromFile(path) (*AppConfig, error)` and `MergeConfig(cfg, base, validFormats, validQualities) (AppPreferences, []string)` added to `preference_service.go`. `loadConfigFile` and `applyConfig` removed from `helpers.go`. The "Load from Config" button in `ui.go` (now `ui_manager.go`) runs `UIManager.loadConfigFile`, which calls `onLoadConfigFile` and `onMergeConfig`, applies the merged result with `applyPreferencesToWidgets`, and persists it through `onSavePreferences` (see UIManager step 5). It never touches `prefSvc` directly. `applyPreferencesToWidgets` gained guarded writes for `Format`, `Quality`, and `SavedPath` (skipped when empty to preserve platform-specific defaults at startup).*
 
 3. ~~**Remove the three inline `fyne.CurrentApp().Preferences().SetBool(...)` onChanged handlers**~~ — *Done. The `OnChanged` callbacks for `notify`, `autoRetry`, and `enablePostProcess` now call `app.savePreferences(app.ui.path.Text)`. A fourth handler (`saveLog`) that used a raw `"saveLog"` string rather than `prefSaveLog` was brought in line at the same time.*
 
@@ -515,6 +515,6 @@ Stale descriptions within this file that no longer match the code:
   * ~~`applyPreferencesToWidgets(AppPreferences)` is now `applyPreferencesToWidgets(ui *UIWidgets, p AppPreferences)`.~~
   * ~~"`savePreferences` has moved to `preference_service.go`": the real implementation is now `UIManager.savePreferences`, and only a delegate remains in `preference_service.go`.~~
   * ~~"`resetPreferences()` lives in `helpers.go`": it is now in `ui_manager.go`.~~
-* **PreferenceService step 2:** says the Load-from-Config button calls "`prefSvc.Save` directly". It calls `onSavePreferences`.
+* ~~**PreferenceService step 2:** says the Load-from-Config button calls "`prefSvc.Save` directly". It calls `onSavePreferences`.~~ — *Done. Step 2 now names `UIManager.loadConfigFile` and says that it persists through `onSavePreferences`.*
 * **GPUCapabilityService:** "Its *consumers* still have pending work: see PPEngine step 4". PPEngine step 4 is done. Also, "`UIWidgets` gained a `gpuBackend` field" should now read `UIWidgets.postProcess.gpuBackend`.
 * **PPEngine "Done" paragraph:** the shared-helper list omits `lastLine`, which `postprocess.go` exports to both `pp_engine.go` and `gpu_capability.go`.
