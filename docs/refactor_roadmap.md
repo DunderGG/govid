@@ -308,37 +308,44 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
 ### Category 4 — Correctness & Concurrency (Code)
 
-#### 4.1 Fix data races on progress state
+#### ~~4.1 Fix data races on progress state~~
+* *Done (`7ae8bf2`). Every `DownloadStats` field is now guarded by a mutex and accessed only through methods (`setTarget`, `takeTarget`, `recordSize`, `reset`). `runProgressSmoother` in `helpers.go` tracks the displayed value itself, never reads the widget, and only calls `progress.SetValue` inside `fyne.Do`. CI runs `go test -race ./...` (see 7.6), and the suite passes under the race detector. A related race in the status-dot pulse was fixed in `aab615e`.*
 * **Files:** [`download.go`](../download.go#L99-L125), [`helpers.go`](../helpers.go#L181-L198), [`types.go`](../types.go#L163-L168)
 * **Issue:** The progress-smoother goroutine in `startDownload` reads `app.ui.download.progress.Value` outside `fyne.Do` and reads `app.stats.targetPct` without synchronization. Meanwhile `setProgress` (called from the yt-dlp output goroutine via `OnProgress`) and `setProgressNow` write `targetPct`. `updateProgress` also writes `lastSize`/`downloadedRaw`/`unit` from the engine goroutine, and `runYtDlp` reads them. This violates coding guidelines §2.3 and §2.5.
 * **Fix:** Store `targetPct` as an atomic value, or guard `DownloadStats` with a mutex. Have the smoother track its own `current` value instead of reading the widget, and only call `progress.SetValue` inside `fyne.Do`. Then add `go test -race ./...` to CI (see 7.6).
 
-#### 4.2 Fix the `LogService.bufferLimit` race
+#### ~~4.2 Fix the `LogService.bufferLimit` race~~
+* *Done (`cbbca79`). `SetBufferLimit` and `BufferLimit` now take `svc.mutex`.*
 * **File:** [`log_service.go`](../log_service.go#L143-L150)
 * **Issue:** `SetBufferLimit` and `BufferLimit` access `bufferLimit` without the mutex. `WriteToFile` reads it under `svc.mutex` from background goroutines. Tests don't exercise this path, but it is a real race.
 * **Fix:** Take `svc.mutex` in both accessors, or make the field an `atomic.Int64`.
 
-#### 4.3 Reset `DownloadStats` between downloads
+#### ~~4.3 Reset `DownloadStats` between downloads~~
+* *Done (`5b5d18d`). `DownloadStats.reset()` clears the size, downloaded amount, unit, and target, and requests a snap to 0. It is called at session start and before each batch item.*
 * **Files:** [`download.go`](../download.go#L66-L69), [`download.go`](../download.go#L174-L178)
 * **Issue:** Only `targetPct` is reset at session start and between batch items. `lastSize`, `downloadedRaw`, and `unit` carry over. If a later URL fails before reporting progress, its ABORTED/COMPLETE summary shows the previous download's size and average speed.
 * **Fix:** Add a `DownloadStats.reset()` method (or assign a fresh `DownloadStats{}`) at both reset points.
 
-#### 4.4 Report every post-processing failure through `OnFailure`
+#### ~~4.4 Report every post-processing failure through `OnFailure`~~
+* *Done (`9138d3c`). The terminal failure paths in `runJob` go through a shared `failJob(job, cb, msg, output)` helper, which calls `cb.OnFailure()`, logs the output, and removes the temp file.*
 * **File:** [`pp_engine.go`](../pp_engine.go#L254-L300)
 * **Issue:** In `runJob`, the non-streaming fallback path (`CombinedOutput` error) and the CPU-job `cmd.Start()` failure both log and return without calling `cb.OnFailure()`. The streaming `Wait()` failure path does call it. So these two failure paths never turn the Download button into "Retry".
 * **Fix:** Call `cb.OnFailure()` on every terminal failure path. Better, merge the failure handling into a single `failJob(job, cb, err, output)` helper so the three paths cannot drift apart again.
 
-#### 4.5 Make the `-update` CLI path use the bundled yt-dlp
+#### ~~4.5 Make the `-update` CLI path use the bundled yt-dlp~~
+* *Done (`eee8dda`). `UpdateYtDlpCLI` became `(svc *DependencyService) UpdateCLI() error`, which runs `svc.Resolve("yt-dlp")`. `main()` calls `NewDependencyService().UpdateCLI()`.*
 * **File:** [`dependency_service.go`](../dependency_service.go#L145-L158)
 * **Issue:** `UpdateYtDlpCLI` runs the bare `"yt-dlp"` from PATH. The in-app `RunUpdate` uses `svc.Resolve("yt-dlp")`. For a packaged release, which ships `bin/yt-dlp.exe`, `GoVid.exe -update` therefore updates the wrong binary or fails.
 * **Fix:** Construct a `DependencyService` in the CLI path and run `Resolve("yt-dlp")`. Simplest is to make it a method: `(svc *DependencyService) UpdateCLI() error`.
 
-#### 4.6 Restore `smoothMotionFPS` when the Post-Processing window opens
+#### ~~4.6 Restore `smoothMotionFPS` when the Post-Processing window opens~~
+* *Done (`f8b7c96`, superseded by 6.4). `showPostProcessing` now reloads the whole post-processing group through `applyPostProcessPrefs`, which includes `smoothMotionFPS`.*
 * **File:** [`ui_manager.go`](../ui_manager.go#L527-L546)
 * **Issue:** `showPostProcessing` re-applies every persisted post-processing preference to its widget except `SmoothFPS`. This is the same class of bug as the sharpen-intensity fix in `b26f422`.
 * **Fix:** Add `ui.postProcess.smoothMotionFPS.SetValue(prefs.SmoothFPS)`. Ideally this is resolved by 6.4, which removes the duplicated reload list entirely.
 
-#### 4.7 Write history atomically
+#### ~~4.7 Write history atomically~~
+* *Done (`43bcea9`). `AppendAll` writes to a temp file in the same directory and then `os.Rename`s it over `download_history.json`, so the "single atomic write" comment now holds.*
 * **File:** [`history_service.go`](../history_service.go#L79-L94)
 * **Issue:** The `AppendAll` doc comment says "single atomic write", but `os.WriteFile` truncates the file and then writes it. A crash or power loss mid-write corrupts `download_history.json`, and from then on every `Load` fails.
 * **Fix:** Write to `download_history.json.tmp` and then `os.Rename` it over the original. Alternatively, correct the comment.
