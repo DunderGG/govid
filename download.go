@@ -53,7 +53,7 @@ func (app *DownloaderApp) startDownload() {
 		return
 	}
 
-	app.savePreferences(session.savePath)
+	app.uiManager.savePreferences(session.savePath)
 	app.resetSession()
 	app.openSessionLog(session)
 

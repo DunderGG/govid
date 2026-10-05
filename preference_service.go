@@ -7,7 +7,6 @@
 //     applying fallbacks where appropriate. Has no dependency on any UI widget.
 //   - AppConfig, LoadFromFile / MergeConfig: load and merge a govid.json config override
 //     into AppPreferences without touching any widget.
-//   - savePreferences: thin DownloaderApp delegate to UIManager.savePreferences.
 //   - Named constants for every preference key and default value.
 package main
 
@@ -282,14 +281,6 @@ func (prefSvc *PreferenceService) Reset() {
 	} {
 		prefSvc.store.RemoveValue(key)
 	}
-}
-
-// ── DownloaderApp preference helpers ────────────────────────────────────────────
-
-// savePreferences delegates to UIManager, which owns the widget state needed
-// to build the AppPreferences snapshot passed to PreferenceService.Save.
-func (app *DownloaderApp) savePreferences(savePath string) {
-	app.uiManager.savePreferences(savePath)
 }
 
 // ── Config file ──────────────────────────────────────────────────────────────
