@@ -303,7 +303,7 @@ This document outlines planned features, improvements, and known limitations for
 ### Naming Consistency
 > Align naming conventions across the codebase.
 
-- [ ] Fix the `smoothMotion` UI field vs. `"upscale"` preference key mismatch — both refer to the same setting.
+- [x] Fix the `smoothMotion` UI field vs. `"upscale"` preference key mismatch — both refer to the same setting.
 - [X] Rename `ppJob` struct to `PostProcessJob` to match the full-word naming style of other structs (`DownloaderApp`, `UIWidgets`).
 
 ### Error Handling

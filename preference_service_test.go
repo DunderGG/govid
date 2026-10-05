@@ -55,6 +55,27 @@ func TestPreferenceServiceSharpenAmountRoundtrip(t *testing.T) {
 	}
 }
 
+func TestNewPreferenceServiceMigratesLegacySmoothMotionKey(t *testing.T) {
+	for _, legacy := range []bool{true, false} {
+		store := test.NewApp().Preferences()
+		store.SetBool(prefSmoothMotion, !legacy)
+		store.SetBool(legacyPrefSmoothMotion, legacy)
+
+		if got := NewPreferenceService(store).Load().SmoothMotion; got != legacy {
+			t.Errorf("legacy %v: SmoothMotion = %v, want %v", legacy, got, legacy)
+		}
+		if got := store.BoolWithFallback(legacyPrefSmoothMotion, !legacy); got != !legacy {
+			t.Errorf("legacy %v: legacy key still stored after migration", legacy)
+		}
+	}
+
+	store := test.NewApp().Preferences()
+	store.SetBool(prefSmoothMotion, true)
+	if !NewPreferenceService(store).Load().SmoothMotion {
+		t.Error("SmoothMotion = false with no legacy key, want the stored true kept")
+	}
+}
+
 func TestLoadResolvesRuntimeDefaults(t *testing.T) {
 	tests := []struct {
 		name  string

@@ -39,7 +39,7 @@ const (
 	prefNotify            = "notify"
 	prefAutoRetry         = "autoRetry"
 	prefEnablePostProcess = "enablePostProcess"
-	prefSmoothMotion      = "upscale"
+	prefSmoothMotion      = "smoothMotion"
 	prefSmoothMotionMode  = "smoothMotionMode"
 	prefSmoothFPS         = "smoothFPS"
 	prefSharpen           = "sharpen"
@@ -58,6 +58,11 @@ const (
 	prefUpscaleTarget     = "upscaleTarget"
 	prefGPUBackend        = "gpuBackend"
 )
+
+// legacyPrefSmoothMotion is the key Smooth Motion was stored under before the
+// separate Upscale feature (prefUpscaleVideo) existed. migrateLegacyKeys moves
+// it to prefSmoothMotion.
+const legacyPrefSmoothMotion = "upscale"
 
 // ── Default values ────────────────────────────────────────────────────────────
 // Named so they can be used for both Load fallbacks and UI resets without
@@ -123,7 +128,23 @@ type PreferenceService struct {
 // NewPreferenceService constructs a PreferenceService backed by the given
 // Fyne Preferences store. Pass fyne.CurrentApp().Preferences() at startup.
 func NewPreferenceService(store fyne.Preferences) *PreferenceService {
-	return &PreferenceService{store: store}
+	prefSvc := &PreferenceService{store: store}
+	prefSvc.migrateLegacyKeys()
+	return prefSvc
+}
+
+// migrateLegacyKeys moves values stored under retired keys to their current
+// keys, so settings saved by older versions are not lost.
+func (prefSvc *PreferenceService) migrateLegacyKeys() {
+	// A stored bool reads back the same whatever the fallback; an absent key
+	// reads back the fallback.
+	stored := prefSvc.store.BoolWithFallback(legacyPrefSmoothMotion, false) ==
+		prefSvc.store.BoolWithFallback(legacyPrefSmoothMotion, true)
+	if !stored {
+		return
+	}
+	prefSvc.store.SetBool(prefSmoothMotion, prefSvc.store.Bool(legacyPrefSmoothMotion))
+	prefSvc.store.RemoveValue(legacyPrefSmoothMotion)
 }
 
 // Load reads every stored preference and returns an AppPreferences with
