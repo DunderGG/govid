@@ -124,6 +124,9 @@ package "UI Layer" #F0F8F0 {
         +logLimit : *widget.Select
         +showDebug : *widget.Check
         +checkUpdates : *widget.Check
+        +embedMetadata : *widget.Check
+        +embedThumbnail : *widget.Check
+        +embedChapters : *widget.Check
     }
 
     class PostProcessControls <<ui>> {
@@ -238,6 +241,9 @@ package "Download Engine" #FFF8F0 {
         +TrimEnd : string
         +MaxSpeed : string
         +CookiesPath : string
+        +EmbedMetadata : bool
+        +EmbedThumbnail : bool
+        +EmbedChapters : bool
     }
 
     class DownloadOptions <<data>> {
@@ -319,6 +325,8 @@ package "Post-Processing Engine" #F8F0FF {
         -probeFrameCount(ctx, input) : int64
         -probeDuration(ctx, input) : float64
         -probeColorInfo(ctx, input) : (colorInfo, error)
+        -probeStreamLayout(ctx, input, filterVideo) : *streamLayout
+        -extractCovers(ctx, job, cb)
         -computeOutputFrameCount(ctx, input,\n  frames, filters) : int64
         -parseRationalFPS(s) : float64
         -buildFFmpegArgs(input, tmpOutput,\n  vf, af, threads) : []string
@@ -353,6 +361,18 @@ package "Post-Processing Engine" #F8F0FF {
         -encodeMode : string
         -totalFrames : int64
         -usedGPU : bool
+        -layout : *streamLayout
+    }
+
+    class streamLayout <<data>> {
+        -mainVideo : int
+        -videoCount : int
+        -covers : []coverArt
+        -attachments : int
+        -coverFiles : []string
+        --
+        -mapArgs(filterVideo bool) : []string
+        -coverArgs(filterVideo bool) : []string
     }
 
     class PostProcessSettings <<data>> {
@@ -496,6 +516,9 @@ package "Preference Service" #FFF0F0 {
         +LogLimit : string
         +ShowDebug : bool
         +CheckUpdates : bool
+        +EmbedMetadata : bool
+        +EmbedThumbnail : bool
+        +EmbedChapters : bool
         +CookiesPath : string
         +MaxSpeed : string
         +BatchMode : bool
@@ -614,6 +637,9 @@ package "Log Service" #F0F8FF {
         +TrimEnd : string
         +MaxSpeed : string
         +CookiesPath : string
+        +EmbedMetadata : bool
+        +EmbedThumbnail : bool
+        +EmbedChapters : bool
         +SaveLog : bool
         +Notify : bool
         +AutoRetry : bool
@@ -649,6 +675,9 @@ package "Support Types" #F5F5F5 {
         +Quality : string
         +Path : string
         +MaxSpeed : string
+        +EmbedMetadata : *bool
+        +EmbedThumbnail : *bool
+        +EmbedChapters : *bool
     }
 
 }
@@ -730,6 +759,7 @@ DownloadEngine ..> scanResult      : Execute output
 ' PPEngine internal flow
 PPEngine ..> PPCallbacks    : ApplyFilters bridge
 PPEngine ..> PostProcessJob : builds & runs
+PostProcessJob o--> streamLayout : layout
 PPEngine ..> gpuJobGuard    : runJob acquires/releases
 PPEngine --> GPUBackend        : GPUBackend field
 PPEngine --> BackendCapability : GPUCapabilities field

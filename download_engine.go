@@ -49,6 +49,11 @@ type DownloadRequest struct {
 	TrimEnd     string // HH:MM:SS or empty
 	MaxSpeed    string // e.g. "5M" or empty
 	CookiesPath string // path to cookies.txt or empty
+
+	// Written into the downloaded file by yt-dlp (with ffmpeg).
+	EmbedMetadata  bool // title, artist, upload date, … tags
+	EmbedThumbnail bool // the thumbnail as cover art (converted to JPEG)
+	EmbedChapters  bool // chapter markers
 }
 
 // DownloadArgs is the resolved output of buildYtDlpArgs. It carries the
@@ -60,6 +65,7 @@ type DownloadArgs struct {
 	HasTrim          bool
 	TrimDisplayStart string // human-readable trim start ("start" if omitted)
 	TrimDisplayEnd   string // human-readable trim end ("end" if omitted)
+	ThumbnailSkipped bool   // EmbedThumbnail was set, but the container cannot hold cover art
 }
 
 // formatSelection returns the yt-dlp -f selector and the output extension
@@ -175,6 +181,9 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 		args = append(args, "--force-keyframes-at-cuts")
 	}
 
+	embedFlags, thumbnailSkipped := embedArgs(req, extension)
+	args = append(args, embedFlags...)
+
 	args = append(args, req.URL)
 
 	return DownloadArgs{
@@ -184,7 +193,30 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 		HasTrim:          hasTrim,
 		TrimDisplayStart: trimDisplayStart,
 		TrimDisplayEnd:   trimDisplayEnd,
+		ThumbnailSkipped: thumbnailSkipped,
 	}
+}
+
+// embedArgs returns the yt-dlp flags that write metadata, the thumbnail, and
+// chapters into the downloaded file, as req asks. The thumbnail is
+// converted to JPEG because many players cannot show WebP covers in MP3 or
+// MP4. A WebM file cannot hold cover art, so for WebM the thumbnail is
+// skipped and thumbnailSkipped is true.
+func embedArgs(req DownloadRequest, extension string) (args []string, thumbnailSkipped bool) {
+	if req.EmbedMetadata {
+		args = append(args, "--embed-metadata")
+	}
+	if req.EmbedThumbnail {
+		if extension == "webm" {
+			thumbnailSkipped = true
+		} else {
+			args = append(args, "--embed-thumbnail", "--convert-thumbnails", "jpg")
+		}
+	}
+	if req.EmbedChapters {
+		args = append(args, "--embed-chapters")
+	}
+	return args, thumbnailSkipped
 }
 
 // ProcessCallbacks lets the engine report events to the UI layer without
@@ -294,6 +326,9 @@ func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, opts
 			fmt.Sprintf("[SYSTEM] Trimming: %s → %s", built.TrimDisplayStart, built.TrimDisplayEnd),
 			colSystem,
 		)
+	}
+	if built.ThumbnailSkipped {
+		cb.OnLog("[SYSTEM] Not embedding the thumbnail: WebM files cannot hold cover art.", colSystem)
 	}
 
 	scan, cmdErr := engine.Execute(ctx, built.Args, opts, cb)

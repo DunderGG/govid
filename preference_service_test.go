@@ -109,3 +109,30 @@ func TestLoadResolvesRuntimeDefaults(t *testing.T) {
 		})
 	}
 }
+
+func TestMergeConfigEmbedToggles(t *testing.T) {
+	cfg, err := parseAppConfig([]byte(`{"embedThumbnail": false, "embedChapters": true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := AppPreferences{EmbedMetadata: true, EmbedThumbnail: true}
+
+	merged, errs := (&PreferenceService{}).MergeConfig(cfg, base, formatOptions, qualityOptions)
+
+	if len(errs) != 0 {
+		t.Errorf("errs = %q, want none", errs)
+	}
+	if !merged.EmbedMetadata || merged.EmbedThumbnail || !merged.EmbedChapters {
+		t.Errorf("merged = metadata %v, thumbnail %v, chapters %v; want true, false, true (an absent field keeps its value)",
+			merged.EmbedMetadata, merged.EmbedThumbnail, merged.EmbedChapters)
+	}
+}
+
+func TestEmbedPreferenceDefaults(t *testing.T) {
+	_ = test.NewApp()
+	prefs := NewPreferenceService(test.NewTempApp(t).Preferences()).Load()
+	if !prefs.EmbedMetadata || !prefs.EmbedThumbnail || prefs.EmbedChapters {
+		t.Errorf("defaults = metadata %v, thumbnail %v, chapters %v; want true, true, false",
+			prefs.EmbedMetadata, prefs.EmbedThumbnail, prefs.EmbedChapters)
+	}
+}

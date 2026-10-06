@@ -17,6 +17,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 
 - **Cross-Platform GUI**: Modern interface built with the [Fyne toolkit](https://fyne.io/).
 - **Multiple Formats**: Support for MP4, MKV, WebM, MP3, and M4A.
+- **Metadata & Cover Art**: Writes title, artist, and date tags, the thumbnail as cover art, and (optionally) chapters into downloaded files, and keeps them through post-processing.
 - **Quality Control**: Select your preferred maximum resolution for downloads.
 - **Video Trimming**: Download only a specific segment — specify a start time, an end time, or both (`HH:MM:SS` / `MM:SS` / seconds).
 - **Batch Processing**: Download multiple URLs at once by switching to Batch Mode (one URL per line).
@@ -125,10 +126,13 @@ Example `govid.json`:
 
 | Field | Supported Values |
 | :--- | :--- |
-| `format` | `MP4`, `MKV`, `WebM`, `MP3 (Audio Only)`, `M4A (Apple Audio)` |
+| `format` | `MP4`, `MKV`, `WebM`, `MP3`, `M4A` |
 | `quality` | `Best Quality`, `1080p`, `720p`, `480p`, `360p` |
 | `path` | Any valid absolute folder path |
 | `maxSpeed` | Numeric value with unit (e.g., `50K`, `5M`, `1G`) |
+| `embedMetadata` | `true` or `false`: write title, artist, and date tags into downloads (default `true`) |
+| `embedThumbnail` | `true` or `false`: write the thumbnail as cover art (default `true`; skipped for WebM) |
+| `embedChapters` | `true` or `false`: write chapter markers (default `false`) |
 
 > **Note:** Standard JSON does not support comments. Adding them will cause a loading error. Use the **Load from Config** button in the Preferences window to apply changes.
 

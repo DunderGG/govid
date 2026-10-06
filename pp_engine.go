@@ -16,6 +16,7 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -126,12 +127,13 @@ type PostProcessJob struct {
 	tmpOutput   string
 	finalPath   string // destination after FFmpeg succeeds; may differ from inputPath (e.g. .webm → .mkv)
 	ffmpegArgs  []string
-	vfFilters   []string // active video filters, for summary logging
-	afFilters   []string // active audio filters, for summary logging
-	threads     int      // thread count assigned to this job
-	encodeMode  string   // human-readable encode strategy, for summary logging
-	totalFrames int64    // total video frames, for progress percentage (0 = unknown)
-	usedGPU     bool     // true if ffmpegArgs uses a GPU encoder; enables one CPU retry on failure
+	vfFilters   []string      // active video filters, for summary logging
+	afFilters   []string      // active audio filters, for summary logging
+	threads     int           // thread count assigned to this job
+	encodeMode  string        // human-readable encode strategy, for summary logging
+	totalFrames int64         // total video frames, for progress percentage (0 = unknown)
+	usedGPU     bool          // true if ffmpegArgs uses a GPU encoder; enables one CPU retry on failure
+	layout      *streamLayout // the input's streams, for explicit mapping; nil to let ffmpeg pick
 }
 
 // PPCallbacks lets PPEngine report events back to the UI layer. Every field
@@ -248,7 +250,7 @@ func (engine *PPEngine) resolveToneMap(ctx context.Context, inputPath string, fi
 func (engine *PPEngine) retryWithCPU(ctx context.Context, job PostProcessJob, cb PPCallbacks, reason string) {
 	cb.OnLog(fmt.Sprintf("[SYSTEM] GPU encode failed (%s) — retrying with CPU.", reason), colWarning)
 
-	job.ffmpegArgs = engine.buildFFmpegArgsForBackend(job.inputPath, job.tmpOutput, job.vfFilters, job.afFilters, BackendOff, job.threads)
+	job.ffmpegArgs = engine.buildFFmpegArgsForBackend(job, BackendOff)
 	job.encodeMode = PlanEncoder(BackendOff, nil, filepath.Ext(job.tmpOutput)).Label
 	job.usedGPU = false
 	engine.runJob(ctx, job, cb)
@@ -697,34 +699,261 @@ func (engine *PPEngine) parseRationalFPS(s string) float64 {
 // buildFFmpegArgs constructs the FFmpeg argument list for a single
 // post-processing job, using the engine's GPU backend and the job's share
 // of the CPU threads.
-func (engine *PPEngine) buildFFmpegArgs(inputPath, tmpOutput string, vfFilters, afFilters []string, threads int) []string {
-	return engine.buildFFmpegArgsForBackend(inputPath, tmpOutput, vfFilters, afFilters, engine.GPUBackend, threads)
+func (engine *PPEngine) buildFFmpegArgs(job PostProcessJob) []string {
+	return engine.buildFFmpegArgsForBackend(job, engine.GPUBackend)
 }
 
 // buildFFmpegArgsForBackend is buildFFmpegArgs with an explicit backend
 // override, used by runJob's strict CPU fallback to rebuild CPU-only args
 // when a GPU-accelerated job fails at runtime.
-func (engine *PPEngine) buildFFmpegArgsForBackend(inputPath, tmpOutput string, vfFilters, afFilters []string, backend GPUBackend, threads int) []string {
+//
+// When the job's stream layout is known, every stream is mapped explicitly
+// (see streamLayout.mapArgs) and the video filters apply to the main video
+// stream only, so cover art, subtitles, attachments, metadata, and chapters
+// survive the re-encode. Without a layout, ffmpeg's default stream selection
+// is used, which keeps one stream of each kind.
+func (engine *PPEngine) buildFFmpegArgsForBackend(job PostProcessJob, backend GPUBackend) []string {
 	// Note: -stats_period was added in FFmpeg 4.4; omitting it keeps progress
 	// reporting working on older builds (FFmpeg defaults to 0.5 s anyway).
-	args := []string{"-y", "-threads", strconv.Itoa(threads), "-i", inputPath}
-	if len(vfFilters) > 0 {
-		args = append(args, "-vf", strings.Join(vfFilters, ","))
-		plan := PlanEncoder(backend, engine.GPUCapabilities, filepath.Ext(tmpOutput))
-		args = append(args, plan.Args...)
-		if hasToneMap(vfFilters) {
-			// Without these tags players may still treat the output as BT.2020.
-			args = append(args, "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709")
-		}
-	} else {
-		args = append(args, "-c:v", "copy")
+	args := []string{"-y", "-threads", strconv.Itoa(job.threads), "-i", job.inputPath}
+	filterVideo := len(job.vfFilters) > 0
+	if job.layout != nil {
+		args = append(args, job.layout.mapArgs(filterVideo)...)
 	}
-	if len(afFilters) > 0 {
-		args = append(args, "-af", strings.Join(afFilters, ","))
+
+	switch {
+	case filterVideo && job.layout != nil:
+		args = append(args, "-filter:v:0", strings.Join(job.vfFilters, ","))
+		plan := PlanEncoder(backend, engine.GPUCapabilities, filepath.Ext(job.tmpOutput))
+		args = append(args, encodeFirstVideoOnly(plan.Args)...)
+		args = append(args, job.layout.coverArgs(true)...)
+	case filterVideo:
+		args = append(args, "-vf", strings.Join(job.vfFilters, ","))
+		plan := PlanEncoder(backend, engine.GPUCapabilities, filepath.Ext(job.tmpOutput))
+		args = append(args, plan.Args...)
+	default:
+		args = append(args, "-c:v", "copy")
+		if job.layout != nil {
+			args = append(args, job.layout.coverArgs(false)...)
+		}
+	}
+	if hasToneMap(job.vfFilters) {
+		// Without these tags players may still treat the output as BT.2020.
+		args = append(args, "-color_primaries:v:0", "bt709", "-color_trc:v:0", "bt709", "-colorspace:v:0", "bt709")
+	}
+	if job.layout != nil {
+		args = append(args, "-c:s", "copy")
+	}
+
+	if len(job.afFilters) > 0 {
+		args = append(args, "-af", strings.Join(job.afFilters, ","))
 	} else {
 		args = append(args, "-c:a", "copy")
 	}
-	return append(args, tmpOutput)
+	return append(args, job.tmpOutput)
+}
+
+// encodeFirstVideoOnly scopes an encoder plan's "-c:v <encoder>" to the first
+// output video stream ("-c:v:0"), so cover art mapped after it can be
+// stream-copied. The plan's other options only affect encoded streams.
+func encodeFirstVideoOnly(planArgs []string) []string {
+	scoped := slices.Clone(planArgs)
+	for i, arg := range scoped {
+		if arg == "-c:v" {
+			scoped[i] = "-c:v:0"
+		}
+	}
+	return scoped
+}
+
+// ── Stream layout ────────────────────────────────────────────────────────────
+
+// streamLayout lists the input streams that post-processing maps by index:
+// the main video stream and any cover art. yt-dlp's --embed-thumbnail stores
+// cover art as an attached picture, which ffmpeg reports as a video stream
+// (in MP4 and MP3, and also for a Matroska cover attachment).
+type streamLayout struct {
+	mainVideo   int        // index of the first video stream that is not cover art; -1 when there is none
+	videoCount  int        // number of video streams that are not cover art
+	covers      []coverArt // the attached pictures
+	attachments int        // other attachment streams (such as fonts), copied by -map 0:t?
+
+	// coverFiles holds the covers extracted to image files for a Matroska
+	// output (see PPEngine.extractCovers). ffmpeg writes a mapped cover back
+	// into Matroska as an ordinary video track, so there the covers are
+	// re-attached from these files with -attach instead.
+	coverFiles []string
+}
+
+// coverArt is one attached picture.
+type coverArt struct {
+	index    int    // input stream index
+	filename string // Matroska attachment file name, e.g. "cover.jpg"; may be empty
+	mimetype string // Matroska attachment MIME type, e.g. "image/jpeg"; may be empty
+}
+
+// mapArgs maps every stream worth keeping, plus the global metadata and the
+// chapters. When the video is filtered, the main video stream is mapped
+// first (output stream v:0); otherwise every video stream that is not cover
+// art is copied. Cover art is mapped after it, unless it is re-attached from
+// files. Data streams, such as MP4's chapter text track, are left out:
+// -map_chapters recreates the chapters.
+func (layout streamLayout) mapArgs(filterVideo bool) []string {
+	var args []string
+	if filterVideo {
+		args = append(args, "-map", fmt.Sprintf("0:%d", layout.mainVideo))
+	} else {
+		args = append(args, "-map", "0:V?")
+	}
+	if layout.coverFiles == nil {
+		for _, cover := range layout.covers {
+			args = append(args, "-map", fmt.Sprintf("0:%d", cover.index))
+		}
+	}
+	return append(args,
+		"-map", "0:a?", "-map", "0:s?", "-map", "0:t?",
+		"-map_metadata", "0", "-map_chapters", "0",
+	)
+}
+
+// coverArgs keeps the cover art: each mapped cover is stream-copied and
+// marked as an attached picture, or, for a Matroska output, each extracted
+// cover file is attached with its file name and MIME type.
+func (layout streamLayout) coverArgs(filterVideo bool) []string {
+	var args []string
+	for i, path := range layout.coverFiles {
+		cover := layout.covers[i]
+		stream := fmt.Sprintf("-metadata:s:t:%d", layout.attachments+i)
+		args = append(args, "-attach", path,
+			stream, "mimetype="+cmp.Or(cover.mimetype, "image/jpeg"),
+			stream, "filename="+cmp.Or(cover.filename, "cover"+filepath.Ext(path)),
+		)
+	}
+	if layout.coverFiles != nil {
+		return args
+	}
+
+	// Mapped covers follow the video streams mapped before them. Without
+	// video filters, "-c:v copy" already copies them.
+	first := layout.videoCount
+	if filterVideo {
+		first = 1
+	}
+	for i := range layout.covers {
+		if filterVideo {
+			args = append(args, fmt.Sprintf("-c:v:%d", first+i), "copy")
+		}
+		args = append(args, fmt.Sprintf("-disposition:v:%d", first+i), "attached_pic")
+	}
+	return args
+}
+
+// ffmpegStreamPattern matches a stream line of ffmpeg's input summary, e.g.
+// "  Stream #0:4[0x0](eng): Video: mjpeg (Baseline), … (attached pic)",
+// capturing the stream index and its type.
+var ffmpegStreamPattern = regexp.MustCompile(`Stream #0:(\d+)\S*: (\w+):`)
+
+// ffmpegStreamTagPattern matches the attachment tags ffmpeg lists under a
+// stream, e.g. "      mimetype        : image/jpeg".
+var ffmpegStreamTagPattern = regexp.MustCompile(`^\s+(filename|mimetype)\s*:\s*(.+?)\s*$`)
+
+// parseStreamLayout finds the main video stream, the cover art, and the
+// other attachments in ffmpeg's input summary. ok is false when the summary
+// lists no streams.
+func parseStreamLayout(out string) (layout streamLayout, ok bool) {
+	layout.mainVideo = -1
+	var lastCover *coverArt // the cover whose tags follow, if any
+	for _, line := range strings.Split(out, "\n") {
+		if tag := ffmpegStreamTagPattern.FindStringSubmatch(line); tag != nil && lastCover != nil {
+			if tag[1] == "filename" {
+				lastCover.filename = tag[2]
+			} else {
+				lastCover.mimetype = tag[2]
+			}
+			continue
+		}
+		match := ffmpegStreamPattern.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		ok = true
+		lastCover = nil
+		index, err := strconv.Atoi(match[1])
+		if err != nil {
+			continue
+		}
+		switch {
+		case match[2] == "Attachment":
+			layout.attachments++
+		case match[2] != "Video":
+		case strings.Contains(line, "(attached pic)"):
+			layout.covers = append(layout.covers, coverArt{index: index})
+			lastCover = &layout.covers[len(layout.covers)-1]
+		default:
+			layout.videoCount++
+			if layout.mainVideo < 0 {
+				layout.mainVideo = index
+			}
+		}
+	}
+	return layout, ok
+}
+
+// probeStreamLayout reads the file's stream layout from ffmpeg's input
+// summary. It returns nil when the layout cannot be read, or when the video
+// is to be filtered but there is no video stream to filter; the job then
+// falls back to ffmpeg's default stream selection.
+func (engine *PPEngine) probeStreamLayout(ctx context.Context, inputPath string, filterVideo bool) *streamLayout {
+	// ffmpeg exits with an error when given no output file, but it has
+	// printed the input summary by then.
+	out, _ := newToolCommand(ctx, engine.FFmpegPath, "-hide_banner", "-i", inputPath).CombinedOutput()
+	layout, ok := parseStreamLayout(string(out))
+	if !ok || (filterVideo && layout.mainVideo < 0) {
+		return nil
+	}
+	return &layout
+}
+
+// isMatroska reports whether a file extension names a Matroska container.
+func isMatroska(ext string) bool {
+	ext = strings.ToLower(ext)
+	return ext == ".mkv" || ext == ".mka"
+}
+
+// extractCovers saves each cover of a Matroska job's input to an image file
+// beside its temp output and records the files in job.layout.coverFiles, so
+// buildFFmpegArgs can re-attach them. If a cover cannot be extracted, the
+// covers are left out of the output and the log says so. The caller removes
+// the files once the job has run.
+func (engine *PPEngine) extractCovers(ctx context.Context, job *PostProcessJob, cb PPCallbacks) {
+	layout := job.layout
+	if layout == nil || len(layout.covers) == 0 || !isMatroska(filepath.Ext(job.tmpOutput)) {
+		return
+	}
+	base := strings.TrimSuffix(job.tmpOutput, filepath.Ext(job.tmpOutput))
+	files := []string{}
+	for i, cover := range layout.covers {
+		path := fmt.Sprintf("%s_cover%d%s", base, i+1, cmp.Or(filepath.Ext(cover.filename), ".jpg"))
+		err := newToolCommand(ctx, engine.FFmpegPath,
+			"-y", "-i", job.inputPath,
+			"-map", fmt.Sprintf("0:%d", cover.index), "-c", "copy", "-frames:v", "1", "-f", "image2", path,
+		).Run()
+		if err != nil {
+			removeFiles(files)
+			cb.OnLog(fmt.Sprintf("[SYSTEM] Could not keep the cover art of %s (%v).", filepath.Base(job.inputPath), err), colWarning)
+			layout.covers = nil
+			return
+		}
+		files = append(files, path)
+	}
+	layout.coverFiles = files
+}
+
+// removeFiles removes paths, ignoring files that are already gone.
+func removeFiles(paths []string) {
+	for _, path := range paths {
+		os.Remove(path)
+	}
 }
 
 // ApplyFilters runs a concurrent worker pool to post-process each of the given
@@ -774,7 +1003,9 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 			encodeMode:  encodeMode,
 			usedGPU:     usedGPU,
 			totalFrames: totalFrames,
+			layout:      engine.probeStreamLayout(ctx, inputPath, len(activeVF) > 0),
 		})
+		engine.extractCovers(ctx, &jobs[len(jobs)-1], cb)
 	}
 
 	if len(jobs) == 0 {
@@ -811,7 +1042,7 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 	for i := range jobs {
 		job := &jobs[i]
 		job.threads = threadsPerJob
-		job.ffmpegArgs = engine.buildFFmpegArgs(job.inputPath, job.tmpOutput, job.vfFilters, job.afFilters, threadsPerJob)
+		job.ffmpegArgs = engine.buildFFmpegArgs(*job)
 	}
 
 	// Create a channel to distribute jobs to workers and close it after all jobs are sent.
@@ -834,4 +1065,10 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 		}()
 	}
 	wg.Wait()
+
+	for _, job := range jobs {
+		if job.layout != nil {
+			removeFiles(job.layout.coverFiles)
+		}
+	}
 }

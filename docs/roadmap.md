@@ -44,10 +44,10 @@ This document outlines planned features, improvements, and known limitations for
 ### Metadata & Thumbnail Embedding
 > Embed rich metadata into downloaded files automatically.
 
-- [ ] Use `--embed-thumbnail` and `--embed-chapters` yt-dlp flags.
-- [ ] Embed title, artist, and upload date tags into MP3 and M4A files.
-- [ ] Allow the user to toggle thumbnail embedding from the UI options.
-- [ ] Automatic thumbnail and chapter injection via FFMPEG.
+- [x] Use `--embed-thumbnail` and `--embed-chapters` yt-dlp flags. (`embedArgs` in `download_engine.go`; the thumbnail is converted to JPEG and skipped for WebM, which cannot hold cover art.)
+- [x] Embed title, artist, and upload date tags into MP3 and M4A files. (`--embed-metadata`, for every format.)
+- [x] Allow the user to toggle thumbnail embedding from the UI options. (Preferences → "Embed in File": Metadata and Thumbnail on by default, Chapters off; also `embedMetadata`/`embedThumbnail`/`embedChapters` in `govid.json`.)
+- [x] Automatic thumbnail and chapter injection via FFMPEG. (yt-dlp embeds them with the bundled ffmpeg. Post-processing now maps streams explicitly, so cover art, chapters, subtitles, and tags survive the re-encode; Matroska covers are re-attached from extracted files.)
 
 ### Queue Manager
 > Give users better control over batch downloads.

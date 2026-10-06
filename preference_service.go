@@ -35,6 +35,9 @@ const (
 	prefLogLimit          = "logLimit"
 	prefShowDebug         = "showDebug"
 	prefCheckUpdates      = "checkUpdates"
+	prefEmbedMetadata     = "embedMetadata"
+	prefEmbedThumbnail    = "embedThumbnail"
+	prefEmbedChapters     = "embedChapters"
 	prefBatchMode         = "batchMode"
 	prefSaveLog           = "saveLog"
 	prefNotify            = "notify"
@@ -73,6 +76,8 @@ const (
 	defaultQuality           = qualityBest
 	defaultSavePrefs         = true
 	defaultCheckUpdates      = true
+	defaultEmbedMetadata     = true
+	defaultEmbedThumbnail    = true
 	defaultSmoothMotionMode  = smoothModeBalanced
 	defaultSmoothFPS         = 60.0
 	defaultDenoiseMode       = denoiseModeHQDN3D
@@ -97,6 +102,9 @@ type AppPreferences struct {
 	LogLimit          string
 	ShowDebug         bool // show yt-dlp [debug] lines in the log view (they always go to the log file)
 	CheckUpdates      bool // check for newer yt-dlp and GoVid releases on startup
+	EmbedMetadata     bool // write title, artist, date, … tags into downloaded files
+	EmbedThumbnail    bool // write the thumbnail into downloaded files as cover art
+	EmbedChapters     bool // write chapter markers into downloaded files
 	BatchMode         bool
 	SaveLog           bool
 	Notify            bool
@@ -165,6 +173,9 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		LogLimit:          prefSvc.store.StringWithFallback(prefLogLimit, defaultLogLimit),
 		ShowDebug:         prefSvc.store.Bool(prefShowDebug),
 		CheckUpdates:      prefSvc.store.BoolWithFallback(prefCheckUpdates, defaultCheckUpdates),
+		EmbedMetadata:     prefSvc.store.BoolWithFallback(prefEmbedMetadata, defaultEmbedMetadata),
+		EmbedThumbnail:    prefSvc.store.BoolWithFallback(prefEmbedThumbnail, defaultEmbedThumbnail),
+		EmbedChapters:     prefSvc.store.Bool(prefEmbedChapters),
 		BatchMode:         prefSvc.store.Bool(prefBatchMode),
 		SaveLog:           prefSvc.store.Bool(prefSaveLog),
 		Notify:            prefSvc.store.Bool(prefNotify),
@@ -249,6 +260,9 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 	prefSvc.store.SetString(prefLogLimit, p.LogLimit)
 	prefSvc.store.SetBool(prefShowDebug, p.ShowDebug)
 	prefSvc.store.SetBool(prefCheckUpdates, p.CheckUpdates)
+	prefSvc.store.SetBool(prefEmbedMetadata, p.EmbedMetadata)
+	prefSvc.store.SetBool(prefEmbedThumbnail, p.EmbedThumbnail)
+	prefSvc.store.SetBool(prefEmbedChapters, p.EmbedChapters)
 	prefSvc.store.SetBool(prefBatchMode, p.BatchMode)
 	prefSvc.store.SetBool(prefSaveLog, p.SaveLog)
 	prefSvc.store.SetBool(prefNotify, p.Notify)
@@ -280,6 +294,7 @@ func (prefSvc *PreferenceService) Reset() {
 	for _, key := range []string{
 		prefSavedPath, prefFormat, prefQuality, prefMaxSpeed, prefThemeMode,
 		prefSavePrefs, prefCookiesPath, prefLogLimit, prefShowDebug, prefCheckUpdates,
+		prefEmbedMetadata, prefEmbedThumbnail, prefEmbedChapters,
 		prefBatchMode, prefSaveLog, prefNotify, prefAutoRetry, prefEnablePostProcess,
 		prefSmoothMotion, prefSmoothMotionMode, prefSmoothFPS,
 		prefSharpen, prefSharpenAmount, prefNormalize, prefVividMode,
@@ -300,6 +315,12 @@ type AppConfig struct {
 	Quality  string `json:"quality"`
 	Path     string `json:"path"`
 	MaxSpeed string `json:"maxSpeed"`
+
+	// The embedding toggles are pointers so a field left out of the file
+	// (nil) is told apart from one set to false.
+	EmbedMetadata  *bool `json:"embedMetadata"`
+	EmbedThumbnail *bool `json:"embedThumbnail"`
+	EmbedChapters  *bool `json:"embedChapters"`
 }
 
 // parseAppConfig unmarshals raw JSON bytes into an AppConfig.
@@ -376,6 +397,16 @@ func (svc *PreferenceService) MergeConfig(cfg *AppConfig, base AppPreferences, v
 
 	if cfg.MaxSpeed != "" {
 		base.MaxSpeed = cfg.MaxSpeed
+	}
+
+	if cfg.EmbedMetadata != nil {
+		base.EmbedMetadata = *cfg.EmbedMetadata
+	}
+	if cfg.EmbedThumbnail != nil {
+		base.EmbedThumbnail = *cfg.EmbedThumbnail
+	}
+	if cfg.EmbedChapters != nil {
+		base.EmbedChapters = *cfg.EmbedChapters
 	}
 
 	return base, errs

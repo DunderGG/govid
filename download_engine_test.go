@@ -642,3 +642,43 @@ func TestUniquePath(t *testing.T) {
 		t.Errorf("uniquePath(no extension) = %q, want %q", got, want)
 	}
 }
+
+func TestBuildArgsEmbedding(t *testing.T) {
+	tests := []struct {
+		name        string
+		format      string
+		metadata    bool
+		thumbnail   bool
+		chapters    bool
+		wantFlags   []string
+		wantSkipped bool
+	}{
+		{"all on, MP3", formatMP3, true, true, true, []string{"--embed-metadata", "--embed-thumbnail", "--convert-thumbnails", "jpg", "--embed-chapters"}, false},
+		{"defaults, MP4", formatMP4, true, true, false, []string{"--embed-metadata", "--embed-thumbnail", "--convert-thumbnails", "jpg"}, false},
+		{"WebM cannot hold a cover", formatWebM, true, true, true, []string{"--embed-metadata", "--embed-chapters"}, true},
+		{"all off", formatMKV, false, false, false, nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			built := NewDownloadEngine("yt-dlp", "").BuildArgs(DownloadRequest{
+				URL: "u", SavePath: "s", Format: tt.format, Quality: qualityBest,
+				EmbedMetadata: tt.metadata, EmbedThumbnail: tt.thumbnail, EmbedChapters: tt.chapters,
+			})
+			var got []string
+			for i, arg := range built.Args {
+				if strings.HasPrefix(arg, "--embed-") || arg == "--convert-thumbnails" || (i > 0 && built.Args[i-1] == "--convert-thumbnails") {
+					got = append(got, arg)
+				}
+			}
+			if !slices.Equal(got, tt.wantFlags) {
+				t.Errorf("embed flags = %q, want %q", got, tt.wantFlags)
+			}
+			if built.ThumbnailSkipped != tt.wantSkipped {
+				t.Errorf("ThumbnailSkipped = %v, want %v", built.ThumbnailSkipped, tt.wantSkipped)
+			}
+			if last := built.Args[len(built.Args)-1]; last != "u" {
+				t.Errorf("last arg = %q, want the URL", last)
+			}
+		})
+	}
+}

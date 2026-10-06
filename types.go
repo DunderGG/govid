@@ -74,13 +74,16 @@ func NewDownloadControls() *DownloadControls {
 
 // PreferenceControls holds the widgets shown in the Preferences dialog.
 type PreferenceControls struct {
-	maxSpeed     *widget.Entry      // Download speed limit (e.g. 5M)
-	themeMode    *widget.RadioGroup // Theme mode selector (Dark / Light)
-	cookies      *widget.Entry      // Path to a Mozilla/Netscape-format cookies file
-	savePrefs    *widget.Check      // Option to persist preferences between sessions
-	logLimit     *widget.Select     // Max lines kept in the graphical log view
-	showDebug    *widget.Check      // Option to show yt-dlp [debug] lines in the log view
-	checkUpdates *widget.Check      // Option to check for newer yt-dlp and GoVid releases on startup
+	maxSpeed       *widget.Entry      // Download speed limit (e.g. 5M)
+	themeMode      *widget.RadioGroup // Theme mode selector (Dark / Light)
+	cookies        *widget.Entry      // Path to a Mozilla/Netscape-format cookies file
+	savePrefs      *widget.Check      // Option to persist preferences between sessions
+	logLimit       *widget.Select     // Max lines kept in the graphical log view
+	showDebug      *widget.Check      // Option to show yt-dlp [debug] lines in the log view
+	checkUpdates   *widget.Check      // Option to check for newer yt-dlp and GoVid releases on startup
+	embedMetadata  *widget.Check      // Option to write metadata tags into downloaded files
+	embedThumbnail *widget.Check      // Option to write the thumbnail into downloaded files as cover art
+	embedChapters  *widget.Check      // Option to write chapter markers into downloaded files
 }
 
 // NewPreferenceControls constructs the Preferences dialog's widgets.
@@ -95,13 +98,16 @@ func NewPreferenceControls() *PreferenceControls {
 	cookies.SetPlaceHolder("Path to cookies.txt (optional)")
 
 	return &PreferenceControls{
-		maxSpeed:     maxSpeed,
-		themeMode:    themeMode,
-		cookies:      cookies,
-		savePrefs:    widget.NewCheck("Save preferences between sessions", nil),
-		logLimit:     widget.NewSelect(logLimitOptions, nil),
-		showDebug:    widget.NewCheck("Show yt-dlp debug output", nil),
-		checkUpdates: widget.NewCheck("Check for updates on startup", nil),
+		maxSpeed:       maxSpeed,
+		themeMode:      themeMode,
+		cookies:        cookies,
+		savePrefs:      widget.NewCheck("Save preferences between sessions", nil),
+		logLimit:       widget.NewSelect(logLimitOptions, nil),
+		showDebug:      widget.NewCheck("Show yt-dlp debug output", nil),
+		checkUpdates:   widget.NewCheck("Check for updates on startup", nil),
+		embedMetadata:  widget.NewCheck("Metadata", nil),
+		embedThumbnail: widget.NewCheck("Thumbnail", nil),
+		embedChapters:  widget.NewCheck("Chapters", nil),
 	}
 }
 

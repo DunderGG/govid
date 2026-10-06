@@ -34,6 +34,9 @@ func snapshotPreferences(ui *UIWidgets, savePath string) AppPreferences {
 		LogLimit:          ui.prefs.logLimit.Selected,
 		ShowDebug:         ui.prefs.showDebug.Checked,
 		CheckUpdates:      ui.prefs.checkUpdates.Checked,
+		EmbedMetadata:     ui.prefs.embedMetadata.Checked,
+		EmbedThumbnail:    ui.prefs.embedThumbnail.Checked,
+		EmbedChapters:     ui.prefs.embedChapters.Checked,
 		BatchMode:         ui.download.batchMode.Checked,
 		SaveLog:           ui.download.saveLog.Checked,
 		Notify:            ui.download.notify.Checked,
@@ -107,7 +110,11 @@ func newSessionConfig(ui *UIWidgets, urls []string, savePath, trimStart, trimEnd
 		SavePrefs: ui.prefs.savePrefs.Checked,
 		LogLimit:  ui.prefs.logLimit.Selected,
 		ShowDebug: ui.prefs.showDebug.Checked,
-		ThemeMode: ui.prefs.themeMode.Selected,
+
+		EmbedMetadata:  ui.prefs.embedMetadata.Checked,
+		EmbedThumbnail: ui.prefs.embedThumbnail.Checked,
+		EmbedChapters:  ui.prefs.embedChapters.Checked,
+		ThemeMode:      ui.prefs.themeMode.Selected,
 
 		PP: newPostProcessSettings(ui),
 	}
@@ -149,6 +156,9 @@ func applyGeneralPrefs(ui *UIWidgets, p AppPreferences) {
 	ui.prefs.logLimit.SetSelected(p.LogLimit)
 	ui.prefs.showDebug.SetChecked(p.ShowDebug)
 	ui.prefs.checkUpdates.SetChecked(p.CheckUpdates)
+	ui.prefs.embedMetadata.SetChecked(p.EmbedMetadata)
+	ui.prefs.embedThumbnail.SetChecked(p.EmbedThumbnail)
+	ui.prefs.embedChapters.SetChecked(p.EmbedChapters)
 	ui.prefs.maxSpeed.SetText(p.MaxSpeed)
 	ui.prefs.themeMode.SetSelected(p.ThemeMode)
 	ui.prefs.cookies.SetText(p.CookiesPath)

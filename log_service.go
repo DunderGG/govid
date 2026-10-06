@@ -175,7 +175,11 @@ type SessionConfig struct {
 	SavePrefs bool
 	LogLimit  string
 	ShowDebug bool
-	ThemeMode string
+
+	EmbedMetadata  bool
+	EmbedThumbnail bool
+	EmbedChapters  bool
+	ThemeMode      string
 
 	PP PostProcessSettings
 }
@@ -206,6 +210,7 @@ func (svc *LogService) WriteSessionConfig(cfg SessionConfig, writeFn func(string
 	writeFn(fmt.Sprintf("[SYSTEM] Cookies file: %s", cookiesPath), colSystem)
 	writeFn(fmt.Sprintf("[SYSTEM] Runtime toggles: saveLog=%t, notify=%t, autoRetry=%t, postProcess=%t", cfg.SaveLog, cfg.Notify, cfg.AutoRetry, cfg.PostProcessEnabled), colSystem)
 	writeFn(fmt.Sprintf("[SYSTEM] Preferences: savePrefs=%t, logLimit=%s, showDebug=%t, theme=%s", cfg.SavePrefs, cfg.LogLimit, cfg.ShowDebug, cfg.ThemeMode), colSystem)
+	writeFn(fmt.Sprintf("[SYSTEM] Embed: metadata=%t, thumbnail=%t, chapters=%t", cfg.EmbedMetadata, cfg.EmbedThumbnail, cfg.EmbedChapters), colSystem)
 
 	writeFn(fmt.Sprintf("[SYSTEM] URL field (raw): %q", rawURLField), colSystem)
 	for i, url := range cfg.URLs {

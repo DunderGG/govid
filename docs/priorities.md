@@ -280,9 +280,21 @@ Phase 2 (updating in place) remains open in the roadmap. Tests: `TestIsNewerRele
 
 ---
 
-## 10. Metadata, thumbnail, and chapter embedding
+## 10. ✅ Metadata, thumbnail, and chapter embedding
 
 **Roadmap:** Medium Priority → Metadata & Thumbnail Embedding.
+
+**Status: Done.**
+- **Options.** Preferences has a new **Embed in File** row: Metadata and Thumbnail on by default, Chapters off. The three toggles are saved in `AppPreferences`, can be set in `govid.json` (`embedMetadata`/`embedThumbnail`/`embedChapters`, as `*bool` so a missing field changes nothing), and appear in the `SessionConfig` log.
+- **Download.** `embedArgs` adds `--embed-metadata`, `--embed-thumbnail --convert-thumbnails jpg`, and `--embed-chapters`. For WebM the thumbnail is skipped and `Run` logs why.
+- **Post-processing.** `probeStreamLayout` parses `ffmpeg -i`'s stream summary. The args then map streams explicitly:
+  - the main video, filtered with `-filter:v:0` and encoded with `-c:v:0`;
+  - each attached picture, stream-copied with `-disposition attached_pic`;
+  - all audio, subtitle, and attachment streams, plus `-map_metadata 0 -map_chapters 0`.
+- **Matroska.** ffmpeg cannot write a mapped cover back as an attachment, even with `-map 0 -c copy`; it becomes a stray video track. So for MKV output the covers are extracted to temporary images and re-added with `-attach` (keeping their file name and MIME type), then deleted after the run. If the layout cannot be read, the old default stream selection is used.
+- **Verified** with the bundled ffmpeg through `ApplyFilters`: MP4 (deband), MKV (deband), and MP3 (loudnorm) samples, each with cover art, chapters, tags, and subtitles where the container allows. All kept every one of them; before this change the MP4 lost its cover and subtitle.
+
+The "MP3 shows title, artist, date, and cover in a music player" check against a real download is still to be done by hand. Tests: `TestBuildArgsEmbedding`, `TestParseStreamLayout`, `TestBuildFFmpegArgsKeepsCoverChaptersAndSubtitles`, `TestBuildFFmpegArgsAudioOnlyFilteringCopiesAllVideo`, `TestBuildFFmpegArgsReattachesMatroskaCovers`, `TestEncodeFirstVideoOnly`, `TestMergeConfigEmbedToggles`, and `TestEmbedPreferenceDefaults`.
 
 **Problem.** Downloaded files carry no tags, cover art, or chapters. This is the most visible quality gap for audio users: MP3/M4A files show up untitled and without artwork in music players.
 

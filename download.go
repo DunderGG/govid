@@ -374,6 +374,10 @@ func (app *DownloaderApp) newDownloadRequest(rawURL, savePath, trimStart, trimEn
 		TrimEnd:     trimEnd,
 		MaxSpeed:    limit,
 		CookiesPath: strings.TrimSpace(app.ui.prefs.cookies.Text),
+
+		EmbedMetadata:  app.ui.prefs.embedMetadata.Checked,
+		EmbedThumbnail: app.ui.prefs.embedThumbnail.Checked,
+		EmbedChapters:  app.ui.prefs.embedChapters.Checked,
 	}
 }
 
