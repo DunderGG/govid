@@ -34,6 +34,10 @@ group Startup
         alt installed yt-dlp is older
             App -> UIM : showNotice("yt-dlp X is out of date", "Update now" → runUpdateInUI)
         end
+        App -> App  : checkGoVidUpdate()\n  — skipped for a "dev" build\n  — main.version vs releaseSvc.Latest(DunderGG/govid)
+        alt newer GoVid release
+            App -> UIM : showNotice("GoVid X is available", "What's new" → showGoVidRelease)
+        end
     end
     App -> App  : go startGPUDetection()\n  — gpuSvc.Detect(ctx) runs in the background,\n    populating the GPUBackend → BackendCapability cache once
     UI  -> U    : ShowAndRun() — window visible

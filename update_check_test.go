@@ -86,6 +86,130 @@ func TestCheckYtDlpUpdateQuietWhenCurrent(t *testing.T) {
 	}
 }
 
+// useVersion sets main.version for the test, as -X main.version would.
+func useVersion(t *testing.T, v string) {
+	t.Helper()
+	old := version
+	version = v
+	t.Cleanup(func() { version = old })
+}
+
+// newGoVidUpdateApp returns an app whose release service asks a fake GitHub
+// that says latestTag is the newest GoVid release.
+func newGoVidUpdateApp(t *testing.T, latestTag string) (*DownloaderApp, *fakeGitHub, func() []string) {
+	t.Helper()
+	app, shown := newUpdateCheckApp(t, "2026.10.01")
+	gh := newFakeGitHubRepos(t, map[string]fakeGitHubRelease{
+		govidOwner + "/" + govidRepo: {http.StatusOK, `{"tag_name": "` + latestTag + `", "html_url": "https://github.com/DunderGG/govid/releases/tag/` + latestTag + `", "body": "- New things"}`},
+	})
+	now := time.Unix(1_800_000_000, 0)
+	app.releaseSvc = newTestReleaseService(gh, &now)
+	return app, gh, shown
+}
+
+func TestIsNewerRelease(t *testing.T) {
+	tests := []struct {
+		current, latest string
+		want            bool
+	}{
+		{"0.0.1", "2026.09.17", true},
+		{"2026.04.11", "2026.09.17", true},
+		{"2026.09.17", "2026.09.17", false},
+		{"2026.10.06", "2026.09.17", false},
+		{"1.1.0", "v1.2.0", true},
+		{devVersion, "2026.09.17", false},
+	}
+	for _, tt := range tests {
+		if got := isNewerRelease(tt.current, tt.latest); got != tt.want {
+			t.Errorf("isNewerRelease(%q, %q) = %v, want %v", tt.current, tt.latest, got, tt.want)
+		}
+	}
+}
+
+func TestCheckGoVidUpdateShowsNotice(t *testing.T) {
+	useVersion(t, "0.0.1")
+	app, _, shown := newGoVidUpdateApp(t, "2026.10.06")
+
+	app.checkGoVidUpdate(context.Background())
+
+	if ids := noticeIDs(app); !slices.Equal(ids, []string{govidNoticeID}) {
+		t.Fatalf("notices = %q, want the GoVid update notice", ids)
+	}
+	if n := app.uiManager.notices[0]; !strings.Contains(n.text, "2026.10.06") || n.actionLabel != "What's new" {
+		t.Errorf("notice = %+v, want the new version and a What's new button", n)
+	}
+	if want := "[SYSTEM] GoVid 2026.10.06 is available (this is 0.0.1)."; !slices.Contains(shown(), want) {
+		t.Errorf("log = %q, want %q", shown(), want)
+	}
+
+	// "What's new" opens the release notes.
+	app.uiManager.notices[0].action()
+	overlay := app.window.Canvas().Overlays().Top()
+	if overlay == nil {
+		t.Fatal("no release dialog shown")
+	}
+	findButton(t, overlay, "Open download page")
+}
+
+func TestCheckGoVidUpdateNeverPromptsDevBuild(t *testing.T) {
+	useVersion(t, devVersion)
+	app, gh, _ := newGoVidUpdateApp(t, "2026.10.06")
+
+	app.checkGoVidUpdate(context.Background())
+
+	if ids := noticeIDs(app); len(ids) != 0 {
+		t.Errorf("notices = %q, want none for a dev build", ids)
+	}
+	if n := gh.requests.Load(); n != 0 {
+		t.Errorf("GitHub asked %d times, want 0 for a dev build", n)
+	}
+}
+
+func TestCheckGoVidUpdateQuietWhenCurrent(t *testing.T) {
+	useVersion(t, "2026.10.06")
+	app, _, _ := newGoVidUpdateApp(t, "2026.10.06")
+
+	app.checkGoVidUpdate(context.Background())
+
+	if ids := noticeIDs(app); len(ids) != 0 {
+		t.Errorf("notices = %q, want none when up to date", ids)
+	}
+}
+
+func TestCheckGoVidReleaseIgnoresCache(t *testing.T) {
+	useVersion(t, "0.0.1")
+	app, gh, _ := newGoVidUpdateApp(t, "2026.10.06")
+
+	for range 2 {
+		release, newer, err := app.checkGoVidRelease()
+		if err != nil || !newer || release.TagName != "2026.10.06" {
+			t.Fatalf("checkGoVidRelease() = %+v, %v, %v", release, newer, err)
+		}
+	}
+	if n := gh.requests.Load(); n != 2 {
+		t.Errorf("GitHub asked %d times, want 2 (the menu check always asks)", n)
+	}
+}
+
+func TestToolsMenuHasGoVidUpdateCheck(t *testing.T) {
+	_ = test.NewApp()
+	window := test.NewWindow(nil)
+	app := newDownloaderApp(window)
+	app.uiManager.createMainMenu()
+
+	var labels []string
+	for _, menu := range window.MainMenu().Items {
+		if menu.Label == "Tools" {
+			for _, item := range menu.Items {
+				labels = append(labels, item.Label)
+			}
+		}
+	}
+	if !slices.Contains(labels, "Check for GoVid updates") {
+		t.Errorf("Tools menu = %q, want Check for GoVid updates", labels)
+	}
+}
+
 func TestYtDlpVersions(t *testing.T) {
 	app, _ := newUpdateCheckApp(t, "2026.10.01")
 

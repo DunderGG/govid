@@ -43,10 +43,18 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
+:: The version is the git tag on the current commit (without a leading "v"),
+:: so a build of a release tag reports that release and update checks can
+:: compare it. Any other commit builds as "dev", which update checks skip.
+set "VERSION=dev"
+for /f "delims=" %%t in ('git describe --tags --exact-match 2^>nul') do set "VERSION=%%t"
+if /i "%VERSION:~0,1%"=="v" set "VERSION=%VERSION:~1%"
+
 :: Build the application
 :: -H windowsgui: Hide the terminal window
-echo [GoVid] Compiling GoVid.exe...
-go build -ldflags="-H windowsgui" -o "GoVid.exe" .
+:: -X main.version: Embed the version shown in About and used by update checks
+echo [GoVid] Compiling GoVid.exe (version %VERSION%)...
+go build -ldflags="-H windowsgui -X main.version=%VERSION%" -o "GoVid.exe" .
 
 if %ERRORLEVEL% equ 0 (
     echo.

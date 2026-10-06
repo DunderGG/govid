@@ -48,7 +48,8 @@ govid/
 │                           (About, Help, History, Prefs, PP), and preference/dependency UI wrapper methods
 ├── gpu_capability.go       GPUCapabilityService — GPU backend capability detection and cache (see docs/gpu-acceleration.md)
 ├── release_service.go      ReleaseService — latest GitHub release lookups with a daily cache; version comparison
-├── update_check.go         Startup yt-dlp update check, "Update now" notice, installed/latest yt-dlp versions
+├── update_check.go         Startup yt-dlp and GoVid update checks, their notices, installed/latest yt-dlp versions
+├── release_dialog.go       Tools → "Check for GoVid updates" and the release-notes dialog
 │
 ├── ── Orchestration ───────────────────────────────────────────────
 ├── download.go             DownloaderApp.startDownload / runYtDlp — UI orchestration for a download session
@@ -288,6 +289,8 @@ Looks up the latest release of a GitHub repository through `GET /repos/<owner>/<
 
 `update_check.go` holds the `DownloaderApp` side. `startUpdateChecks(enabled)` runs `checkYtDlpUpdate` in the background after `checkDependencies` at startup, when the "Check for updates on startup" preference (`prefCheckUpdates`, on by default) is set. When the installed yt-dlp (`DependencyService.Version`) is older than the latest release, it logs one line and calls `UIManager.showNotice` with an "Update now" button wired to `runUpdateInUI`. A check that cannot complete is written to the log file only. `ytDlpVersions()` returns the installed and latest versions (or "unknown") for the Update yt-dlp confirmation dialog and the About window, which fetch them off the UI thread.
 
+**GoVid's own updates:** `checkGoVidUpdate` runs after the yt-dlp check, against `DunderGG/govid`, with the same daily cache and preference. `isNewerRelease(version, tag)` compares the build's `main.version` with the release tag using `compareVersions`, not semver, because GoVid's tags are dates such as `2026.09.17`. A `dev` build never prompts and does not ask GitHub. A newer release logs one line and shows a notice whose "What's new" button opens `UIManager.showGoVidRelease` (`release_dialog.go`): the release notes rendered from Markdown, plus an "Open download page" button that calls `fyne.CurrentApp().OpenURL(html_url)`. Tools → "Check for GoVid updates" (`checkForGoVidUpdates` → `DownloaderApp.checkGoVidRelease`) always asks GitHub (`maxAge` 0) and reports a newer release, "up to date", a development build, or a rate limit. Updating in place (download, verify, swap the running `.exe`) is not implemented. `main.version` comes from the git tag on the built commit: `build.bat` and `build.sh` pass `git describe --tags --exact-match` (without a leading `v`) to `-X main.version`, and fall back to `dev`.
+
 **Notices:** `UIManager.showNotice(notice{id, text, actionLabel, action})` shows a non-blocking bar above the input card. A notice with the same `id` replaces the old one; the action button and the dismiss button both remove it (`dismissNotice`). Notices live in `UIManager.notices` and are re-rendered by `createUI`, so they survive a theme change. A successful yt-dlp update dismisses the yt-dlp notice.
 
 ---
@@ -457,7 +460,7 @@ and finally calls `quit` inside `fyne.Do`.
 |---|---|---|
 | `yt-dlp` | `DownloadEngine.Execute()` | Download video/audio from URLs |
 | `ffmpeg` | `PPEngine.runJob()`, `PPEngine.detectCropFilter()` | Post-processing encode / cropdetect |
-| GitHub REST API | `ReleaseService.Latest()` | Latest yt-dlp release for the startup update check (at most once a day) |
+| GitHub REST API | `ReleaseService.Latest()` | Latest yt-dlp and GoVid releases for the update checks (at most once a day at startup; always for the Tools menu check) |
 | `ffprobe` | `PPEngine` probe methods (`pp_engine.go`) | Frame count, duration, and colour-tag queries (optional; `probeColorInfo` falls back to `ffmpeg -i`) |
 
 Tools are resolved with `depSvc.Resolve(toolName)`: prefers `./bin/<tool>[.exe]` beside the executable, falls back to `$PATH`. If neither is found, `depSvc.Check()` (called via `uiManager.checkDependencies()` at startup) prints a warning to the log.

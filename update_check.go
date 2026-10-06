@@ -1,11 +1,17 @@
-// update_check.go — Checks for a newer yt-dlp than the one installed.
+// update_check.go — Checks for newer yt-dlp and GoVid releases.
 //
 // Responsibilities:
-//   - startUpdateChecks: the background check run at startup when "Check
+//   - startUpdateChecks: the background checks run at startup when "Check
 //     for updates on startup" is enabled. An outdated yt-dlp is logged and
-//     shown as a notice whose "Update now" button runs the yt-dlp updater.
+//     shown as a notice whose "Update now" button runs the yt-dlp updater; a
+//     newer GoVid release is shown as a notice that opens its release notes.
 //   - ytDlpVersions: the installed and latest yt-dlp versions, for the
 //     Update yt-dlp dialog and the About window.
+//   - checkGoVidRelease: the on-demand Tools → "Check for GoVid updates".
+//
+// GoVid's own version is the main.version string injected at build time
+// from the git tag (see build.bat / build.sh); a "dev" build is never
+// compared with releases.
 package main
 
 import (
@@ -30,13 +36,74 @@ const unknownVersion = "unknown"
 // usually means the site changed (see extractorErrPatterns).
 const ytDlpUpdateHint = "[SYSTEM] Hint: errors like this usually mean the site has changed. Updating yt-dlp (Tools → Update yt-dlp) often fixes them."
 
+// The GitHub repository GoVid is released from.
+const (
+	govidOwner = "DunderGG"
+	govidRepo  = "govid"
+)
+
+// govidNoticeID identifies the "a newer GoVid is available" notice.
+const govidNoticeID = "govid-update"
+
+// devVersion is main.version in a build made without a release tag.
+const devVersion = "dev"
+
 // startUpdateChecks runs the startup update checks in the background, unless
 // enabled is false.
 func (app *DownloaderApp) startUpdateChecks(enabled bool) {
 	if !enabled {
 		return
 	}
-	go app.checkYtDlpUpdate(context.Background())
+	go func() {
+		ctx := context.Background()
+		app.checkYtDlpUpdate(ctx)
+		app.checkGoVidUpdate(ctx)
+	}()
+}
+
+// isNewerRelease reports whether latest is a newer GoVid release than the
+// running build, current. A development build is never out of date.
+func isNewerRelease(current, latest string) bool {
+	return current != devVersion && isOlderVersion(current, latest)
+}
+
+// checkGoVidUpdate compares this build with the latest GoVid release (asking
+// GitHub at most once a day). When a newer release exists, it logs one line
+// and shows a notice that opens the release notes. Development builds are
+// not checked.
+func (app *DownloaderApp) checkGoVidUpdate(ctx context.Context) {
+	if version == devVersion {
+		app.logSvc.WriteToFile("[SYSTEM] GoVid update check skipped: this is a development build.")
+		return
+	}
+	release, err := app.releaseSvc.Latest(ctx, govidOwner, govidRepo, releaseCheckInterval)
+	if err != nil {
+		app.logSvc.WriteToFile(fmt.Sprintf("[SYSTEM] GoVid update check skipped: %v", err))
+		return
+	}
+	if !isNewerRelease(version, release.TagName) {
+		app.logSvc.WriteToFile(fmt.Sprintf("[SYSTEM] GoVid %s is up to date.", version))
+		return
+	}
+
+	app.appendOutput(fmt.Sprintf("[SYSTEM] GoVid %s is available (this is %s).", release.TagName, version), colInfo)
+	app.uiManager.showNotice(notice{
+		id:          govidNoticeID,
+		text:        fmt.Sprintf("GoVid %s is available (you have %s).", release.TagName, version),
+		actionLabel: "What's new",
+		action:      func() { app.uiManager.showGoVidRelease(release) },
+	})
+}
+
+// checkGoVidRelease asks GitHub for the latest GoVid release now, ignoring
+// the daily cache, for Tools → "Check for GoVid updates". newer reports
+// whether it is newer than this build. Call it off the UI thread.
+func (app *DownloaderApp) checkGoVidRelease() (release Release, newer bool, err error) {
+	release, err = app.releaseSvc.Latest(context.Background(), govidOwner, govidRepo, 0)
+	if err != nil {
+		return Release{}, false, err
+	}
+	return release, isNewerRelease(version, release.TagName), nil
 }
 
 // checkYtDlpUpdate compares the installed yt-dlp with the latest release

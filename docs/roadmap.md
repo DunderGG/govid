@@ -31,10 +31,11 @@ This document outlines planned features, improvements, and known limitations for
 ### Self-Updating GoVid
 > Let users update the app itself, not just yt-dlp.
 
-- [ ] Add a "Check for GoVid updates" option in the Tools menu.
-- [ ] Query the GitHub Releases API for the latest version tag.
-- [ ] Compare against the current embedded version string and notify the user if out of date. *(Depends on: Proper Version String)*
-- [ ] Provide a direct download link or auto-replace the binary (with backup).
+- [x] Add a "Check for GoVid updates" option in the Tools menu.
+- [x] Query the GitHub Releases API for the latest version tag. (`ReleaseService` in `release_service.go`, shared with the yt-dlp check; once a day at startup, always from the menu.)
+- [x] Compare against the current embedded version string and notify the user if out of date. *(Depends on: Proper Version String)* (A notice at startup, or the menu check, opens the release notes. `dev` builds are never prompted.)
+- [x] Provide a direct download link or auto-replace the binary (with backup). (The release dialog's "Open download page" button opens the release on GitHub.)
+- [ ] Update in place: download the release ZIP, check it against a published SHA-256, swap the running `.exe` (rename it to `.old`, move the new one in, relaunch, and delete `.old` on the next start).
 
 ---
 
@@ -182,7 +183,7 @@ This document outlines planned features, improvements, and known limitations for
 
 - [x] Inject version at build time via `go build -ldflags "-X main.version=1.0.0"`.
 - [x] Display the version in the Help → About dialog.
-- [ ] Use the version string when querying the GitHub Releases API.
+- [x] Use the version string when querying the GitHub Releases API. (Sent as the `GoVid/<version>` User-Agent and compared with the latest release tag. `build.bat`/`build.sh` now take the version from the git tag on the built commit, falling back to `dev`.)
 
 ### Error Recovery & Retry Logic
 > Handle transient network failures more gracefully.

@@ -76,6 +76,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onCheckDependencies = depSvc.Check
 	dlApp.uiManager.onRunUpdate = depSvc.RunUpdate
 	dlApp.uiManager.onYtDlpVersions = dlApp.ytDlpVersions
+	dlApp.uiManager.onCheckGoVidRelease = dlApp.checkGoVidRelease
 	dlApp.uiManager.onLog = dlApp.appendOutput
 	dlApp.uiManager.onStatus = dlApp.updateStatus
 	dlApp.uiManager.onSetStatusIndicator = dlApp.setStatusIndicator

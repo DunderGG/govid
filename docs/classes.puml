@@ -169,6 +169,7 @@ package "UI Layer" #F0F8F0 {
         -onLogBufferLimit : func() int
         -onSetShowDebug : func(bool)
         -onYtDlpVersions : func() (string, string)
+        -onCheckGoVidRelease : func() (Release, bool, error)
         -notices : []notice
         -noticeBox : *fyne.Container
         -onLog : func(string, color.Color)
@@ -186,6 +187,8 @@ package "UI Layer" #F0F8F0 {
         +checkDependencies()
         +confirmYtDlpUpdate()
         +runUpdateInUI()
+        +checkForGoVidUpdates()
+        +showGoVidRelease(release Release)
         +askPlaylist(ctx, prompt) : playlistDecision
         +askDiskSpace(ctx, prompt) : diskSpaceDecision
         +showNotice(n notice)

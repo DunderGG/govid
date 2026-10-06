@@ -85,6 +85,7 @@ type UIManager struct {
 	onCheckDependencies  func(onWarning func(msg string))                                                                            // DependencyService.Check
 	onRunUpdate          func(cb UpdateCallbacks)                                                                                    // DependencyService.RunUpdate
 	onYtDlpVersions      func() (installed, latest string)                                                                           // DownloaderApp.ytDlpVersions
+	onCheckGoVidRelease  func() (release Release, newer bool, err error)                                                             // DownloaderApp.checkGoVidRelease
 	onLoadPreferences    func() AppPreferences                                                                                       // PreferenceService.Load
 	onSavePreferences    func(AppPreferences)                                                                                        // PreferenceService.Save
 	onResetPreferences   func()                                                                                                      // PreferenceService.Reset
@@ -156,9 +157,15 @@ func (manager *UIManager) createMainMenu() {
 
 	mainMenu := fyne.NewMainMenu(
 		fyne.NewMenu("File", historyMenu, fyne.NewMenuItemSeparator(), clearLogMenu),
-		fyne.NewMenu("Tools", updateMenu, prefsMenu, fyne.NewMenuItem("Post-Processing", func() {
-			manager.showPostProcessing()
-		})),
+		fyne.NewMenu("Tools",
+			updateMenu,
+			fyne.NewMenuItem("Check for GoVid updates", manager.checkForGoVidUpdates),
+			fyne.NewMenuItemSeparator(),
+			prefsMenu,
+			fyne.NewMenuItem("Post-Processing", func() {
+				manager.showPostProcessing()
+			}),
+		),
 		fyne.NewMenu("Help", configHelpMenu, fyne.NewMenuItemSeparator(), aboutMenu),
 	)
 	manager.mainWindow.SetMainMenu(mainMenu)
@@ -364,7 +371,7 @@ func (manager *UIManager) showConfigHelp() {
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
 		{"Log Buffer Limit", "Found in **Tools → Preferences**. The number of lines kept in the Terminal Output panel; older lines are removed from the top. The panel never shows more than the latest **5000** lines, so choosing **Unlimited** only affects the lines kept for the log file. The log file itself is never trimmed. If you scroll up while a download is running, the panel stays where you left it; scroll back to the bottom to follow new lines again."},
 		{"Debug Output", "Found in **Tools → Preferences**. GoVid runs yt-dlp in verbose mode so the log file has everything needed for a bug report, but the **[debug]** lines are hidden from the Terminal Output panel unless this is checked. The panel also shows only the latest download progress line for each file; the log file keeps them all."},
-		{"Updates", "Found in **Tools → Preferences**. When **Check for updates on startup** is checked, GoVid asks GitHub (at most once a day) whether a newer yt-dlp is available and, if so, shows a notice with an **Update now** button. Sites change often, and an outdated yt-dlp is the most common reason downloads stop working. **Tools → Update yt-dlp** shows the installed and latest versions and updates on demand.\n\nIf the update fails because GoVid's folder cannot be written to (for example under `Program Files`), run GoVid as administrator once, or move it to a folder you own."},
+		{"Updates", "Found in **Tools → Preferences**. When **Check for updates on startup** is checked, GoVid asks GitHub (at most once a day) whether a newer yt-dlp is available and, if so, shows a notice with an **Update now** button. Sites change often, and an outdated yt-dlp is the most common reason downloads stop working. **Tools → Update yt-dlp** shows the installed and latest versions and updates on demand.\n\nGoVid also tells you when a newer GoVid release is available; **What's new** shows its release notes and a link to the download page. **Tools → Check for GoVid updates** checks right away.\n\nIf the update fails because GoVid's folder cannot be written to (for example under `Program Files`), run GoVid as administrator once, or move it to a folder you own."},
 		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
 		{"Cookies File", "Found in **Tools → Preferences**. Path to a `cookies.txt` file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file."},

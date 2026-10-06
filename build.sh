@@ -50,12 +50,19 @@ if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     fi
 fi
 
-# 2. Build the application
-echo "[GoVid] Compiling GoVid..."
+# 2. Work out the version: the git tag on the current commit (without a
+#    leading "v"), so a build of a release tag reports that release and update
+#    checks can compare it. Any other commit builds as "dev", which update
+#    checks skip.
+VERSION=$(git describe --tags --exact-match 2>/dev/null || echo dev)
+VERSION=${VERSION#v}
+
+# 3. Build the application
+echo "[GoVid] Compiling GoVid (version $VERSION)..."
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-    go build -ldflags="-H windowsgui" -o "GoVid.exe" .
+    go build -ldflags="-H windowsgui -X main.version=$VERSION" -o "GoVid.exe" .
     echo -e "\nBuild Successful! You can now run .\\GoVid.exe."
 else
-    go build -o "GoVid" .
+    go build -ldflags="-X main.version=$VERSION" -o "GoVid" .
     echo -e "\nBuild Successful! You can now run ./GoVid."
 fi

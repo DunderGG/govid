@@ -247,9 +247,18 @@ Tests (`disk_space_test.go`) cover enough, not enough, and unknown size with a f
 
 ---
 
-## 9. GoVid self-update check
+## 9. ✅ GoVid self-update check
 
 **Roadmap:** High Priority → Self-Updating GoVid. Also Technical Improvements → Proper Version String ("Use the version string when querying the GitHub Releases API").
+
+**Status: Done (phase 1).**
+- `checkGoVidUpdate` ([update_check.go](../update_check.go)) runs after the yt-dlp check at startup and shares #6's daily cache and preference. A newer release shows a notice whose **What's new** button opens `showGoVidRelease` ([release_dialog.go](../release_dialog.go)): the release notes rendered from Markdown and an **Open download page** button.
+- Tools → **Check for GoVid updates** always asks GitHub, and reports a newer release, "up to date", a development build, or a rate limit.
+- `dev` builds never prompt and never ask GitHub.
+- One deviation from the plan: GoVid's release tags are dates (`2026.04.11`, `2026.09.17`), which are not valid semver (leading zeros), so versions are compared with #6's numeric `compareVersions` instead of `golang.org/x/mod/semver`. This also avoids a new dependency.
+- Step 5: `build.bat` and `build.sh` now set `-X main.version` from `git describe --tags --exact-match`, falling back to `dev`. `package.ps1` reads the same tag and refuses to package an untagged commit. That file is untracked (`*.ps1` is gitignored), so the change exists only in the local copy.
+
+Phase 2 (updating in place) remains open in the roadmap. Tests: `TestIsNewerRelease`, `TestCheckGoVidUpdateShowsNotice` (version `0.0.1` → notice → release dialog), `TestCheckGoVidUpdateNeverPromptsDevBuild`, `TestCheckGoVidUpdateQuietWhenCurrent`, `TestCheckGoVidReleaseIgnoresCache`, and `TestToolsMenuHasGoVidUpdateCheck`.
 
 **Problem.** Users have no way to find out that a newer GoVid release exists.
 
