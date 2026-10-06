@@ -66,7 +66,7 @@ end
 ' ─────────────────────────────────────────────────────────────
 ' 3. PROGRESS SMOOTHER GOROUTINE
 ' ─────────────────────────────────────────────────────────────
-App -> App : go progressSmoother(queueCtx)\n  — time.NewTicker(20 ms)\n  — step = (targetPct - current) × 0.05\n  — minimum step 0.001; stops on queueCtx.Done()
+App -> App : go progressSmoother(queueCtx)\n  — time.NewTicker(33 ms)\n  — step = (targetPct - current) × 0.05\n  — minimum step 0.001; frames changing the bar by < 0.002 skipped\n  — stops on queueCtx.Done()
 
 ' ─────────────────────────────────────────────────────────────
 ' 4. BATCH DOWNLOAD LOOP (goroutine)
@@ -110,13 +110,15 @@ group loop [for each URL in queue]
                     WO  -> WO  : engine.parseProgress(line, cb)\n  — extract %, size
                     WO  -> WO  : detect [download] Destination:\n  — collect source extension
                     WO  -> App : cb.OnProgress(pct, size)\n  — App applies to stats.targetPct
+                    WO  -> WO  : detect [Merger]/[VideoConvertor] → wasConverted
+                    WO  -> App : cb.OnPhase("Merging"/"Converting")\n  — App snaps the bar to 95%, status "Merging…"
                     WO  -> App : cb.OnLog(line, foreground colour)
                 end
                 WO  -> WO : scanner.Err() check → log if I/O error
 
                 WO  -> YT : scan stderr line by line
                 loop stderr lines
-                    WO  -> WO  : detect [Merger]/[VideoConvertor] → wasConverted
+                    WO  -> WO  : same [Merger]/[VideoConvertor]/[ExtractAudio] checks as stdout
                     WO  -> WO  : check transientErrPatterns\n  — 429, timeout, connection/reset errors → hadTransientErr
                     WO  -> App : cb.OnLog(line, red/amber/grey/default)
                 end

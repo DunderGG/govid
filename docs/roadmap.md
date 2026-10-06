@@ -130,7 +130,7 @@ This document outlines planned features, improvements, and known limitations for
 - [x] Display a download summary on completion (duration, average speed, file size).
 - [x] Add an "Open Folder" button to open the save destination in Explorer.
 - [x] Add a "Save output to log file" checkbox to persist session logs to `.txt`.
-- [ ] Hold the progress bar at ~95% during the `[Merger]` phase instead of resetting to 0%.
+- [x] Hold the progress bar at ~95% during the `[Merger]` phase instead of resetting to 0%. (`ProcessCallbacks.OnPhase`; the status shows "Merging…" or "Converting…".)
 
 ### Dark / Light Mode Toggle
 > Give users manual control over the application theme.
@@ -323,9 +323,9 @@ This document outlines planned features, improvements, and known limitations for
 ### Event Queue Backpressure
 > Prevent the UI thread from being overwhelmed by too many frequent `fyne.Do` calls.
 
-- [ ] Add throttling/coalescing for status text updates during FFmpeg progress (e.g. max 5-10 updates/sec).
-- [ ] Add throttling/coalescing for progress-bar smoothing updates so idle frames are skipped when value changes are tiny.
-- [ ] Avoid enqueueing repeated identical status/progress values to the UI thread.
+- [x] Add throttling/coalescing for status text updates during FFmpeg progress (e.g. max 5-10 updates/sec). (`latestValueThrottle` in `throttle.go`; `updateStatus` applies the newest status at most every 150 ms.)
+- [x] Add throttling/coalescing for progress-bar smoothing updates so idle frames are skipped when value changes are tiny. (The smoother ticks at ~30 fps and skips changes below 0.002.)
+- [x] Avoid enqueueing repeated identical status/progress values to the UI thread.
 
 ### Log Rendering Efficiency
 > Reduce UI work when many log lines are produced.

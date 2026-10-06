@@ -64,9 +64,11 @@ Source references point to the matching section of [roadmap.md](roadmap.md). Tic
 
 ---
 
-## 3. Throttle status and progress updates
+## 3. ✅ Throttle status and progress updates
 
 **Roadmap:** UI Performance & Stability → Event Queue Backpressure. Also UI & UX → Download Controls ("Hold the progress bar at ~95% during the `[Merger]` phase").
+
+**Status: Done.** `latestValueThrottle` ([throttle.go](../throttle.go)) applies a value at once after a quiet period and otherwise coalesces values to the newest one at most every 150 ms, skipping repeats. `updateStatus` goes through it, and the throttle is flushed when a download result is reported and when a session ends. The smoother now ticks every 33 ms and only sends changes of at least 0.002. `ProcessCallbacks.OnPhase` reports `[Merger]` ("Merging") and `[VideoConvertor]`/`[ExtractAudio]` ("Converting"); `showDownloadPhase` snaps the bar to 95% and sets the status. While doing this we found that real yt-dlp prints `[Merger]` to **stdout**, but `wasConverted` was only detected on stderr; both streams are now checked. Tests: `throttle_test.go`, `TestDetectPhase`, `TestWatchOutputReportsPhasesFromEitherStream`, and `TestShowDownloadPhaseHoldsProgressBar`.
 
 **Problem.** Status text and progress updates are sent to the UI thread with no rate limit and no de-duplication.
 

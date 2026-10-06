@@ -45,6 +45,8 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	}
 
 	// Load saved preferences and apply them to all widgets.
+	dlApp.statusThrottle = newLatestValueThrottle(statusThrottleInterval, dlApp.showStatus)
+
 	dlApp.prefSvc = NewPreferenceService(fyne.CurrentApp().Preferences())
 	prefs := dlApp.prefSvc.Load()
 	applyPreferencesToWidgets(dlApp.ui, prefs)

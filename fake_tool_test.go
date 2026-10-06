@@ -114,7 +114,8 @@ func fakeYtDlpDownload(args []string) int {
 	fmt.Println("[download]  50.0% of   10.00MiB at    5.00MiB/s ETA 00:01")
 	fmt.Println("[download] 100.0% of   10.00MiB at    5.00MiB/s ETA 00:00")
 	fmt.Fprintln(os.Stderr, "[debug] Command-line config: fake")
-	fmt.Fprintf(os.Stderr, "[Merger] Merging formats into %q\n", path)
+	// Real yt-dlp prints post-processor messages such as [Merger] to stdout.
+	fmt.Printf("[Merger] Merging formats into %q\n", path)
 	return 0
 }
 

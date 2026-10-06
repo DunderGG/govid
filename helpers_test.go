@@ -209,3 +209,20 @@ func TestApplyPreferencesKeepsWidgetsForEmptyValues(t *testing.T) {
 		t.Errorf("path.Text = %q, want %q", got, "/existing/path")
 	}
 }
+
+func TestShowDownloadPhaseHoldsProgressBar(t *testing.T) {
+	_ = test.NewApp()
+	app := newDownloaderApp(test.NewWindow(nil))
+	app.uiManager.createUI()
+	app.setProgress(1)
+
+	app.showDownloadPhase(phaseMerging)
+	app.statusThrottle.Flush()
+
+	if pct, snap := app.stats.takeTarget(); pct != phaseProgress || !snap {
+		t.Errorf("progress target = %v (snap %v), want a snap to %v", pct, snap, phaseProgress)
+	}
+	if got := app.ui.download.status.Text; got != "Status: Merging…" {
+		t.Errorf("status = %q, want Status: Merging…", got)
+	}
+}

@@ -213,6 +213,7 @@ type engineRecorder struct {
 	logs     []string
 	statuses []string
 	progress []float64
+	phases   []string
 	onLog    func(line string) // optional hook run for each log line
 }
 
@@ -236,6 +237,11 @@ func (r *engineRecorder) callbacks() ProcessCallbacks {
 			r.mu.Lock()
 			defer r.mu.Unlock()
 			r.progress = append(r.progress, pct)
+		},
+		OnPhase: func(phase string) {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			r.phases = append(r.phases, phase)
 		},
 	}
 }
@@ -277,6 +283,9 @@ func TestExecuteSuccess(t *testing.T) {
 	}
 	if !scan.wasConverted || !slices.Equal(scan.sourceExts, []string{"webm"}) {
 		t.Errorf("scan = %+v, want merged webm source", scan)
+	}
+	if !slices.Equal(rec.phases, []string{phaseMerging}) {
+		t.Errorf("phases = %q, want the merge reported once", rec.phases)
 	}
 	if !slices.Contains(rec.progress, 1.0) {
 		t.Errorf("progress = %v, want to reach 1.0", rec.progress)

@@ -186,11 +186,12 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 	app.logSvc.CloseSessionLog()
 }
 
-// finishSessionUI shows any log lines still queued, so the session's summary
-// appears at once, and re-enables the download button, relabelling it
-// "Retry" if any job in the session failed.
+// finishSessionUI shows any log lines and status still queued, so the
+// session's summary appears at once, and re-enables the download button,
+// relabelling it "Retry" if any job in the session failed.
 func (app *DownloaderApp) finishSessionUI() {
 	app.uiManager.flushLog()
+	app.statusThrottle.Flush()
 	fyne.Do(func() {
 		if app.sessionFailed.Load() {
 			app.ui.download.downloadBtn.SetText("Retry")
@@ -333,6 +334,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 		OnLog:      app.appendOutput,
 		OnStatus:   app.updateStatus,
 		OnProgress: app.updateProgress,
+		OnPhase:    app.showDownloadPhase,
 	})
 
 	if dl.Err == nil {
@@ -363,9 +365,9 @@ func (app *DownloaderApp) recordHistory(req DownloadRequest, finalPaths []string
 
 // reportDownloadResult writes the COMPLETE/ABORTED summary to the log and
 // updates the status label, status dot, progress bar, and (on failure) the
-// session-failed flag and notification. It blocks until the UI updates are
-// committed, so the summary is fully rendered before the caller starts
-// post-processing and overwrites the status.
+// session-failed flag and notification. It blocks until those updates are
+// committed and the new status is applied, so the result is shown before the
+// caller starts post-processing and overwrites the status.
 func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadResult, elapsed time.Duration) {
 	lastSize, downloadedRaw, unit := app.stats.sizeSnapshot()
 	elapsedStr := fmt.Sprintf("%.2fs", elapsed.Seconds())
@@ -408,6 +410,7 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 		}
 	})
 	<-uiDone
+	app.statusThrottle.Flush()
 }
 
 // summaryBorder frames the post-download summary block in the log.

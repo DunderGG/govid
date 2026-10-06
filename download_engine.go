@@ -193,6 +193,10 @@ type ProcessCallbacks struct {
 	// output. size is the last reported downloaded-size token (e.g. "15.2MiB"),
 	// or empty when the output line did not include one.
 	OnProgress func(pct float64, size string)
+	// OnPhase is called when yt-dlp moves on from downloading to a step it
+	// runs with ffmpeg once the download is complete: phaseMerging or
+	// phaseConverting.
+	OnPhase func(phase string)
 }
 
 // DownloadOptions bundles the runtime options shared by Run and Execute:

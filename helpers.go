@@ -128,8 +128,17 @@ func (app *DownloaderApp) openDownloadFolder() {
 
 // ── UI updates ───────────────────────────────────────────────────────────────
 
-// updateStatus sets the short status label text thread-safely.
+// updateStatus sets the short status label text. It is safe to call from any
+// goroutine, as often as needed: the update goes through statusThrottle, so
+// the label changes at most once per statusThrottleInterval and repeats of
+// the same text cost nothing.
 func (app *DownloaderApp) updateStatus(msg string) {
+	app.statusThrottle.Set(msg)
+}
+
+// showStatus is statusThrottle's apply function: it writes msg to the status
+// label on the UI thread.
+func (app *DownloaderApp) showStatus(msg string) {
 	fyne.Do(func() {
 		app.ui.download.status.SetText(msg)
 	})
@@ -146,6 +155,19 @@ func (app *DownloaderApp) appendOutput(line string, col color.Color) {
 	if IsErrorLine(line) {
 		app.logSvc.WriteToErrorLog(line)
 	}
+}
+
+// phaseProgress is where the progress bar is held while yt-dlp merges or
+// converts a finished download, which can take a while for large files.
+const phaseProgress = 0.95
+
+// showDownloadPhase is a ProcessCallbacks.OnPhase handler: it holds the
+// progress bar at phaseProgress and names the step in the status label, so
+// the bar neither sits at 100% nor drops back while ffmpeg works. The
+// completion report then snaps it to 100%.
+func (app *DownloaderApp) showDownloadPhase(phase string) {
+	app.setProgressNow(phaseProgress)
+	app.updateStatus("Status: " + phase + "…")
 }
 
 // updateProgress is a ProcessCallbacks.OnProgress handler: it advances the
@@ -269,20 +291,27 @@ func (app *DownloaderApp) setProgressNow(pct float64) {
 	app.stats.setTarget(pct, true)
 }
 
-// fpsInterval is how often runProgressSmoother moves the progress bar.
-const fpsInterval = 20 * time.Millisecond
+// fpsInterval is how often runProgressSmoother moves the progress bar
+// (about 30 frames per second).
+const fpsInterval = 33 * time.Millisecond
+
+// minVisibleProgressStep is the smallest change of the progress bar worth a
+// UI update; smaller eased steps are accumulated until they add up to it.
+const minVisibleProgressStep = 0.002
 
 // runProgressSmoother eases the progress bar towards the target percentage
 // until ctx is cancelled, giving a smooth visual effect. It tracks the
 // displayed value itself rather than reading the widget, so the widget is
-// only ever touched inside fyne.Do.
+// only ever touched inside fyne.Do, and it skips frames whose change would
+// not be visible.
 func (app *DownloaderApp) runProgressSmoother(ctx context.Context) {
 	ticker := time.NewTicker(fpsInterval)
 	defer ticker.Stop()
 
-	current := 0.0
+	current := 0.0 // eased value
+	shown := 0.0   // value last sent to the progress bar
 	show := func(pct float64) {
-		current = pct
+		current, shown = pct, pct
 		fyne.Do(func() {
 			app.ui.download.progress.SetValue(pct)
 		})
@@ -303,11 +332,11 @@ func (app *DownloaderApp) runProgressSmoother(ctx context.Context) {
 			case snap:
 				show(target)
 			case current < target:
-				step := (target - current) * 0.05
-				if step < 0.001 {
-					step = 0.001
+				step := max((target-current)*0.05, 0.001)
+				current = min(current+step, target)
+				if current == target || current-shown >= minVisibleProgressStep {
+					show(current)
 				}
-				show(min(current+step, target))
 			}
 		}
 	}

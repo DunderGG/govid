@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -20,6 +21,7 @@ type logCollector struct {
 	colors   map[string]color.Color
 	progress []float64
 	sizes    []string
+	phases   []string
 }
 
 func newLogCollector() *logCollector {
@@ -40,6 +42,11 @@ func (c *logCollector) callbacks() ProcessCallbacks {
 			defer c.mu.Unlock()
 			c.progress = append(c.progress, pct)
 			c.sizes = append(c.sizes, size)
+		},
+		OnPhase: func(phase string) {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			c.phases = append(c.phases, phase)
 		},
 	}
 }
@@ -220,5 +227,39 @@ func TestParseProgress(t *testing.T) {
 				t.Errorf("size = %q, want %q", gotSize, tt.wantSize)
 			}
 		})
+	}
+}
+
+func TestDetectPhase(t *testing.T) {
+	tests := []struct {
+		line string
+		want string
+	}{
+		{`[Merger] Merging formats into "GoVid_Clip.mp4"`, phaseMerging},
+		{`[VideoConvertor] Converting video from webm to mp4; Destination: GoVid_Clip.mp4`, phaseConverting},
+		{`[ExtractAudio] Destination: GoVid_Clip.mp3`, phaseConverting},
+		{`[download]  42.0% of 10.00MiB`, ""},
+		{`[debug] ffmpeg command line: ffmpeg -i "[Merger].mp4"`, ""},
+	}
+	for _, tt := range tests {
+		if got := detectPhase(tt.line); got != tt.want {
+			t.Errorf("detectPhase(%q) = %q, want %q", tt.line, got, tt.want)
+		}
+	}
+}
+
+func TestWatchOutputReportsPhasesFromEitherStream(t *testing.T) {
+	collector := newLogCollector()
+	stdout := strings.NewReader("[download] 100% of 10.00MiB\n[Merger] Merging formats into \"x.mp4\"\n")
+	stderr := strings.NewReader("[ExtractAudio] Destination: x.mp3\n")
+
+	result := NewDownloadEngine("", "").watchOutput(stdout, stderr, collector.callbacks())
+
+	slices.Sort(collector.phases)
+	if want := []string{phaseConverting, phaseMerging}; !slices.Equal(collector.phases, want) {
+		t.Errorf("phases = %q, want %q", collector.phases, want)
+	}
+	if !result.wasConverted {
+		t.Error("wasConverted = false, want true for a [Merger] line on stdout")
 	}
 }

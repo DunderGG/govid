@@ -23,6 +23,7 @@ package "Application Core" #F0F4F8 {
         +window : fyne.Window
         +ui : *UIWidgets
         +stats : *DownloadStats
+        +statusThrottle : *latestValueThrottle[string]
         +logSvc : *LogService
         +historySvc : *HistoryService
         +depSvc : *DependencyService
@@ -46,6 +47,7 @@ package "Application Core" #F0F4F8 {
         +runYtDlp(ctx, url, path, ...)
         +openDownloadFolder()
         +updateStatus(msg)
+        +showDownloadPhase(phase)
         +appendOutput(line, col)
         +updateProgress(pct, size)
         +setStatusIndicator(state)
@@ -61,6 +63,16 @@ package "Application Core" #F0F4F8 {
         +getPostProcessingButton()
         +savePreferences(path)
         +applyFFmpegFilters(ctx, paths, vf, af)
+    }
+
+    class "latestValueThrottle[T]" as latestValueThrottle <<helper>> {
+        -interval : time.Duration
+        -apply : func(T)
+        -pending : T
+        -applied : T
+        --
+        +Set(value T)
+        +Flush()
     }
 
 }
@@ -231,6 +243,7 @@ package "Download Engine" #FFF8F0 {
         +OnLog : func(line string, col color.Color)
         +OnStatus : func(msg string)
         +OnProgress : func(pct float64, size string)
+        +OnPhase : func(phase string)
     }
 
     class scanResult <<data>> {
@@ -618,6 +631,7 @@ DownloaderApp *--> LogService     : logSvc
 DownloaderApp *--> DependencyService : depSvc
 DownloaderApp *--> GPUCapabilityService : gpuSvc
 DownloaderApp *--> DownloadStats   : stats
+DownloaderApp *--> latestValueThrottle : statusThrottle
 
 ' DownloaderApp uses engines (created per session, not stored as fields)
 DownloaderApp ..> DownloadEngine   : creates per download

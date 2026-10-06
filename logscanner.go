@@ -24,7 +24,7 @@ import (
 // scanResult holds metadata collected while reading a yt-dlp process's output.
 type scanResult struct {
 	sourceExts      []string // file extensions seen in "[download] Destination:" lines
-	wasConverted    bool     // true when [Merger] or [VideoConvertor] appeared in stderr
+	wasConverted    bool     // true when [Merger] or [VideoConvertor] appeared in the output
 	hadTransientErr bool     // true when a recoverable network/rate-limit error was seen in stderr
 }
 
@@ -42,14 +42,44 @@ var transientErrPatterns = []string{
 	"socket.timeout",
 }
 
+// Post-download steps yt-dlp runs with ffmpeg, reported via
+// ProcessCallbacks.OnPhase.
+const (
+	phaseMerging    = "Merging"    // [Merger]: joining the video and audio streams
+	phaseConverting = "Converting" // [VideoConvertor], [ExtractAudio]: re-encoding to the target format
+)
+
+// detectPhase returns the post-download step a yt-dlp output line starts,
+// or "" when the line does not start one.
+func detectPhase(line string) string {
+	switch {
+	case strings.HasPrefix(line, "[Merger]"):
+		return phaseMerging
+	case strings.HasPrefix(line, "[VideoConvertor]"), strings.HasPrefix(line, "[ExtractAudio]"):
+		return phaseConverting
+	default:
+		return ""
+	}
+}
+
+// isConversionLine reports whether a yt-dlp output line shows ffmpeg merging
+// or re-encoding the download, for the summary's format line.
+func isConversionLine(line string) bool {
+	return strings.HasPrefix(line, "[Merger]") || strings.HasPrefix(line, "[VideoConvertor]")
+}
+
 // watchOutput reads stdout and stderr from a running yt-dlp process concurrently,
 // forwarding every line to the UI log (via cb.OnLog) and collecting format
 // metadata. It blocks until both streams reach EOF. The engine owns no mutable
 // UI state itself — progress updates are reported through cb.OnProgress.
 func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCallbacks) scanResult {
 	var (
-		result    scanResult
-		waitGroup sync.WaitGroup
+		result scanResult
+		// Each stream records conversions separately so the goroutines never
+		// write the same field; yt-dlp prints [Merger] to stdout, but other
+		// steps may report on stderr.
+		stdoutConverted, stderrConverted bool
+		waitGroup                        sync.WaitGroup
 	)
 
 	waitGroup.Add(1)
@@ -59,6 +89,10 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 		for scanner.Scan() {
 			line := scanner.Text()
 			engine.parseProgress(line, cb)
+			stdoutConverted = stdoutConverted || isConversionLine(line)
+			if phase := detectPhase(line); phase != "" {
+				cb.OnPhase(phase)
+			}
 			// Capture the extension of each file yt-dlp writes to disk.
 			if dest, found := strings.CutPrefix(line, "[download] Destination: "); found {
 				if ext := strings.TrimPrefix(filepath.Ext(dest), "."); ext != "" {
@@ -78,10 +112,10 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
 			line := scanner.Text()
-			// Detect ffmpeg post-processing (merge or re-encode).
-			if strings.HasPrefix(line, "[Merger]") || strings.HasPrefix(line, "[VideoConvertor]") {
-				result.wasConverted = true
+			if phase := detectPhase(line); phase != "" {
+				cb.OnPhase(phase)
 			}
+			stderrConverted = stderrConverted || isConversionLine(line)
 			// Detect transient network / rate-limit errors so the caller can retry.
 			if !result.hadTransientErr {
 				for _, pattern := range transientErrPatterns {
@@ -108,6 +142,7 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 	}()
 
 	waitGroup.Wait()
+	result.wasConverted = stdoutConverted || stderrConverted
 	return result
 }
 

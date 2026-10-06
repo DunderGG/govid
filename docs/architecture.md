@@ -56,6 +56,7 @@ govid/
 ├── ui.go                   Thin DownloaderApp delegates to UIManager's secondary windows; shared roundedCard/accentBar helpers
 ├── options.go              Named labels and option lists for every enum-like selector (format, quality, theme, PP modes…)
 ├── helpers.go              Thread-safe UI updates, applyPreferencesToWidgets, cancellation callback guard, GPU detection kickoff
+├── throttle.go             latestValueThrottle — applies the newest of a stream of values at most once per interval (status label)
 │
 ├── ── Assets / Platform ───────────────────────────────────────────
 ├── theme.go                darkTheme and lightTheme (implement fyne.Theme)
@@ -91,6 +92,7 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `depSvc *DependencyService` | Binary path resolution, dependency checks, updater (see §4.9) |
 | `gpuSvc *GPUCapabilityService` | GPU backend capability detection and cache (see §4.11) |
 | `stats *DownloadStats` | Real-time download metrics for progress smoothing |
+| `statusThrottle *latestValueThrottle[string]` | Rate-limits status label updates to one per 150 ms and skips repeats; `updateStatus` goes through it (`throttle.go`) |
 | `cancelMu sync.Mutex` | Guards access to the active cancellation callbacks (`cancelFn`, `stopFn`) |
 | `cancelFn context.CancelFunc` | Cancels the active download context; in batch mode it skips only the current URL (`RequestCancel`) |
 | `stopFn context.CancelFunc` | Stops the whole session, including the rest of a batch queue and post-processing (`StopSession`) |
@@ -146,9 +148,9 @@ A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and pr
 
 The private `watchOutput(stdout, stderr, cb) scanResult` and `parseProgress(line, cb)` methods own all output-scanning; they hold no UI state and report every line and progress tick through `ProcessCallbacks`.
 
-`scanResult` records the source extensions seen in `[download] Destination:` lines, whether yt-dlp converted or merged the media, and whether a retryable network/rate-limit error was observed. The final result retains this metadata for the completion summary and retry decision.
+`scanResult` records the source extensions seen in `[download] Destination:` lines, whether yt-dlp converted or merged the media (a `[Merger]`/`[VideoConvertor]` line on either stream; real yt-dlp prints them to stdout), and whether a retryable network/rate-limit error was observed. The final result retains this metadata for the completion summary and retry decision.
 
-`ProcessCallbacks` is a bridge struct: it carries closures (`OnLog`, `OnStatus`, `OnProgress`) that let the engine report progress back to the UI without importing Fyne. `OnProgress(pct float64, size string)` is called for each parsed percentage; `size` is the last reported downloaded-size token, or empty when the line had none. `DownloaderApp.runYtDlp()` is the only caller.
+`ProcessCallbacks` is a bridge struct: it carries closures (`OnLog`, `OnStatus`, `OnProgress`, `OnPhase`) that let the engine report progress back to the UI without importing Fyne. `OnProgress(pct float64, size string)` is called for each parsed percentage; `size` is the last reported downloaded-size token, or empty when the line had none. `OnPhase(phase string)` is called when yt-dlp starts a post-download ffmpeg step (`detectPhase`: `[Merger]` → `phaseMerging`; `[VideoConvertor]`/`[ExtractAudio]` → `phaseConverting`) on either stream; `DownloaderApp.showDownloadPhase` then holds the progress bar at 95% and shows "Merging…"/"Converting…". `DownloaderApp.runYtDlp()` is the only caller.
 
 **Division of responsibility with `download.go`:** `DownloadEngine` is UI-agnostic — it never reads widget state and reports everything through `ProcessCallbacks`. `download.go` is the layer that still needs the UI/app context: `startDownload()` owns the batch/session lifecycle (validating widget input, the queue `context.Context` for cancel/skip across multiple URLs, opening/closing the session log, running post-processing over the whole batch), and `runYtDlp()` is the per-URL adapter — it translates widget state into a `DownloadRequest`/`DownloadOptions`, calls `engine.Run`, then handles app-specific side effects the engine has no business knowing about (history recording, the "DOWNLOAD COMPLETE/ABORTED" log block, status indicator updates, OS notifications).
 
@@ -273,7 +275,7 @@ User clicks Download
             ├─ engine.BuildArgs(DownloadRequest)   → []string args
             ├─ engine.Execute(ctx, args, opts, cb)   → scanResult
             │    ├─ cmd.StdoutPipe / StderrPipe
-            │    └─ engine.watchOutput() goroutines (parse % / size) → cb.OnProgress
+            │    └─ engine.watchOutput() goroutines (parse % / size / phase) → cb.OnProgress, cb.OnPhase
               ├─ engine.FinalizeFiles()               glob → rename  (RemovePartialFiles on failure/cancel)
               └─ historySvc.AppendAll(DownloadRecord) JSON append
   └─ applyFFmpegFilters()     if post-processing enabled
@@ -366,7 +368,7 @@ func classify(err error) Category {
 |---|---|---|
 | Download queue worker | `startDownload()` launches one background goroutine; URLs are processed sequentially | `queueCtx` via `context.WithCancel` |
 | `DownloadEngine.watchOutput` stdout/stderr | `DownloadEngine.Execute()` | process exit + pipe close |
-| Progress bar smoother | `startDownload()` → 20 ms ticker goroutine | `queueCtx` cancellation |
+| Progress bar smoother | `startDownload()` → 33 ms ticker goroutine (frames that would change the bar by less than 0.002 are skipped) | `queueCtx` cancellation |
 | Status dot pulse | `setStatusIndicator("active")` | `stopPulse` channel close |
 | Post-process worker pool | `PPEngine.ApplyFilters()`; GPU jobs additionally wait on `gpuSem` (capacity 2) | same context |
 
