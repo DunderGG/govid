@@ -100,8 +100,8 @@ This document outlines planned features, improvements, and known limitations for
 ### Disk Space Pre-check
 > Prevent mid-download failures due to full drives.
 
-- [ ] Query destination drive for available space before starting a download.
-- [ ] Notify user if estimated file size exceeds available bytes.
+- [x] Query destination drive for available space before starting a download. (`freeDiskBytes` in `sys_windows.go`/`sys_others.go`, checked before every queued item.)
+- [x] Notify user if estimated file size exceeds available bytes. (The size comes from the URL probe, plus a 10% margin, doubled with post-processing. The prompt offers Continue anyway / Cancel, or Skip / Continue / Stop in a batch.)
 
 ### User Preference Persistence
 > Remember the user's last-used settings across restarts.

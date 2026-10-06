@@ -220,9 +220,18 @@ The fake yt-dlp answers `-J` without counting it as a run. Tests: `playlist_test
 
 ---
 
-## 8. Disk space pre-check
+## 8. ✅ Disk space pre-check
 
 **Roadmap:** Medium Priority → Disk Space Pre-check.
+
+**Status: Done.**
+- `freeDiskBytes` uses `windows.GetDiskFreeSpaceEx` / `unix.Statfs`; `golang.org/x/sys` is now a direct dependency. It is injected as `DownloaderApp.freeBytes`.
+- `MediaInfo.EstimatedSize()` sums `requested_formats[].filesize` (or `filesize_approx`) from the #7 probe, which already passes the download's `-f` selector, so no second probe is needed.
+- `checkDiskSpace` ([disk_space.go](../disk_space.go)) runs before **each** queued item. The required space is estimate × 1.1, doubled with post-processing; the estimate is also scaled down for a trim range when the duration is known. Free space is measured on the nearest existing folder, since yt-dlp creates the save folder.
+- A shortfall logs "Needs ~X, Y free" and asks through `askDiskSpace`: Continue anyway / Cancel for a single item, or Skip / Continue / Stop in a batch. "Continue" applies to the rest of the session, so the batch warning appears once.
+- An unknown size (playlist entries, probe failures) skips the check and logs that.
+
+Tests (`disk_space_test.go`) cover enough, not enough, and unknown size with a fake `freeBytes`, plus batch continue/skip, post-processing doubling, and the dialog's buttons. The nearly-full-USB-stick check is still to be done by hand.
 
 **Problem.** Nothing checks free space before a download starts. A full drive causes a failure partway through the download or during post-processing. Post-processing needs extra room because it writes a temporary output next to the source file.
 

@@ -257,7 +257,13 @@ type DownloaderApp struct {
 	// askPlaylist shows the playlist prompt and waits for the answer; set to
 	// uiManager.askPlaylist, replaced in tests.
 	askPlaylist func(ctx context.Context, prompt playlistPrompt) playlistDecision
-	onLogLine   func(line string, col color.Color) // Renders a log line in the UI; set to uiManager.appendLogLine
+
+	// freeBytes returns the free space on the volume holding a folder, and
+	// askDiskSpace asks what to do when a download will not fit; set to
+	// freeDiskBytes and uiManager.askDiskSpace, replaced in tests.
+	freeBytes    func(path string) (uint64, error)
+	askDiskSpace func(ctx context.Context, prompt diskSpacePrompt) diskSpaceDecision
+	onLogLine    func(line string, col color.Color) // Renders a log line in the UI; set to uiManager.appendLogLine
 
 	// statusThrottle rate-limits and de-duplicates status label updates;
 	// see updateStatus.

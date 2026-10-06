@@ -213,7 +213,8 @@ func (app *DownloaderApp) finishSessionUI() {
 	})
 }
 
-// runQueue downloads the session's queue one item after another until it is
+// runQueue downloads the session's queue one item after another, checking
+// for free disk space before each (see checkDiskSpace), until it is
 // cancelled, and returns the finalized paths of every successful download so
 // post-processing can run over all of them at once.
 func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSession) []string {
@@ -222,9 +223,20 @@ func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSes
 	}
 
 	var finalPaths []string
+	continueLowSpace := false // the user chose to continue despite low disk space
 	for index := range session.items {
 		if queueCtx.Err() != nil {
 			break
+		}
+		switch app.checkDiskSpace(queueCtx, session, index, &continueLowSpace) {
+		case spaceSkip:
+			app.appendOutput(fmt.Sprintf("[SYSTEM] Skipped %s: not enough disk space.", session.items[index].url), colWarning)
+			continue
+		case spaceStop:
+			app.appendOutput("[SYSTEM] Queue stopped: not enough disk space.", colWarning)
+			app.updateStatus("Status: Stopped (not enough disk space).")
+			app.setStatusIndicator(StatusCanceled)
+			return finalPaths
 		}
 		paths := app.downloadItem(queueCtx, session, index)
 		finalPaths = append(finalPaths, paths...)

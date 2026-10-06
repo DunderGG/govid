@@ -3,10 +3,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
 // hideWindow sets the Windows-specific process attributes to hide the child process console window.
@@ -44,4 +47,18 @@ func killProcessTree(process *os.Process) error {
 // openFolderCommand returns an exec.Cmd that opens path in Windows Explorer.
 func openFolderCommand(path string) *exec.Cmd {
 	return exec.Command("explorer", path)
+}
+
+// freeDiskBytes returns the number of bytes available to the current user
+// on the volume holding path.
+func freeDiskBytes(path string) (uint64, error) {
+	pathPtr, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return 0, err
+	}
+	var available uint64
+	if err := windows.GetDiskFreeSpaceEx(pathPtr, &available, nil, nil); err != nil {
+		return 0, fmt.Errorf("checking free space on %s: %w", path, err)
+	}
+	return available, nil
 }

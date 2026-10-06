@@ -30,6 +30,8 @@ package "Application Core" #F0F4F8 {
         +gpuSvc : *GPUCapabilityService
         +releaseSvc : *ReleaseService
         +askPlaylist : func(ctx, playlistPrompt) playlistDecision
+        +freeBytes : func(path string) (uint64, error)
+        +askDiskSpace : func(ctx, diskSpacePrompt) diskSpaceDecision
         +onLogLine : func(string, color.Color)
         +cancelMu : sync.Mutex
         +cancelFn : context.CancelFunc
@@ -49,6 +51,7 @@ package "Application Core" #F0F4F8 {
         +startDownload()
         -checkURLs(ctx, session) : []queueItem
         -expandPlaylist(ctx, url, info) : []queueItem
+        -checkDiskSpace(ctx, session, index, continueAll) : diskSpaceDecision
         +runYtDlp(ctx, url, path, ...)
         +openDownloadFolder()
         +updateStatus(msg)
@@ -184,6 +187,7 @@ package "UI Layer" #F0F8F0 {
         +confirmYtDlpUpdate()
         +runUpdateInUI()
         +askPlaylist(ctx, prompt) : playlistDecision
+        +askDiskSpace(ctx, prompt) : diskSpaceDecision
         +showNotice(n notice)
         +dismissNotice(id)
         +showAbout()
@@ -269,6 +273,7 @@ package "Download Engine" #FFF8F0 {
         +Entries : []PlaylistEntry
         --
         +IsPlaylist() : bool
+        +EstimatedSize() : (uint64, bool)
     }
 
     class PlaylistEntry <<data>> {

@@ -54,6 +54,7 @@ govid/
 ├── download.go             DownloaderApp.startDownload / runYtDlp — UI orchestration for a download session
 ├── playlist.go             checkURLs — probes each URL and expands playlists into queue items; range parsing
 ├── playlist_dialog.go      UIManager.askPlaylist — the "Playlist detected" prompt
+├── disk_space.go           checkDiskSpace — free-space check before each queued item; the "Low disk space" prompt
 ├── postprocess.go          PostProcessSettings, buildPostProcessFilters / applyFFmpegFilters — value struct + thin UI wrapper; shared format/scan helpers
 ├── logscanner.go           DownloadEngine.watchOutput / parseProgress — yt-dlp stdout/stderr parsing goroutines
 │
@@ -68,8 +69,8 @@ govid/
 ├── icons.go                SVG icon registry; themedIcon() helper
 ├── embedded_icon.go        Bundled app icon (resourceAppiconPng)
 ├── process.go              newToolCommand — starts yt-dlp/FFmpeg so cancelling kills the whole process tree
-├── sys_windows.go          Windows-only: hide console windows; kill process trees with taskkill /T
-├── sys_others.go           Non-Windows: no-op hideWindow; kill process trees via a process group
+├── sys_windows.go          Windows-only: hide console windows; kill process trees with taskkill /T; freeDiskBytes (GetDiskFreeSpaceEx)
+├── sys_others.go           Non-Windows: no-op hideWindow; kill process trees via a process group; freeDiskBytes (statfs)
 │
 ├── ── Config / Build ──────────────────────────────────────────────
 ├── govid.json              Optional override config (loaded via "Load from Config" in Preferences)
@@ -98,6 +99,8 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `gpuSvc *GPUCapabilityService` | GPU backend capability detection and cache (see §4.11) |
 | `releaseSvc *ReleaseService` | Latest-release lookups for update checks (see §4.12) |
 | `askPlaylist func(ctx, playlistPrompt) playlistDecision` | Asks which videos of a playlist to download; set to `UIManager.askPlaylist`, stubbed in tests |
+| `freeBytes func(path string) (uint64, error)` | Free space on a folder's volume; `freeDiskBytes`, faked in tests |
+| `askDiskSpace func(ctx, diskSpacePrompt) diskSpaceDecision` | Asks what to do when a download will not fit; set to `UIManager.askDiskSpace`, stubbed in tests |
 | `stats *DownloadStats` | Real-time download metrics for progress smoothing |
 | `statusThrottle *latestValueThrottle[string]` | Rate-limits status label updates to one per 150 ms and skips repeats; `updateStatus` goes through it (`throttle.go`) |
 | `cancelMu sync.Mutex` | Guards access to the active cancellation callbacks (`cancelFn`, `stopFn`) |
@@ -147,7 +150,7 @@ Beyond the five `show*` methods, `UIManager` also owns:
 A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and provides four methods:
 
 - **`BuildArgs(DownloadRequest) DownloadArgs`** — pure function; assembles the yt-dlp command-line arguments from a request value struct. No I/O. The format selector comes from `formatSelection(format, quality)`, which `Probe` shares.
-- **`Probe(ctx, DownloadRequest) (MediaInfo, error)`** — runs `yt-dlp -J --flat-playlist --no-warnings` with the download's `-f` selector and cookies, and without `--no-playlist` (`probe.go`). It returns `MediaInfo{Type, Title, Duration, Entries}`; `IsPlaylist()` is true for `_type == "playlist"`, and each `PlaylistEntry.DownloadURL()` is the video's URL. `--flat-playlist` lists a playlist's entries without extracting them, but a single video is still extracted in full.
+- **`Probe(ctx, DownloadRequest) (MediaInfo, error)`** — runs `yt-dlp -J --flat-playlist --no-warnings` with the download's `-f` selector and cookies, and without `--no-playlist` (`probe.go`). It returns `MediaInfo{Type, Title, Duration, Entries}`; `IsPlaylist()` is true for `_type == "playlist"`, and each `PlaylistEntry.DownloadURL()` is the video's URL. `--flat-playlist` lists a playlist's entries without extracting them, but a single video is still extracted in full. For a single video, `EstimatedSize()` adds up the `filesize` (or `filesize_approx`) of the requested formats, for the disk space check.
 - **`Execute(ctx, args []string, opts DownloadOptions, ProcessCallbacks) (scanResult, error)`** — starts the process, streams stdout/stderr through its own private `watchOutput` method (defined in `logscanner.go`), and retries on transient errors with 1 s / 5 s / 30 s back-off when `opts.AutoRetry` is set.
 - **`FinalizeFiles(savePath, downloadID string, onLog func(string, color.Color)) []string`** — globs the temp files written under `downloadID`, strips the token, and renames each to its final conflict-free name via the private `uniquePath` helper. Reports rename events through `onLog` rather than touching the UI directly.
 - **`RemovePartialFiles(savePath, downloadID string, onLog func(string, color.Color))`** — deletes every file written under `downloadID` after a failed or cancelled download (yt-dlp runs with `--no-part`, so these are incomplete media files), retrying briefly while Windows still holds a lock, and logs each removal.
@@ -297,6 +300,7 @@ Looks up the latest release of a GitHub repository through `GET /repos/<owner>/<
 User clicks Download
   └─ startDownload()          validate URLs; open log file; spawn the sequential download worker
        ├─ checkURLs()          engine.Probe per URL; a playlist → askPlaylist prompt → its chosen videos become queue items
+       ├─ checkDiskSpace()     per queue item: probe size estimate × 1.1 (× 2 with post-processing) vs freeBytes(save folder)
        └─ runYtDlp()           per queue item
             ├─ engine.BuildArgs(DownloadRequest)   → []string args
             ├─ engine.Execute(ctx, args, opts, cb)   → scanResult
@@ -406,9 +410,16 @@ single playlist URL turns the session into a batch. The playlist prompt
 and is hidden if `queueCtx` is cancelled first. When the queue holds more than
 one item, each item gets a child `runCtx` of the queue-level `queueCtx`.
 Cancelling the child skips only the active item; with a single item, `runCtx`
-is the queue context, so cancellation stops the session. Post-processing runs
-afterward over the collected successful paths and can process multiple files
-concurrently.
+is the queue context, so cancellation stops the session. Before each item,
+`checkDiskSpace` compares the probe's size estimate (scaled down for a trim
+range, plus a 10% margin, doubled when post-processing will write a second
+copy) with `freeBytes` of the save folder. It checks every item, not just the
+first, because earlier items of a batch use up space. When the space is too
+small it asks through `askDiskSpace`: Continue anyway / Cancel for a single
+item, or Skip / Continue (for the rest of the session) / Stop in a batch. An
+unknown size, for example for playlist entries, skips the check and logs that
+it did. Post-processing runs afterward over the collected successful paths and
+can process multiple files concurrently.
 
 **Process trees:** yt-dlp, ffmpeg, and ffprobe are started through
 `newToolCommand` (`process.go`), which sets `cmd.Cancel` to kill the whole

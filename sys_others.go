@@ -3,9 +3,12 @@
 package main
 
 import (
+	"fmt"
 	"os/exec"
 	"runtime"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 // hideWindow is a no-op for non-Windows platforms.
@@ -38,4 +41,14 @@ func openFolderCommand(path string) *exec.Cmd {
 		return exec.Command("open", path)
 	}
 	return exec.Command("xdg-open", path)
+}
+
+// freeDiskBytes returns the number of bytes available to the current user
+// on the file system holding path.
+func freeDiskBytes(path string) (uint64, error) {
+	var stat unix.Statfs_t
+	if err := unix.Statfs(path, &stat); err != nil {
+		return 0, fmt.Errorf("checking free space on %s: %w", path, err)
+	}
+	return uint64(stat.Bavail) * uint64(stat.Bsize), nil
 }

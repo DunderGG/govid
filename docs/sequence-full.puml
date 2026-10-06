@@ -95,6 +95,13 @@ group checkURLs(queueCtx, session) [for each URL entered]
 end
 
 group loop [for each item in session.items]
+    App -> OS  : freeBytes(save folder)
+    alt probe size × 1.1 (× 2 with post-processing) > free space
+        App -> UI  : askDiskSpace("Needs ~X, Y free. Continue anyway?")\n  — single: Continue anyway / Cancel\n  — batch: Skip / Continue / Stop
+        UI  --> App : spaceProceed / spaceSkip / spaceStop / spaceContinueAll
+    else size unknown
+        App -> UI  : appendOutput("Download size unknown; skipping the disk space check.")
+    end
     alt batch mode (len > 1)
         App -> App : context.WithCancel(queueCtx)\n  → runCtx / skipItem  (per-URL cancel)
         note right : Cancel skips only the active URL;\nqueueCtx and later URLs remain available.

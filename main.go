@@ -84,6 +84,8 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	// which owns the log widgets' lifecycle.
 	dlApp.onLogLine = dlApp.uiManager.appendLogLine
 	dlApp.askPlaylist = dlApp.uiManager.askPlaylist
+	dlApp.freeBytes = freeDiskBytes
+	dlApp.askDiskSpace = dlApp.uiManager.askDiskSpace
 
 	// Wire the main window's action callbacks (download, open folder, cancel).
 	dlApp.uiManager.onStartDownload = dlApp.startDownload

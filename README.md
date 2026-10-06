@@ -27,6 +27,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Motion Smoothing**: Three interpolation modes (Precise, Balanced, Fast) for smoother motion at higher frame rates.
 - **Download Management**: Start, monitor, and cancel active downloads from a single queue view.
 - **Speed Limiting**: Cap download bandwidth to avoid saturating your network.
+- **Disk Space Check**: Warns before a download that will not fit in the save folder.
 - **Config Support**: Configuration file support via `govid.json` for startup defaults and repeatable workflows.
 - **Log Export**: Option to save download logs to `.txt` files for troubleshooting.
 - **Completion Notifications**: Optional desktop notifications when downloads complete.

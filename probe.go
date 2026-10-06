@@ -23,11 +23,57 @@ type MediaInfo struct {
 	Title    string          `json:"title"`
 	Duration float64         `json:"duration"` // seconds; 0 when unknown
 	Entries  []PlaylistEntry `json:"entries"`  // playlist items, in playlist order
+
+	// The size of the format(s) the -f selector picked: one set of sizes
+	// for a single format, or one per stream in RequestedFormats when a
+	// video and an audio stream are merged.
+	formatSize
+	RequestedFormats []formatSize `json:"requested_formats"`
+}
+
+// formatSize is the size yt-dlp reports for one format: exact when the site
+// says, approximate (from the bitrate) otherwise. yt-dlp may write either as
+// a float, hence the float64 fields.
+type formatSize struct {
+	FileSize       float64 `json:"filesize"`
+	FileSizeApprox float64 `json:"filesize_approx"`
+}
+
+// bytes returns the format's size, exact if known, and whether it is known.
+func (size formatSize) bytes() (float64, bool) {
+	switch {
+	case size.FileSize > 0:
+		return size.FileSize, true
+	case size.FileSizeApprox > 0:
+		return size.FileSizeApprox, true
+	default:
+		return 0, false
+	}
 }
 
 // IsPlaylist reports whether the URL points at a playlist.
 func (info MediaInfo) IsPlaylist() bool {
 	return info.Type == "playlist"
+}
+
+// EstimatedSize returns the size of the download in bytes, and whether it is
+// known: the sum of the requested formats when streams are merged, otherwise
+// the selected format's own size. If any merged stream's size is unknown,
+// so is the total.
+func (info MediaInfo) EstimatedSize() (uint64, bool) {
+	if len(info.RequestedFormats) == 0 {
+		size, known := info.bytes()
+		return uint64(size), known
+	}
+	var total float64
+	for _, format := range info.RequestedFormats {
+		size, known := format.bytes()
+		if !known {
+			return 0, false
+		}
+		total += size
+	}
+	return uint64(total), true
 }
 
 // PlaylistEntry is one item of a playlist, as --flat-playlist lists it.
