@@ -1,5 +1,7 @@
 # GoVid — Top Ten Priorities
 
+> All ten items below are done. The next ten are in [priorities_2.md](priorities_2.md).
+
 The ten roadmap items to work on next, in the order they should be done. Each was checked against the current code. The "What we found" notes describe the code as it was on 2026-10-06.
 
 How the order was chosen:
