@@ -35,7 +35,7 @@ This document outlines planned features, improvements, and known limitations for
 - [x] Query the GitHub Releases API for the latest version tag. (`ReleaseService` in `release_service.go`, shared with the yt-dlp check; once a day at startup, always from the menu.)
 - [x] Compare against the current embedded version string and notify the user if out of date. *(Depends on: Proper Version String)* (A notice at startup, or the menu check, opens the release notes. `dev` builds are never prompted.)
 - [x] Provide a direct download link or auto-replace the binary (with backup). (The release dialog's "Open download page" button opens the release on GitHub.)
-- [ ] Update in place: download the release ZIP, check it against a published SHA-256, swap the running `.exe` (rename it to `.old`, move the new one in, relaunch, and delete `.old` on the next start).
+- [x] Update in place: download the release ZIP, check it against a published SHA-256, swap the running `.exe` (rename it to `.old`, move the new one in, relaunch, and delete `.old` on the next start). (`SelfUpdater` in `self_update.go`: "Update now" in the release dialog, for release builds on Windows when the release has both the ZIP and `SHA256SUMS`. A checksum mismatch changes nothing and keeps the download; any failed step puts the old `.exe` back.)
 
 ---
 

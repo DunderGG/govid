@@ -254,22 +254,23 @@ func (s *DownloadStats) sizeSnapshot() (lastSize string, downloadedRaw float64, 
 // DownloaderApp acts as a coordinator, holding pointers to the specialized
 // sub-structs and handling application lifecycle.
 type DownloaderApp struct {
-	window     fyne.Window           // The primary application window
-	ui         *UIWidgets            // The graphical interface components
-	stats      *DownloadStats        // Statistics tracked during a session
-	logSvc     *LogService           // Session log, error log, and buffer-limit management
-	cancelMu   sync.Mutex            // Guards cancelFn and stopFn updates and reads
-	cancelFn   context.CancelFunc    // Function used to signal yt-dlp to stop; in batch mode it skips only the current item
-	stopFn     context.CancelFunc    // Stops the whole session, including the rest of a batch queue
-	sessions   sync.WaitGroup        // Counts running sessions so Shutdown can wait for them to finish
-	stopPulse  chan struct{}         // Closed to stop the status dot pulse goroutine
-	pulseDone  chan struct{}         // Closed by the pulse goroutine when it exits
-	uiManager  *UIManager            // Owns the main window layout and all secondary windows
-	prefSvc    *PreferenceService    // Centralised preference loading and persistence
-	historySvc *HistoryService       // Download history persistence
-	depSvc     *DependencyService    // Binary path resolution, dependency checks, and yt-dlp updater
-	gpuSvc     *GPUCapabilityService // GPU backend capability detection and cache
-	releaseSvc *ReleaseService       // Latest-release lookups on GitHub for update checks
+	window      fyne.Window           // The primary application window
+	ui          *UIWidgets            // The graphical interface components
+	stats       *DownloadStats        // Statistics tracked during a session
+	logSvc      *LogService           // Session log, error log, and buffer-limit management
+	cancelMu    sync.Mutex            // Guards cancelFn and stopFn updates and reads
+	cancelFn    context.CancelFunc    // Function used to signal yt-dlp to stop; in batch mode it skips only the current item
+	stopFn      context.CancelFunc    // Stops the whole session, including the rest of a batch queue
+	sessions    sync.WaitGroup        // Counts running sessions so Shutdown can wait for them to finish
+	stopPulse   chan struct{}         // Closed to stop the status dot pulse goroutine
+	pulseDone   chan struct{}         // Closed by the pulse goroutine when it exits
+	uiManager   *UIManager            // Owns the main window layout and all secondary windows
+	prefSvc     *PreferenceService    // Centralised preference loading and persistence
+	historySvc  *HistoryService       // Download history persistence
+	depSvc      *DependencyService    // Binary path resolution, dependency checks, and yt-dlp updater
+	gpuSvc      *GPUCapabilityService // GPU backend capability detection and cache
+	releaseSvc  *ReleaseService       // Latest-release lookups on GitHub for update checks
+	selfUpdater *SelfUpdater          // Replaces the running GoVid with a release; nil when its own path is unknown
 
 	// askPlaylist shows the playlist prompt and waits for the answer; set to
 	// uiManager.askPlaylist, replaced in tests.
@@ -295,6 +296,7 @@ type DownloaderApp struct {
 	// Post-processing workers set it concurrently.
 	sessionFailed atomic.Bool
 	isRunning     atomic.Bool // true while a download or post-processing session is active
+	updating      atomic.Bool // true while a GoVid self-update downloads or installs
 	showDebug     atomic.Bool // true to show yt-dlp [debug] lines in the log view; see appendOutput
 	keepHistory   atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
 

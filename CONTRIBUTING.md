@@ -51,7 +51,7 @@ chmod +x build.sh
 ./build.sh
 ```
 
-Both scripts embed the version with `-X main.version`. They take it from the git tag on the current commit (`git describe --tags --exact-match`, without a leading `v`), and builds of any other commit report `dev`. GoVid compares its version with the latest GitHub release to tell users about updates, and a `dev` build never prompts. To make a release build, tag the commit first (release tags are dates, for example `git tag 2026.10.06`).
+Both scripts embed the version with `-X main.version`. They take it from the git tag on the current commit (`git describe --tags --exact-match`, without a leading `v`), and builds of any other commit report `dev`. GoVid compares its version with the latest GitHub release to tell users about updates, and a `dev` build never prompts. To make a release build, tag the commit first (release tags are dates, for example `git tag 2026.10.06`). The release packaging also sets `-X main.buildType=release`, which turns on **Update now** (GoVid replacing its own executable from a GitHub release). Builds from `build.bat` and `build.sh` leave it unset, so they never replace themselves.
 
 Run the test suite before submitting a change:
 

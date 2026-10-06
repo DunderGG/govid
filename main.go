@@ -29,6 +29,11 @@ var (
 	//	-X main.version=1.0.0
 	// Falls back to "dev" for local builds.
 	version = "dev"
+
+	// buildType is injected by the release script (-X main.buildType=release).
+	// Only release builds update themselves in place: a development build is
+	// not the file a release would replace.
+	buildType = ""
 )
 
 // newDownloaderApp constructs and fully initialises a DownloaderApp.
@@ -43,6 +48,9 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 		depSvc:     depSvc,
 		gpuSvc:     NewGPUCapabilityService(depSvc.Resolve("ffmpeg")),
 		releaseSvc: NewReleaseService(fyne.CurrentApp().Preferences(), "GoVid/"+version),
+	}
+	if updater, err := NewSelfUpdater("GoVid/" + version); err == nil {
+		dlApp.selfUpdater = updater
 	}
 
 	// Load saved preferences and apply them to all widgets.
@@ -87,6 +95,8 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onRunUpdate = depSvc.RunUpdate
 	dlApp.uiManager.onYtDlpVersions = dlApp.ytDlpVersions
 	dlApp.uiManager.onCheckGoVidRelease = dlApp.checkGoVidRelease
+	dlApp.uiManager.onCanSelfUpdate = dlApp.canSelfUpdate
+	dlApp.uiManager.onSelfUpdate = dlApp.runSelfUpdate
 	dlApp.uiManager.onLog = dlApp.appendOutput
 	dlApp.uiManager.onStatus = dlApp.updateStatus
 	dlApp.uiManager.onSetStatusIndicator = dlApp.setStatusIndicator
@@ -141,6 +151,7 @@ func main() {
 	dlApp.uiManager.checkDependencies()
 	dlApp.startUpdateChecks(dlApp.prefSvc.Load().CheckUpdates)
 	dlApp.startGPUDetection()
+	dlApp.cleanUpAfterUpdate()
 
 	// Show a confirmation dialog if a download or post-processing job is
 	// active. Quitting then stops the job and waits for it to clean up.

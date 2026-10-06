@@ -2,8 +2,10 @@
 //
 // Responsibilities:
 //   - checkForGoVidUpdates: the Tools → "Check for GoVid updates" action.
-//   - showGoVidRelease: a dialog with a release's notes and a button that
-//     opens its download page.
+//   - showGoVidRelease: a dialog with a release's notes, a button that opens
+//     its download page, and, where GoVid can replace itself (see
+//     self_update.go), an "Update now" button.
+//   - showUpdateFailure: why an "Update now" failed.
 package main
 
 import (
@@ -69,8 +71,31 @@ func (manager *UIManager) showGoVidRelease(release Release) {
 	})
 	openBtn.Importance = widget.HighImportance
 	closeBtn := widget.NewButton("Close", func() { dlg.Hide() })
+	buttons := []fyne.CanvasObject{closeBtn, openBtn}
+
+	// "Update now" replaces GoVid in place; it is offered only when that
+	// can work (see DownloaderApp.canSelfUpdate).
+	if manager.onCanSelfUpdate(release) {
+		openBtn.Importance = widget.MediumImportance
+		updateBtn := widget.NewButton("Update now", func() {
+			dlg.Hide()
+			manager.onSelfUpdate(release)
+		})
+		updateBtn.Importance = widget.HighImportance
+		buttons = append(buttons, updateBtn)
+	}
 
 	dlg = dialog.NewCustomWithoutButtons("GoVid Update", content, manager.mainWindow)
-	dlg.SetButtons([]fyne.CanvasObject{closeBtn, openBtn})
+	dlg.SetButtons(buttons)
+	dlg.Show()
+}
+
+// showUpdateFailure explains why updating GoVid in place failed and offers
+// the download page instead. Must be called on the UI thread.
+func (manager *UIManager) showUpdateFailure(err error) {
+	message := widget.NewLabel(fmt.Sprintf("GoVid could not update itself:\n\n%v\n\nThe installed GoVid has not been changed. You can download the new version from the release page instead.", err))
+	message.Wrapping = fyne.TextWrapWord
+	dlg := dialog.NewCustom("GoVid Update Failed", "OK", message, manager.mainWindow)
+	dlg.Resize(fyne.NewSize(480, 0))
 	dlg.Show()
 }

@@ -301,9 +301,20 @@ Releases stay manual: you tag a commit, run `package.ps1`, and upload the result
 
 ---
 
-## 10. Self-update in place
+## 10. ✅ Self-update in place
 
 **Roadmap:** High Priority → Self-Updating GoVid ("Update in place").
+
+**Status: Done in code** (new file [self_update.go](../self_update.go)); the hand check on a real release is still to do (see below).
+- **When it is offered.** The release dialog shows **Update now** only when `canSelfUpdate` holds: `main.buildType == "release"` (a new variable beside `version`; `package.ps1` already passed `-X main.buildType=release`, but nothing in the code declared it), Windows, no session or update running, and both `GoVid_<tag>_Ready.zip` and `SHA256SUMS` among the release's assets (`findUpdateAssets`). Older releases only get "Open download page".
+- **Download.** `SelfUpdater.Download` fetches `SHA256SUMS` (`parseSHA256Sums` reads `<hash>  <name>`, the binary-mode `*name`, and skips comments), then streams the ZIP into a new temp folder while hashing it. Progress is shown in the status label ("Downloading GoVid 2026.10.07… 42% of 64.4 MB"). On a mismatch the error wraps `errChecksumMismatch`; the ZIP is kept, and the error dialog says where.
+- **Install.** It checks that the folder is writable with the `dirWritable` check the yt-dlp updater uses. It extracts only `GoVid.exe` as `GoVid.exe.new`, accepting backslash entry names, which `Compress-Archive` writes (found in #9). It renames the running exe to `.old`, moves `.new` into place, and starts it detached. Any failure removes the new file and puts `.old` back. On success the app quits through `DownloaderApp.Shutdown`.
+- **Startup.** `cleanUpAfterUpdate` deletes `GoVid.exe.old` (and any stray `.new`), retrying for up to 15 s. The previous GoVid may still be closing (Shutdown waits up to 5 s), and Windows refuses to delete a running executable.
+- **Docs.** The guide's Updates section notes that antivirus or SmartScreen may scan the new exe on its first start. CONTRIBUTING explains that only release-packaged builds update themselves.
+
+**Verified.** A throwaway end-to-end test, not committed, built two small Windows programs, ran the "old" one as `GoVid.exe`, and called the real `Install` with the real `startDetached`. The running exe was renamed aside, the new one started (it wrote a marker file), and `.old` could not be deleted while the old process ran ("Access is denied") but could once it exited, which is why the startup cleanup retries. Tests: `TestSelfUpdaterDownloadAndInstall` (backslash entries, progress, only GoVid.exe extracted, cleanup), `TestSelfUpdaterRejectsAChecksumMismatch` and `TestCorruptUpdateLeavesTheInstalledVersion` (done-when #2), `TestSelfUpdaterInstallPutsTheOldVersionBackOnFailure` (start fails / no GoVid.exe in the ZIP / folder not writable), `TestCanSelfUpdate`, `TestReleaseDialogOffersUpdateNowOnlyWhenPossible`, `TestFindUpdateAssets`, and `TestParseSHA256Sums`.
+
+**Still to do by hand** (done-when #1): install a release build tagged one version behind, publish a test release with both assets, and check that Update now replaces it and restarts on the new version. This needs a real GitHub release.
 
 **Problem.** GoVid already tells users about a new release (first round's #9), but they still have to download and unpack it by hand.
 

@@ -36,7 +36,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Config Support**: Configuration file support via `govid.json` for startup defaults and repeatable workflows.
 - **Log Export**: Option to save download logs to `.txt` files for troubleshooting.
 - **Completion Notifications**: Optional desktop notifications when downloads complete.
-- **Update Checks**: Warns when the installed `yt-dlp` is out of date and updates it with one click, and tells you when a newer GoVid release is available (also under **Tools → Check for GoVid updates**).
+- **Update Checks**: Warns when the installed `yt-dlp` is out of date and updates it with one click, and tells you when a newer GoVid release is available (also under **Tools → Check for GoVid updates**). On Windows, **Update now** downloads the new release, checks it against its published SHA-256, replaces GoVid, and restarts it.
 - **Dark / Light Theme**: Built-in light and dark themes configurable in Preferences.
 
 ## 📥 Download

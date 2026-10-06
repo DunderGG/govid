@@ -42,6 +42,8 @@ package "Application Core" #F0F4F8 {
         +prefSvc : *PreferenceService
         +sessionFailed : atomic.Bool
         +isRunning : atomic.Bool
+        +updating : atomic.Bool
+        +selfUpdater : *SelfUpdater
         +showDebug : atomic.Bool
         +keepHistory : atomic.Bool
         +queue : atomic.Pointer[QueueModel]
@@ -202,6 +204,7 @@ package "UI Layer" #F0F8F0 {
         +runUpdateInUI()
         +checkForGoVidUpdates()
         +showGoVidRelease(release Release)
+        +showUpdateFailure(err)
         +askPlaylist(ctx, prompt) : playlistDecision
         +askDiskSpace(ctx, prompt) : diskSpaceDecision
         +askDuplicate(ctx, prompt) : duplicateDecision
@@ -314,6 +317,16 @@ package "Download Engine" #FFF8F0 {
         +OnStatus : func(msg string)
         +OnProgress : func(pct float64, size string)
         +OnPhase : func(phase string)
+    }
+
+    class SelfUpdater <<service>> {
+        -client : *http.Client
+        -exePath : string
+        -start : func(path) error
+        --
+        +NewSelfUpdater(userAgent) : (*SelfUpdater, error)
+        +Download(ctx, release, onProgress) : (string, error)
+        +Install(zipPath) : error
     }
 
     class Preset <<data>> {
@@ -861,6 +874,8 @@ DownloadEngine ..> DownloadResult   : Run output
 DownloadEngine ..> ProcessCallbacks : Execute bridge
 DownloadEngine ..> MediaInfo : Probe returns
 DownloaderApp --> QueueModel : queue
+DownloaderApp --> SelfUpdater : selfUpdater
+SelfUpdater ..> Release : findUpdateAssets
 Preset *--> AppConfig : settings
 PreferenceService ..> Preset : stores
 UIManager ..> QueueModel : Queue panel
