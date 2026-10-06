@@ -280,7 +280,7 @@ func fakeYtDlpProbe(mode string, noPlaylist bool) int {
 	case mode == "ytdlp-playlist" && !noPlaylist:
 		var entries []string
 		for n := 1; n <= fakePlaylistSize; n++ {
-			entries = append(entries, fmt.Sprintf(`{"_type": "url", "url": "https://example.com/v/%d", "title": "Video %d", "duration": 90}`, n, n))
+			entries = append(entries, fmt.Sprintf(`{"_type": "url", "ie_key": "Fake", "id": "v%d", "url": "https://example.com/v/%d", "title": "Video %d", "duration": 90}`, n, n, n))
 		}
 		fmt.Printf(`{"_type": "playlist", "title": "Fake Playlist", "entries": [%s]}`+"\n", strings.Join(entries, ", "))
 		return 0
@@ -289,7 +289,7 @@ func fakeYtDlpProbe(mode string, noPlaylist bool) int {
 		return 1
 	}
 	recordFakeExtraction()
-	fmt.Printf(`{"_type": "video", "title": "Fake Video", "duration": 10, "height": %d, "subtitles": {"en": [], "de": []}, "automatic_captions": {"en": [], "fr": []}, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
+	fmt.Printf(`{"_type": "video", "id": "fakevid", "extractor_key": "Fake", "title": "Fake Video", "duration": 10, "height": %d, "subtitles": {"en": [], "de": []}, "automatic_captions": {"en": [], "fr": []}, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
 		fakeVideoHeight, fakeVideoSize-1024*1024, 1024*1024)
 	return 0
 }

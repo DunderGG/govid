@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"syscall"
 
@@ -51,4 +52,14 @@ func freeDiskBytes(path string) (uint64, error) {
 		return 0, fmt.Errorf("checking free space on %s: %w", path, err)
 	}
 	return uint64(stat.Bavail) * uint64(stat.Bsize), nil
+}
+
+// revealFileCommand returns an exec.Cmd that shows path in the platform file
+// manager: selected in Finder on macOS, or its folder opened elsewhere,
+// since xdg-open cannot select a file.
+func revealFileCommand(path string) *exec.Cmd {
+	if runtime.GOOS == "darwin" {
+		return exec.Command("open", "-R", path)
+	}
+	return exec.Command("xdg-open", filepath.Dir(path))
 }

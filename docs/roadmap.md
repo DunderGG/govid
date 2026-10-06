@@ -195,7 +195,7 @@ This document outlines planned features, improvements, and known limitations for
 ### UX Improvements
 - [x] Prevent duplicate application windows (Preferences, About, Help, Post-Processing).
 - [ ] Add hotkeys for the UI, like escape to close windows or ctrl-o to open folder.
-- [ ] Add a button to each history entry to quickly re-add to URL field, or other actions.
+- [x] Add a button to each history entry to quickly re-add to URL field, or other actions. (The History window is now a searchable list; each row has Re-add, Show in folder, and Copy URL, and rows whose file is gone are greyed out.)
 
 ### Automatic "Best-Fit" Quality
 > Smart handling of missing quality tiers.
@@ -388,10 +388,10 @@ This document outlines planned features, improvements, and known limitations for
 > Keep a record of previously downloaded files.
 
 - [X] Maintain a local SQLite or JSON file storing URL, filename, date, and format.
-- [ ] Capture and store the real source title in history using a structured yt-dlp output field; fall back to filename/title inference if unavailable.
+- [x] Capture and store the real source title in history using a structured yt-dlp output field; fall back to filename/title inference if unavailable. (The probe's `title`, or the playlist entry's, travels on the queue item into `DownloadRecord.Title`; the probe's `id` and `extractor_key` are stored too.)
 - [X] Show a "History" panel or tab in the UI.
-- [ ] Warn the user when they paste a URL that has already been downloaded.
-- [ ] Add a toggle to keep history or not, and a button to clear history (warn first).
+- [x] Warn the user when they paste a URL that has already been downloaded. (`skipDownloaded` in `duplicates.go`, after the URLs are checked: matched by video ID and extractor, so other URL forms of the same video count, or by exact URL for older entries. Download again / Skip, plus Skip all duplicates in a batch.)
+- [x] Add a toggle to keep history or not, and a button to clear history (warn first). (Preferences → "Keep download history", on by default, also `keepHistory` in `govid.json`; turning it off offers to delete the history. "Clear History" in the History window asks first.)
 
 ### Structural Refactoring
 > Decouple core logic from the main UI controller.

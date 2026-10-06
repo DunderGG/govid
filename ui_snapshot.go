@@ -40,6 +40,7 @@ func snapshotPreferences(ui *UIWidgets, savePath string) AppPreferences {
 		Subtitles:         ui.prefs.subtitles.Selected,
 		SubtitleLangs:     strings.TrimSpace(ui.prefs.subtitleLangs.Text),
 		AutoSubtitles:     ui.prefs.autoSubtitles.Checked,
+		KeepHistory:       ui.prefs.keepHistory.Checked,
 		BatchMode:         ui.download.batchMode.Checked,
 		SaveLog:           ui.download.saveLog.Checked,
 		Notify:            ui.download.notify.Checked,
@@ -168,6 +169,7 @@ func applyGeneralPrefs(ui *UIWidgets, p AppPreferences) {
 	ui.prefs.subtitles.SetSelected(p.Subtitles)
 	ui.prefs.subtitleLangs.SetText(p.SubtitleLangs)
 	ui.prefs.autoSubtitles.SetChecked(p.AutoSubtitles)
+	ui.prefs.keepHistory.SetChecked(p.KeepHistory)
 	ui.prefs.maxSpeed.SetText(p.MaxSpeed)
 	ui.prefs.themeMode.SetSelected(p.ThemeMode)
 	ui.prefs.cookies.SetText(p.CookiesPath)

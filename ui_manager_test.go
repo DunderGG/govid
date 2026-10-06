@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -183,58 +182,6 @@ func TestPostProcessingWindowEnablesSubControls(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestFormatHistoryEntries(t *testing.T) {
-	full := DownloadHistoryEntry{
-		URL:           "https://a",
-		OriginalTitle: "Title A",
-		FinalFilename: "GoVid_Title A.mp4",
-		SavedPath:     "/videos",
-		Format:        "MP4",
-		Quality:       "720p",
-		DownloadedAt:  "2026-10-01 10:00:00",
-		PostProcessed: true,
-	}
-	fullLines := []string{
-		"2026-10-01 10:00:00 | Title A",
-		"  URL: https://a",
-		"  Saved As: GoVid_Title A.mp4",
-		"  Path: /videos",
-		"  Format/Quality: MP4 / 720p",
-		"  Post-Processed: true",
-		"",
-	}
-
-	tests := []struct {
-		name    string
-		entries []DownloadHistoryEntry
-		want    []string
-	}{
-		{"empty", nil, nil},
-		{"full entry", []DownloadHistoryEntry{full}, fullLines},
-		{"title falls back to file name", []DownloadHistoryEntry{{URL: "https://b", FinalFilename: "b.mkv", DownloadedAt: "t"}},
-			[]string{"t | b.mkv", "  URL: https://b", "  Saved As: b.mkv", "  Path: ", "  Format/Quality:  / ", "  Post-Processed: false", ""}},
-		{"title falls back to URL", []DownloadHistoryEntry{{URL: "https://c", DownloadedAt: "t"}},
-			[]string{"t | https://c", "  URL: https://c", "  Saved As: ", "  Path: ", "  Format/Quality:  / ", "  Post-Processed: false", ""}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := formatHistoryEntries(tt.entries)
-			if want := strings.Join(tt.want, "\n"); got != want {
-				t.Errorf("formatHistoryEntries() =\n%q\nwant\n%q", got, want)
-			}
-		})
-	}
-
-	t.Run("newest first", func(t *testing.T) {
-		older := DownloadHistoryEntry{URL: "https://old", OriginalTitle: "Old", DownloadedAt: "1"}
-		newer := DownloadHistoryEntry{URL: "https://new", OriginalTitle: "New", DownloadedAt: "2"}
-		got := formatHistoryEntries([]DownloadHistoryEntry{older, newer})
-		if !strings.HasPrefix(got, "2 | New\n") || !strings.Contains(got, "\n1 | Old\n") {
-			t.Errorf("formatHistoryEntries() not newest first:\n%s", got)
-		}
-	})
 }
 
 // ── Log view ─────────────────────────────────────────────────────────────────

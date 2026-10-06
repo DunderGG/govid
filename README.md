@@ -18,6 +18,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Cross-Platform GUI**: Modern interface built with the [Fyne toolkit](https://fyne.io/).
 - **Multiple Formats**: Support for MP4, MKV, WebM, MP3, and M4A.
 - **Metadata & Cover Art**: Writes title, artist, and date tags, the thumbnail as cover art, and (optionally) chapters into downloaded files, and keeps them through post-processing.
+- **Download History**: **File → History** lists past downloads with their real titles; search it, re-add a URL, show the file in its folder, or copy the URL. GoVid warns before downloading the same video again, even from a different link to it. History can be turned off in Preferences.
 - **Subtitles**: Embed subtitles in the video, save them as `.srt` files beside it, or both, in the languages you choose (optionally including auto-generated captions).
 - **Quality Control**: Select your preferred maximum resolution for downloads. GoVid tells you when a video is not available at that resolution, and names the file after the resolution it actually downloaded.
 - **Video Trimming**: Download only a specific segment — specify a start time, an end time, or both (`HH:MM:SS` / `MM:SS` / seconds).
@@ -137,6 +138,7 @@ Example `govid.json`:
 | `subtitles` | `Off`, `Embed`, `Save as .srt`, `Both` (default `Off`) |
 | `subtitleLangs` | Subtitle languages in yt-dlp's `--sub-langs` syntax, e.g. `en.*,de` (default `en.*`) |
 | `autoSubtitles` | `true` or `false`: also take auto-generated captions (default `false`) |
+| `keepHistory` | `true` or `false`: record downloads and warn before repeating one (default `true`) |
 
 > **Note:** Standard JSON does not support comments. Adding them will cause a loading error. Use the **Load from Config** button in the Preferences window to apply changes.
 

@@ -3,6 +3,8 @@
 // Responsibilities:
 //   - HistoryService: typed service that owns the history file path and
 //     exposes Load, AppendAll, and Clear operations.
+//   - findDownloaded: finds an earlier download of the same video, for the
+//     duplicate warning.
 //   - DownloadHistoryEntry: the JSON record type written once per output file.
 package main
 
@@ -11,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -27,6 +30,41 @@ type DownloadHistoryEntry struct {
 	Quality       string `json:"quality"`
 	DownloadedAt  string `json:"downloadedAt"`
 	PostProcessed bool   `json:"postProcessed"`
+
+	// The site's ID for the video and yt-dlp's extractor key (e.g.
+	// "Youtube"), from the probe. Together they recognise the same video
+	// under another URL. Entries written before they were recorded have
+	// neither.
+	VideoID   string `json:"videoId,omitempty"`
+	Extractor string `json:"extractor,omitempty"`
+}
+
+// FilePath returns the path of the entry's file, or "" when it has none.
+func (entry DownloadHistoryEntry) FilePath() string {
+	if entry.FinalFilename == "" {
+		return ""
+	}
+	return filepath.Join(entry.SavedPath, entry.FinalFilename)
+}
+
+// DisplayFile returns the entry's file name, or a placeholder when it was
+// recorded without one.
+func (entry DownloadHistoryEntry) DisplayFile() string {
+	if entry.FinalFilename == "" {
+		return "(file name not recorded)"
+	}
+	return entry.FinalFilename
+}
+
+// DisplayTitle returns the entry's title, falling back to its file name and
+// then its URL.
+func (entry DownloadHistoryEntry) DisplayTitle() string {
+	for _, title := range []string{entry.OriginalTitle, entry.FinalFilename} {
+		if strings.TrimSpace(title) != "" {
+			return title
+		}
+	}
+	return entry.URL
 }
 
 // DownloadRecord carries the inputs needed to record a completed download.
@@ -39,6 +77,27 @@ type DownloadRecord struct {
 	Format        string
 	Quality       string
 	PostProcessed bool
+
+	// Title is the source's real title, from the probe or the playlist; ""
+	// when unknown, in which case it is guessed from the file name.
+	Title     string
+	VideoID   string
+	Extractor string
+}
+
+// findDownloaded returns the newest entry for the same video as the given
+// URL, video ID, and extractor key. A video is the same when both sides have
+// an ID and the IDs and extractors match (so youtu.be/x and watch?v=x are
+// one video), or when the URLs are identical (for entries recorded without
+// an ID, or a source that could not be probed).
+func findDownloaded(entries []DownloadHistoryEntry, url, videoID, extractor string) (DownloadHistoryEntry, bool) {
+	for _, entry := range slices.Backward(entries) {
+		sameID := videoID != "" && entry.VideoID == videoID && strings.EqualFold(entry.Extractor, extractor)
+		if sameID || entry.URL == url {
+			return entry, true
+		}
+	}
+	return DownloadHistoryEntry{}, false
 }
 
 // HistoryService owns the download history file path and exposes Load,
@@ -137,25 +196,34 @@ func (svc *HistoryService) buildEntries(rec DownloadRecord, timestamp string) []
 	if len(rec.FinalPaths) == 0 {
 		return []DownloadHistoryEntry{{
 			URL:           rec.URL,
+			OriginalTitle: rec.Title,
 			SavedPath:     rec.SavePath,
 			Format:        rec.Format,
 			Quality:       rec.Quality,
 			DownloadedAt:  timestamp,
 			PostProcessed: rec.PostProcessed,
+			VideoID:       rec.VideoID,
+			Extractor:     rec.Extractor,
 		}}
 	}
 	result := make([]DownloadHistoryEntry, 0, len(rec.FinalPaths))
 	for _, p := range rec.FinalPaths {
 		base := filepath.Base(p)
+		title := rec.Title
+		if title == "" {
+			title = inferOriginalTitle(base, rec.Quality)
+		}
 		result = append(result, DownloadHistoryEntry{
 			URL:           rec.URL,
-			OriginalTitle: inferOriginalTitle(base, rec.Quality),
+			OriginalTitle: title,
 			FinalFilename: base,
 			SavedPath:     filepath.Dir(p),
 			Format:        rec.Format,
 			Quality:       rec.Quality,
 			DownloadedAt:  timestamp,
 			PostProcessed: rec.PostProcessed,
+			VideoID:       rec.VideoID,
+			Extractor:     rec.Extractor,
 		})
 	}
 	return result

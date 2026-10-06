@@ -30,6 +30,25 @@ type queueItem struct {
 	// probeFailed is set when the URL could not be probed. Its download then
 	// goes ahead from the URL, without probing it again first.
 	probeFailed bool
+
+	// What the probe or the playlist says the video is, for its history
+	// entry and the duplicate check; "" when unknown.
+	title     string
+	videoID   string
+	extractor string
+}
+
+// withInfo returns the item with the probe's answer about it.
+func (item queueItem) withInfo(info *MediaInfo) queueItem {
+	item.info = info
+	item.probeFailed = false
+	if title := strings.TrimSpace(info.Title); title != "" {
+		item.title = title
+	}
+	if info.ID != "" {
+		item.videoID, item.extractor = info.ID, info.ExtractorKey
+	}
+	return item
 }
 
 // needsProbe reports whether the item must be probed (again) before it is
@@ -83,7 +102,7 @@ func (app *DownloaderApp) checkURLs(ctx context.Context, session downloadSession
 		case info.IsPlaylist():
 			items = append(items, app.expandPlaylist(ctx, rawURL, info)...)
 		default:
-			items = append(items, queueItem{url: rawURL, info: &info})
+			items = append(items, queueItem{url: rawURL}.withInfo(&info))
 		}
 	}
 	return items
@@ -112,12 +131,13 @@ func (app *DownloaderApp) expandPlaylist(ctx context.Context, rawURL string, inf
 	var items []queueItem
 	missing := 0
 	for _, position := range decision.positions {
-		entryURL := info.Entries[position-1].DownloadURL()
+		entry := info.Entries[position-1]
+		entryURL := entry.DownloadURL()
 		if entryURL == "" {
 			missing++
 			continue
 		}
-		items = append(items, queueItem{url: entryURL})
+		items = append(items, queueItem{url: entryURL, title: strings.TrimSpace(entry.Title), videoID: entry.ID, extractor: entry.IEKey})
 	}
 	app.appendOutput(fmt.Sprintf("[SYSTEM] Playlist %q: queued %d of %d videos.", title, len(items), len(info.Entries)), colInfo)
 	if missing > 0 {
@@ -158,7 +178,7 @@ func (app *DownloaderApp) checkItem(ctx context.Context, session downloadSession
 		// --no-playlist should rule this out; download the URL as it is.
 		item.info, item.probeFailed = nil, true
 	default:
-		item.info = &info
+		item = item.withInfo(&info)
 	}
 	session.items[index] = item
 	return item

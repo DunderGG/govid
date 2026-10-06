@@ -7,9 +7,10 @@
 //   - createUI: composes the main window layout (header, input card, status
 //     card, log pane, footer) from focused builder/wiring helpers below it.
 //   - createMainMenu: builds the main window's menu bar.
-//   - showAbout, showHistory, showConfigHelp, showPreferences,
-//     showPostProcessing: self-contained window construction, built from
-//     UIManager's own widget field and injected service callbacks.
+//   - showAbout, showConfigHelp, showPreferences, showPostProcessing:
+//     self-contained window construction, built from UIManager's own widget
+//     field and injected service callbacks. showHistory lives in
+//     history_window.go.
 //   - savePreferences, restoreDefaults: preference persistence and the
 //     "Restore Defaults" reset used by showPreferences.
 //   - checkDependencies, confirmYtDlpUpdate, runUpdateInUI: thin delegates to the injected
@@ -94,6 +95,7 @@ type UIManager struct {
 	onSetLogBufferLimit  func(limit int)                                                                                             // LogService.SetBufferLimit
 	onLogBufferLimit     func() int                                                                                                  // LogService.BufferLimit
 	onSetShowDebug       func(show bool)                                                                                             // DownloaderApp.showDebug.Store
+	onSetKeepHistory     func(keep bool)                                                                                             // DownloaderApp.keepHistory.Store
 }
 
 // NewUIManager returns a UIManager bound to the given primary window.
@@ -265,82 +267,6 @@ func (manager *UIManager) showAbout() {
 	manager.aboutWindow.Show()
 }
 
-// showHistory opens a window listing previously downloaded URLs from disk.
-// It is a singleton: if already open, the existing window is focused instead.
-func (manager *UIManager) showHistory() {
-	if focusOrCreate(&manager.historyWindow) {
-		return
-	}
-
-	// Load the download history from disk. If it fails, show an error dialog and abort.
-	entries, err := manager.onLoadHistory()
-	if err != nil {
-		dialog.ShowError(fmt.Errorf("failed to load download history: %v", err), manager.mainWindow)
-		return
-	}
-
-	text := widget.NewMultiLineEntry()
-	text.SetPlaceHolder("No download history yet.")
-	text.SetText(formatHistoryEntries(entries))
-	text.Disable()
-
-	scroll := container.NewScroll(text)
-	scroll.SetMinSize(fyne.NewSize(760, 420))
-
-	clearBtn := widget.NewButton("Clear History", func() {
-		dialog.ShowConfirm(
-			"Clear Download History",
-			"Are you sure you want to clear all download history? This cannot be undone.",
-			func(ok bool) {
-				if !ok {
-					return
-				}
-				if err := manager.onClearHistory(); err != nil {
-					dialog.ShowError(fmt.Errorf("failed to clear history: %v", err), manager.historyWindow)
-					return
-				}
-				text.SetText("")
-			},
-			manager.historyWindow,
-		)
-	})
-
-	bottomBar := container.NewHBox(layout.NewSpacer(), clearBtn)
-	content := container.NewBorder(nil, bottomBar, nil, nil, scroll)
-
-	manager.historyWindow = fyne.CurrentApp().NewWindow("Download History")
-	manager.historyWindow.SetContent(container.NewPadded(content))
-	manager.historyWindow.Resize(fyne.NewSize(800, 500))
-	manager.historyWindow.SetOnClosed(onWindowClosed(&manager.historyWindow))
-	manager.historyWindow.Show()
-}
-
-// formatHistoryEntries renders the download history for the History window,
-// newest first. Each entry is a title line followed by indented details and
-// a blank separator line. The title falls back to the file name, then the URL.
-func formatHistoryEntries(entries []DownloadHistoryEntry) string {
-	var lines []string
-	for _, entry := range slices.Backward(entries) {
-		title := entry.OriginalTitle
-		if title == "" {
-			title = entry.FinalFilename
-		}
-		if title == "" {
-			title = entry.URL
-		}
-		lines = append(lines,
-			fmt.Sprintf("%s | %s", entry.DownloadedAt, title),
-			fmt.Sprintf("  URL: %s", entry.URL),
-			fmt.Sprintf("  Saved As: %s", entry.FinalFilename),
-			fmt.Sprintf("  Path: %s", entry.SavedPath),
-			fmt.Sprintf("  Format/Quality: %s / %s", entry.Format, entry.Quality),
-			fmt.Sprintf("  Post-Processed: %t", entry.PostProcessed),
-			"",
-		)
-	}
-	return strings.Join(lines, "\n")
-}
-
 // showConfigHelp opens a scrollable window explaining all configuration options.
 // It is a singleton: if already open, the existing window is focused instead.
 func (manager *UIManager) showConfigHelp() {
@@ -384,6 +310,13 @@ func (manager *UIManager) showConfigHelp() {
 			"**Subtitle Languages** takes language codes or patterns separated by commas, as yt-dlp's `--sub-langs` does: `en.*` (the default) matches `en`, `en-US`, `en-GB`, and so on; `all,-live_chat` takes every language except live chat. Before each download, the log lists the languages the video has and warns when none matches; the video then downloads without subtitles.\n\n" +
 			"**Include auto-generated** also takes captions the site generated automatically, for languages that have no subtitles written by people. They are often inaccurate, and YouTube offers them in over 150 languages.\n\n" +
 			"Audio formats cannot hold subtitles, so none are downloaded for them. WebM can only hold WebVTT subtitles, so those embedded in WebM stay in that format. For a trimmed download, subtitles still cover the whole video. If the subtitles cannot be downloaded (YouTube sometimes refuses with \"Too Many Requests\"), GoVid downloads the video again without them and says so."},
+		{"Download History", "**File → History** lists your downloads, newest first, with each video's title, date, format and quality, and file name. Type in the search field to filter by title, URL, or file name. Each entry has:\n" +
+			"  * **Re-add** – puts the URL back in the URL field (switching on Batch Mode if the field already holds a URL)\n" +
+			"  * **Show in folder** – opens the folder with the file selected\n" +
+			"  * **Copy URL** – copies the URL to the clipboard\n\n" +
+			"Entries whose file has been moved or deleted are greyed out.\n\n" +
+			"Before downloading, GoVid checks the history and asks before downloading a video again: **Download again** or **Skip**, and in a batch also **Skip all duplicates**. It recognises a video under a different link too, such as `youtu.be/…` for a `watch?v=…` link it downloaded before.\n\n" +
+			"To stop keeping history, untick **Keep download history** in **Tools → Preferences**; GoVid then offers to delete the history kept so far. **Clear History** in the History window deletes it at any time."},
 		{"Debug Output", "Found in **Tools → Preferences**. GoVid runs yt-dlp in verbose mode so the log file has everything needed for a bug report, but the **[debug]** lines are hidden from the Terminal Output panel unless this is checked. The panel also shows only the latest download progress line for each file; the log file keeps them all."},
 		{"Updates", "Found in **Tools → Preferences**. When **Check for updates on startup** is checked, GoVid asks GitHub (at most once a day) whether a newer yt-dlp is available and, if so, shows a notice with an **Update now** button. Sites change often, and an outdated yt-dlp is the most common reason downloads stop working. **Tools → Update yt-dlp** shows the installed and latest versions and updates on demand.\n\nGoVid also tells you when a newer GoVid release is available; **What's new** shows its release notes and a link to the download page. **Tools → Check for GoVid updates** checks right away.\n\nIf the update fails because GoVid's folder cannot be written to (for example under `Program Files`), run GoVid as administrator once, or move it to a folder you own."},
 		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
@@ -399,7 +332,7 @@ func (manager *UIManager) showConfigHelp() {
 			"* **embedMetadata**, **embedThumbnail**, **embedChapters**: `true` or `false`\n" +
 			"* **subtitles**: " + codeList(subtitleModeOptions) + "\n" +
 			"* **subtitleLangs**: yt-dlp `--sub-langs` syntax, e.g. `en.*,de`\n" +
-			"* **autoSubtitles**: `true` or `false`"},
+			"* **autoSubtitles**, **keepHistory**: `true` or `false`"},
 	}
 
 	content := container.NewVBox()
@@ -452,6 +385,7 @@ func (manager *UIManager) showPreferences() {
 	// Reload the persisted values so the window never shows edits that were
 	// discarded by closing it without saving.
 	applyGeneralPrefs(ui, manager.onLoadPreferences())
+	ui.prefs.keepHistory.OnChanged = manager.onKeepHistoryChanged
 
 	form := &widget.Form{
 		Items: []*widget.FormItem{
@@ -459,6 +393,7 @@ func (manager *UIManager) showPreferences() {
 			{Text: "Log Buffer Limit", Widget: ui.prefs.logLimit, HintText: "Max lines kept in the log view (never more than 5000); older entries are removed from the top"},
 			{Text: "Debug Output", Widget: ui.prefs.showDebug, HintText: "Show yt-dlp's [debug] lines in the log view; the log file always has them"},
 			{Text: "Updates", Widget: ui.prefs.checkUpdates, HintText: "Check GitHub once a day for newer yt-dlp and GoVid releases"},
+			{Text: "Download History", Widget: ui.prefs.keepHistory, HintText: "Record downloads in File → History, and warn before downloading a video again"},
 			{Text: "Embed in File", Widget: container.NewHBox(ui.prefs.embedMetadata, ui.prefs.embedThumbnail, ui.prefs.embedChapters), HintText: "Write tags (title, artist, date), cover art, and chapter markers into downloads"},
 			{Text: "Subtitles", Widget: container.NewHBox(ui.prefs.subtitles, ui.prefs.autoSubtitles), HintText: "Embed subtitles in videos, save them as .srt files beside them, or both"},
 			{Text: "Subtitle Languages", Widget: ui.prefs.subtitleLangs, HintText: "Comma-separated language codes or patterns, e.g. en.*,de (yt-dlp --sub-langs)"},
@@ -512,14 +447,48 @@ func (manager *UIManager) buildCookiesRow() fyne.CanvasObject {
 // log buffer limit, saves every preference, and applies the selected theme.
 func (manager *UIManager) submitPreferences() {
 	ui := manager.ui
-	manager.onSetLogBufferLimit(ParseBufferLimit(ui.prefs.logLimit.Selected))
-	manager.onSetShowDebug(ui.prefs.showDebug.Checked)
+	manager.applyRuntimePrefs(snapshotPreferences(ui, ui.download.path.Text))
 	manager.savePreferences(ui.download.path.Text)
 
 	// Apply theme change and rebuild the UI so canvas.Rectangle colors
 	// (which are snapshotted at construction time) get fresh theme values.
 	applyTheme(fyne.CurrentApp(), ui.prefs.themeMode.Selected)
 	manager.createUI()
+}
+
+// onKeepHistoryChanged handles the "Keep download history" toggle: turning
+// it off offers to delete the history kept so far as well. Restore Defaults
+// never turns it off, so it never asks then.
+func (manager *UIManager) onKeepHistoryChanged(keep bool) {
+	if keep || manager.restoringDefaults {
+		return
+	}
+	parent := manager.prefsWindow
+	if parent == nil {
+		parent = manager.mainWindow
+	}
+	confirm := dialog.NewConfirm("Stop Keeping History",
+		"Once you save, GoVid stops recording downloads and no longer warns before downloading a video again.\n\nDelete the history recorded so far as well?",
+		func(deleteIt bool) {
+			if !deleteIt {
+				return
+			}
+			if err := manager.onClearHistory(); err != nil {
+				dialog.ShowError(fmt.Errorf("failed to clear history: %v", err), parent)
+			}
+		}, parent)
+	confirm.SetConfirmText("Delete history")
+	confirm.SetDismissText("Keep it")
+	confirm.Show()
+}
+
+// applyRuntimePrefs applies the preferences that live outside the widgets:
+// the log buffer limit, whether debug lines are shown, and whether history
+// is kept.
+func (manager *UIManager) applyRuntimePrefs(p AppPreferences) {
+	manager.onSetLogBufferLimit(ParseBufferLimit(p.LogLimit))
+	manager.onSetShowDebug(p.ShowDebug)
+	manager.onSetKeepHistory(p.KeepHistory)
 }
 
 // confirmRestoreDefaults asks the user to confirm, then runs restoreDefaults.
@@ -543,6 +512,7 @@ func (manager *UIManager) loadConfigFile() {
 
 	merged, errs := manager.onMergeConfig(config, manager.onLoadPreferences(), ui.download.format.Options, ui.download.quality.Options)
 	applyPreferencesToWidgets(ui, merged)
+	manager.applyRuntimePrefs(merged)
 	manager.onSavePreferences(merged)
 
 	if len(errs) > 0 {
@@ -580,8 +550,7 @@ func (manager *UIManager) restoreDefaults() {
 	defaults := manager.onLoadPreferences()
 
 	applyPreferencesToWidgets(manager.ui, defaults)
-	manager.onSetLogBufferLimit(ParseBufferLimit(defaults.LogLimit))
-	manager.onSetShowDebug(defaults.ShowDebug)
+	manager.applyRuntimePrefs(defaults)
 	applyTheme(fyne.CurrentApp(), defaults.ThemeMode)
 	manager.createUI()
 }

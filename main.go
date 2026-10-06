@@ -53,6 +53,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	applyPreferencesToWidgets(dlApp.ui, prefs)
 	dlApp.logSvc.SetBufferLimit(ParseBufferLimit(prefs.LogLimit))
 	dlApp.showDebug.Store(prefs.ShowDebug)
+	dlApp.keepHistory.Store(prefs.KeepHistory)
 
 	// Wire history service to both the app and the UIManager's callbacks.
 	dlApp.historySvc = NewHistoryService()
@@ -70,6 +71,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onSetLogBufferLimit = dlApp.logSvc.SetBufferLimit
 	dlApp.uiManager.onLogBufferLimit = dlApp.logSvc.BufferLimit
 	dlApp.uiManager.onSetShowDebug = dlApp.showDebug.Store
+	dlApp.uiManager.onSetKeepHistory = dlApp.keepHistory.Store
 
 	// Wire the dependency-service callbacks and log/status callbacks for
 	// checkDependencies and the "Update yt-dlp" menu action.
@@ -85,6 +87,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	// which owns the log widgets' lifecycle.
 	dlApp.onLogLine = dlApp.uiManager.appendLogLine
 	dlApp.askPlaylist = dlApp.uiManager.askPlaylist
+	dlApp.askDuplicate = dlApp.uiManager.askDuplicate
 	dlApp.freeBytes = freeDiskBytes
 	dlApp.askDiskSpace = dlApp.uiManager.askDiskSpace
 

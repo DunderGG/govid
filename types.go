@@ -87,6 +87,7 @@ type PreferenceControls struct {
 	subtitles      *widget.Select     // Subtitle mode: Off, Embed, Save as .srt, or Both
 	subtitleLangs  *widget.Entry      // Subtitle languages, in yt-dlp --sub-langs syntax
 	autoSubtitles  *widget.Check      // Option to also take auto-generated captions
+	keepHistory    *widget.Check      // Option to record downloads in the download history
 }
 
 // NewPreferenceControls constructs the Preferences dialog's widgets.
@@ -117,6 +118,7 @@ func NewPreferenceControls() *PreferenceControls {
 		subtitles:      widget.NewSelect(subtitleModeOptions, nil),
 		subtitleLangs:  subtitleLangs,
 		autoSubtitles:  widget.NewCheck("Include auto-generated", nil),
+		keepHistory:    widget.NewCheck("Keep download history", nil),
 	}
 }
 
@@ -273,6 +275,10 @@ type DownloaderApp struct {
 	// uiManager.askPlaylist, replaced in tests.
 	askPlaylist func(ctx context.Context, prompt playlistPrompt) playlistDecision
 
+	// askDuplicate asks whether to download a video again; set to
+	// uiManager.askDuplicate, replaced in tests.
+	askDuplicate func(ctx context.Context, prompt duplicatePrompt) duplicateDecision
+
 	// freeBytes returns the free space on the volume holding a folder, and
 	// askDiskSpace asks what to do when a download will not fit; set to
 	// freeDiskBytes and uiManager.askDiskSpace, replaced in tests.
@@ -290,4 +296,5 @@ type DownloaderApp struct {
 	sessionFailed atomic.Bool
 	isRunning     atomic.Bool // true while a download or post-processing session is active
 	showDebug     atomic.Bool // true to show yt-dlp [debug] lines in the log view; see appendOutput
+	keepHistory   atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
 }

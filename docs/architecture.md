@@ -42,6 +42,8 @@ govid/
 ├── preference_service.go   PreferenceService — preference keys, defaults, Load/Save/Reset, LoadFromFile, MergeConfig;
 │                           savePreferences, parseAppConfig, isValidOption co-located
 ├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadRecord and DownloadHistoryEntry types
+├── history_window.go       UIManager.showHistory — the searchable History list with Re-add / Show in folder / Copy URL
+├── duplicates.go           skipDownloaded / askDuplicate — "Already downloaded" check before a session downloads
 ├── log_service.go          LogService — session log open/close, error log routing, buffer-limit management
 ├── dependency_service.go   DependencyService — binary path resolution, dependency checks, yt-dlp updater
 ├── ui_manager.go           UIManager — main window layout (createUI, createMainMenu), secondary window lifecycle
@@ -235,10 +237,17 @@ Owns the path to `download_history.json` (beside the executable) and exposes thr
 - **`AppendAll(rec DownloadRecord)`** — builds one `DownloadHistoryEntry` per path in `rec.FinalPaths` and writes the updated array in a single write. When `rec.FinalPaths` is empty a placeholder entry is appended so the URL is still recorded.
 - **`Clear() error`** — overwrites the file with an empty JSON array.
 
-The private `buildEntries` helper and `inferOriginalTitle` live here; neither has a UI dependency. `DownloaderApp` holds `historySvc *HistoryService`; `UIManager` uses injected `onLoadHistory` and `onClearHistory` callbacks so `showHistory` never touches the file path directly.
+The private `buildEntries` helper and `inferOriginalTitle` live here; neither has a UI dependency. `buildEntries` uses `rec.Title` (the probe's or the playlist's title) and falls back to `inferOriginalTitle` only when it is empty. `findDownloaded(entries, url, videoID, extractor)` returns the newest entry for the same video: one with the same video ID and extractor key, so `youtu.be/x` and `watch?v=x&t=1` match, or, for entries recorded before IDs were kept, the identical URL. `DownloaderApp` holds `historySvc *HistoryService`; `UIManager` uses injected `onLoadHistory` and `onClearHistory` callbacks so `showHistory` never touches the file path directly.
 
-`DownloadHistoryEntry` is a plain JSON-serialisable value struct (url, originalTitle, finalFilename, savedPath, format, quality, downloadedAt, postProcessed).
-`DownloadRecord` is the plain input value passed to `AppendAll`: URL, final paths, save path, format, quality, and post-processing state.
+`DownloadHistoryEntry` is a plain JSON-serialisable value struct (url, originalTitle, finalFilename, savedPath, format, quality, downloadedAt, postProcessed, and the optional videoId and extractor), with `FilePath`, `DisplayTitle`, and `DisplayFile` helpers.
+`DownloadRecord` is the plain input value passed to `AppendAll`: URL, final paths, save path, format, quality, post-processing state, and the title, video ID, and extractor the queue item carries (`queueItem.withInfo` takes them from the probe; playlist entries start with the playlist's title, ID, and `ie_key`).
+
+**Keep download history.** The `KeepHistory` preference (on by default) is mirrored in `DownloaderApp.keepHistory` (an `atomic.Bool`, set at startup and by `UIManager.applyRuntimePrefs`). When it is off, `recordHistory` writes nothing and `skipDownloaded` does not check. Unticking it in Preferences (`onKeepHistoryChanged`) offers to delete the history kept so far.
+
+**Repeat downloads** (`duplicates.go`). After `checkURLs`, `runSession` calls `skipDownloaded`, which reads the history once and, for each queued item that `findDownloaded` matches, asks through `askDuplicate`: "Already downloaded on <date> as <file>" with Download again / Skip, plus "Skip all duplicates" in a batch. Skipped items are logged and dropped from the queue.
+
+**History window** (`history_window.go`). `showHistory` shows a `widget.List` of `historyRow`s, newest first, built from a `historyView` (the entries, which of their files no longer exist, and the search result). Each row has the title, a details line (date, format/quality, file name), and **Re-add** (`readdHistoryURL` → `addURLs`, switching on batch mode when the field already has a URL), **Show in folder** (`revealFileCommand`: `explorer /select,"<file>"` on Windows, `open -R` on macOS, the folder on Linux), and **Copy URL**. Rows whose file is gone are greyed out (`LowImportance`) with Show in folder disabled. The search field filters on title, URL, file name, and format.
+
 
 ---
 
@@ -306,6 +315,7 @@ Looks up the latest release of a GitHub repository through `GET /repos/<owner>/<
 User clicks Download
   └─ startDownload()          validate URLs; open log file; spawn the sequential download worker
        ├─ checkURLs()          engine.Probe per URL; a playlist → askPlaylist prompt → its chosen videos become queue items
+       ├─ skipDownloaded()     history match by video ID + extractor (or URL) → askDuplicate: Download again / Skip / Skip all
        └─ downloadItem()       per queue item
             ├─ checkItem()          engine.ProbeVideo when the item has no fresh probe answer (playlist entries; answers over 30 min old)
             ├─ reportQualityFit()   qualityFit(format, quality, probe height) → log line + notice when it differs from the cap

@@ -41,6 +41,7 @@ const (
 	prefSubtitles         = "subtitles"
 	prefSubtitleLangs     = "subtitleLangs"
 	prefAutoSubtitles     = "autoSubtitles"
+	prefKeepHistory       = "keepHistory"
 	prefBatchMode         = "batchMode"
 	prefSaveLog           = "saveLog"
 	prefNotify            = "notify"
@@ -79,6 +80,7 @@ const (
 	defaultQuality           = qualityBest
 	defaultSavePrefs         = true
 	defaultCheckUpdates      = true
+	defaultKeepHistory       = true
 	defaultEmbedMetadata     = true
 	defaultEmbedThumbnail    = true
 	defaultSubtitles         = subtitlesOff
@@ -113,6 +115,7 @@ type AppPreferences struct {
 	Subtitles         string // one of subtitleModeOptions
 	SubtitleLangs     string // yt-dlp --sub-langs list, e.g. "en.*,de"
 	AutoSubtitles     bool   // also take auto-generated captions when a language has no subtitles
+	KeepHistory       bool   // record each download in download_history.json
 	BatchMode         bool
 	SaveLog           bool
 	Notify            bool
@@ -187,6 +190,7 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		Subtitles:         prefSvc.store.StringWithFallback(prefSubtitles, defaultSubtitles),
 		SubtitleLangs:     prefSvc.store.StringWithFallback(prefSubtitleLangs, defaultSubtitleLangs),
 		AutoSubtitles:     prefSvc.store.Bool(prefAutoSubtitles),
+		KeepHistory:       prefSvc.store.BoolWithFallback(prefKeepHistory, defaultKeepHistory),
 		BatchMode:         prefSvc.store.Bool(prefBatchMode),
 		SaveLog:           prefSvc.store.Bool(prefSaveLog),
 		Notify:            prefSvc.store.Bool(prefNotify),
@@ -277,6 +281,7 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 	prefSvc.store.SetString(prefSubtitles, p.Subtitles)
 	prefSvc.store.SetString(prefSubtitleLangs, p.SubtitleLangs)
 	prefSvc.store.SetBool(prefAutoSubtitles, p.AutoSubtitles)
+	prefSvc.store.SetBool(prefKeepHistory, p.KeepHistory)
 	prefSvc.store.SetBool(prefBatchMode, p.BatchMode)
 	prefSvc.store.SetBool(prefSaveLog, p.SaveLog)
 	prefSvc.store.SetBool(prefNotify, p.Notify)
@@ -310,6 +315,7 @@ func (prefSvc *PreferenceService) Reset() {
 		prefSavePrefs, prefCookiesPath, prefLogLimit, prefShowDebug, prefCheckUpdates,
 		prefEmbedMetadata, prefEmbedThumbnail, prefEmbedChapters,
 		prefSubtitles, prefSubtitleLangs, prefAutoSubtitles,
+		prefKeepHistory,
 		prefBatchMode, prefSaveLog, prefNotify, prefAutoRetry, prefEnablePostProcess,
 		prefSmoothMotion, prefSmoothMotionMode, prefSmoothFPS,
 		prefSharpen, prefSharpenAmount, prefNormalize, prefVividMode,
@@ -342,6 +348,7 @@ type AppConfig struct {
 	Subtitles     string `json:"subtitles"`
 	SubtitleLangs string `json:"subtitleLangs"`
 	AutoSubtitles *bool  `json:"autoSubtitles"`
+	KeepHistory   *bool  `json:"keepHistory"`
 }
 
 // parseAppConfig unmarshals raw JSON bytes into an AppConfig.
@@ -442,6 +449,9 @@ func (svc *PreferenceService) MergeConfig(cfg *AppConfig, base AppPreferences, v
 	}
 	if cfg.AutoSubtitles != nil {
 		base.AutoSubtitles = *cfg.AutoSubtitles
+	}
+	if cfg.KeepHistory != nil {
+		base.KeepHistory = *cfg.KeepHistory
 	}
 
 	return base, errs

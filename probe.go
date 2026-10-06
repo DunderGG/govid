@@ -34,6 +34,11 @@ type MediaInfo struct {
 	Duration float64         `json:"duration"` // seconds; 0 when unknown
 	Entries  []PlaylistEntry `json:"entries"`  // playlist items, in playlist order
 
+	// The site's ID for the video and yt-dlp's name for the site, which
+	// together recognise the same video under different URLs.
+	ID           string `json:"id"`
+	ExtractorKey string `json:"extractor_key"`
+
 	// Height is the height of the video the -f selector picked (for merged
 	// streams, the video stream's); 0 when unknown or audio only.
 	Height int `json:"height"`
@@ -112,6 +117,8 @@ type PlaylistEntry struct {
 	WebpageURL string  `json:"webpage_url"`
 	Title      string  `json:"title"`
 	Duration   float64 `json:"duration"` // seconds; 0 when unknown
+	ID         string  `json:"id"`
+	IEKey      string  `json:"ie_key"` // the extractor key a full probe reports as extractor_key
 }
 
 // DownloadURL returns the URL to download the entry from, or "" when the

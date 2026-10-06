@@ -62,3 +62,14 @@ func freeDiskBytes(path string) (uint64, error) {
 	}
 	return available, nil
 }
+
+// revealFileCommand returns an exec.Cmd that opens Explorer on the folder
+// holding path, with the file selected. Explorer parses its command line
+// itself and needs the path quoted after "/select,", which exec's own
+// argument quoting cannot produce, so the command line is set directly.
+// Explorer exits with status 1 even when it succeeds; use Start, not Run.
+func revealFileCommand(path string) *exec.Cmd {
+	cmd := exec.Command("explorer")
+	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `explorer /select,"` + path + `"`}
+	return cmd
+}

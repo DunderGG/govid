@@ -43,6 +43,7 @@ package "Application Core" #F0F4F8 {
         +sessionFailed : atomic.Bool
         +isRunning : atomic.Bool
         +showDebug : atomic.Bool
+        +keepHistory : atomic.Bool
         --
         +SetCancelFunc(cancel context.CancelFunc)
         +RequestCancel() : bool
@@ -51,10 +52,11 @@ package "Application Core" #F0F4F8 {
         +startDownload()
         -checkURLs(ctx, session) : []queueItem
         -expandPlaylist(ctx, url, info) : []queueItem
+        -skipDownloaded(ctx, items) : []queueItem
         -checkItem(ctx, session, index) : queueItem
         -downloadItem(queueCtx, session, index, continueAll) : ([]string, bool)
         -checkDiskSpace(ctx, session, index, continueAll) : diskSpaceDecision
-        +runYtDlp(ctx, req DownloadRequest, index, total) : []string
+        +runYtDlp(ctx, req DownloadRequest, item queueItem, index, total) : []string
         +openDownloadFolder()
         +updateStatus(msg)
         +showDownloadPhase(phase)
@@ -132,6 +134,7 @@ package "UI Layer" #F0F8F0 {
         +subtitles : *widget.Select
         +subtitleLangs : *widget.Entry
         +autoSubtitles : *widget.Check
+        +keepHistory : *widget.Check
     }
 
     class PostProcessControls <<ui>> {
@@ -199,6 +202,11 @@ package "UI Layer" #F0F8F0 {
         +showGoVidRelease(release Release)
         +askPlaylist(ctx, prompt) : playlistDecision
         +askDiskSpace(ctx, prompt) : diskSpaceDecision
+        +askDuplicate(ctx, prompt) : duplicateDecision
+        -readdHistoryURL(url)
+        -revealHistoryFile(path)
+        -onKeepHistoryChanged(keep bool)
+        -applyRuntimePrefs(p AppPreferences)
         +showNotice(n notice)
         +dismissNotice(id)
         -showLoadURLFile()
@@ -298,6 +306,8 @@ package "Download Engine" #FFF8F0 {
         +Title : string
         +Duration : float64
         +Entries : []PlaylistEntry
+        +ID : string
+        +ExtractorKey : string
         +Height : int
         +Subtitles : map[string]RawMessage
         +AutomaticCaptions : map[string]RawMessage
@@ -314,6 +324,8 @@ package "Download Engine" #FFF8F0 {
         +WebpageURL : string
         +Title : string
         +Duration : float64
+        +ID : string
+        +IEKey : string
         --
         +DownloadURL() : string
     }
@@ -494,6 +506,11 @@ package "History Service" #F0FFF4 {
         -buildEntries(rec, timestamp) : []DownloadHistoryEntry
     }
 
+    note right of HistoryService
+      findDownloaded(entries, url, videoID, extractor)
+      matches the same video by ID + extractor, or by URL
+    end note
+
     class DownloadRecord <<data>> {
         +URL : string
         +FinalPaths : []string
@@ -501,6 +518,9 @@ package "History Service" #F0FFF4 {
         +Format : string
         +Quality : string
         +PostProcessed : bool
+        +Title : string
+        +VideoID : string
+        +Extractor : string
     }
 
     class DownloadHistoryEntry <<data>> {
@@ -512,6 +532,12 @@ package "History Service" #F0FFF4 {
         +Quality : string
         +DownloadedAt : string
         +PostProcessed : bool
+        +VideoID : string
+        +Extractor : string
+        --
+        +FilePath() : string
+        +DisplayTitle() : string
+        +DisplayFile() : string
     }
 
 }
@@ -546,6 +572,7 @@ package "Preference Service" #FFF0F0 {
         +Subtitles : string
         +SubtitleLangs : string
         +AutoSubtitles : bool
+        +KeepHistory : bool
         +CookiesPath : string
         +MaxSpeed : string
         +BatchMode : bool
@@ -711,6 +738,7 @@ package "Support Types" #F5F5F5 {
         +Subtitles : string
         +SubtitleLangs : string
         +AutoSubtitles : *bool
+        +KeepHistory : *bool
     }
 
 }

@@ -146,9 +146,17 @@ A side finding for #1: when a `--load-info-json` download fails, yt-dlp sometime
 
 ---
 
-## 5. Better download history
+## 5. ✅ Better download history
 
 **Roadmap:** Low Priority → Download History (real source title, warn on duplicates, keep-history toggle). Also Technical Improvements → UX Improvements ("a button to each history entry to quickly re-add to URL field").
+
+**Status: Done.**
+- **Real titles.** `queueItem` now carries `title`, `videoID`, and `extractor`. `withInfo` takes them from the probe (`title`, `id`, `extractor_key`), and playlist entries start with the playlist's `title`, `id`, and `ie_key`. `runYtDlp` passes the item to `recordHistory`, so `DownloadRecord.Title` (with the ID and extractor) reaches the entry, and `inferOriginalTitle` is only the fallback.
+- **Duplicate warning.** `DownloadHistoryEntry` has new `videoId`/`extractor` fields (omitted when empty, so old files load unchanged). After `checkURLs`, `skipDownloaded` reads the history once, and `findDownloaded` matches on ID + extractor, or on exact URL for old entries and unprobed URLs. The prompt says "Already downloaded on <date> as <file>" with Download again / Skip, plus Skip all duplicates in a batch. One difference from the plan: the check runs as a separate pass after `checkURLs` rather than inside it, so it also covers the videos picked from a playlist.
+- **Keep-history toggle.** Preferences → **Download History** ("Keep download history", on by default; `keepHistory` in `govid.json`). It is mirrored in `DownloaderApp.keepHistory`, like Debug Output, and applied on Save, Restore Defaults, and Load from Config through the new `applyRuntimePrefs`. When it is off, `recordHistory` writes nothing and there is no duplicate check. Unticking it offers to delete the history ("Delete history" / "Keep it").
+- **History window** ([history_window.go](../history_window.go)). A `widget.List`, newest first, with a search field (title, URL, file name, format) and an "N of M downloads" count. Each row shows the title, then the date, format/quality, and file name, with **Re-add** (through #3's `addURLs`), **Show in folder** (`explorer /select,"…"`, set as the raw command line because Go's argument quoting breaks it; `open -R` on macOS; the folder on Linux), and **Copy URL**. Rows whose file is gone are greyed out, and their Show in folder is disabled. Clear History still asks first.
+
+While testing this, we found that the test harness swapped `historySvc` but left the UIManager's `onLoadHistory`/`onClearHistory` pointing at the original service. They are now rewired. Tests: `TestFindDownloaded`, `TestBuildEntriesPrefersTheRealTitle`, `TestStartDownloadRecordsTitleAndVideoID`, `TestStartDownloadAsksBeforeDownloadingAgain` (a different URL form of the same video ID), `TestStartDownloadBatchSkipAllDuplicates`, `TestStartDownloadWithoutHistoryRecordsNothingAndDoesNotAsk`, `TestDuplicateDialogButtons`, `TestHistoryViewOrderMissingAndSearch`, `TestHistoryDetails`, `TestHistoryRowActions`, `TestReaddHistoryURLAddsToTheField`, `TestShowHistoryListsEntries`, and `TestTurningHistoryOffOffersToClearIt`. `TestFormatHistoryEntries` was removed along with the text view.
 
 **Problem.** History stores a title guessed from the filename and is shown as one block of disabled text, so it can't do anything useful.
 

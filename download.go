@@ -175,6 +175,9 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 	defer app.finishSessionUI()
 
 	session.items = app.checkURLs(queueCtx, session)
+	if queueCtx.Err() == nil {
+		session.items = app.skipDownloaded(queueCtx, session.items)
+	}
 	switch {
 	case queueCtx.Err() != nil:
 		app.updateStatus("Status: Canceled.")
@@ -288,7 +291,7 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 		// The JSON can be large and is not needed again once used.
 		defer func() { item.info.raw = nil }()
 	}
-	return app.runYtDlp(runCtx, req, index+1, len(session.items)), false
+	return app.runYtDlp(runCtx, req, item, index+1, len(session.items)), false
 }
 
 // qualityNoticeID identifies the notice that says a video is downloaded at a
@@ -392,12 +395,13 @@ func completionNotification(postProcessed bool, fileCount, urlCount int) *fyne.N
 }
 
 // runYtDlp delegates the full download lifecycle of req to engine.Run, and
-// then handles app-specific side effects: history recording, the
-// completion/failure report in the log, and system notifications. It returns
+// then handles app-specific side effects: history recording (with what item
+// says about the video), the completion/failure report in the log, and
+// system notifications. It returns
 // the list of finalized output file paths on success, or nil on failure or
 // cancellation. Post-processing is the caller's responsibility. index and
 // total indicate the position within a batch (both 1 for single downloads).
-func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, index, total int) []string {
+func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, item queueItem, index, total int) []string {
 	startTime := time.Now()
 
 	dl := app.newDownloadEngine().Run(ctx, req, DownloadOptions{
@@ -412,7 +416,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, ind
 	})
 
 	if dl.Err == nil {
-		app.recordHistory(req, dl.FinalPaths)
+		app.recordHistory(req, item, dl.FinalPaths)
 	}
 	app.reportDownloadResult(ctx, dl, time.Since(startTime))
 	return dl.FinalPaths
@@ -454,9 +458,14 @@ func (app *DownloaderApp) newDownloadRequest(rawURL, savePath, trimStart, trimEn
 	}
 }
 
-// recordHistory appends one history entry per finalized output file, logging
-// a warning (rather than failing the download) if the history write fails.
-func (app *DownloaderApp) recordHistory(req DownloadRequest, finalPaths []string) {
+// recordHistory appends one history entry per finalized output file, with
+// the title, video ID, and extractor item has, logging a warning (rather
+// than failing the download) if the history write fails. It records nothing
+// when "Keep download history" is off.
+func (app *DownloaderApp) recordHistory(req DownloadRequest, item queueItem, finalPaths []string) {
+	if !app.keepHistory.Load() {
+		return
+	}
 	rec := DownloadRecord{
 		URL:           req.URL,
 		FinalPaths:    finalPaths,
@@ -464,6 +473,9 @@ func (app *DownloaderApp) recordHistory(req DownloadRequest, finalPaths []string
 		Format:        req.Format,
 		Quality:       req.Quality,
 		PostProcessed: app.ui.postProcess.enablePostProcess.Checked,
+		Title:         item.title,
+		VideoID:       item.videoID,
+		Extractor:     item.extractor,
 	}
 	if err := app.historySvc.AppendAll(rec); err != nil {
 		app.appendOutput(
