@@ -79,6 +79,7 @@ type PreferenceControls struct {
 	cookies   *widget.Entry      // Path to a Mozilla/Netscape-format cookies file
 	savePrefs *widget.Check      // Option to persist preferences between sessions
 	logLimit  *widget.Select     // Max lines kept in the graphical log view
+	showDebug *widget.Check      // Option to show yt-dlp [debug] lines in the log view
 }
 
 // NewPreferenceControls constructs the Preferences dialog's widgets.
@@ -98,6 +99,7 @@ func NewPreferenceControls() *PreferenceControls {
 		cookies:   cookies,
 		savePrefs: widget.NewCheck("Save preferences between sessions", nil),
 		logLimit:  widget.NewSelect(logLimitOptions, nil),
+		showDebug: widget.NewCheck("Show yt-dlp debug output", nil),
 	}
 }
 
@@ -259,4 +261,5 @@ type DownloaderApp struct {
 	// Post-processing workers set it concurrently.
 	sessionFailed atomic.Bool
 	isRunning     atomic.Bool // true while a download or post-processing session is active
+	showDebug     atomic.Bool // true to show yt-dlp [debug] lines in the log view; see appendOutput
 }

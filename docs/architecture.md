@@ -101,6 +101,7 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `onLogLine func(string, color.Color)` | Renders log lines through `UIManager.appendLogLine` |
 | `sessionFailed atomic.Bool` | Set when any download or post-processing job in the session fails; turns the download button into "Retry" |
 | `isRunning atomic.Bool` | Prevents close without confirmation while jobs are active |
+| `showDebug atomic.Bool` | Shows yt-dlp `[debug]` lines in the log view; set from the "Debug Output" preference at startup and through `UIManager.onSetShowDebug` |
 
 ---
 
@@ -178,7 +179,7 @@ Private probe methods (`probeFrameCount`, `probeDuration`, `computeOutputFrameCo
 ### 4.6 `PreferenceService` — preference persistence  
 *Defined in:* `preference_service.go`
 
-All 30 Fyne preference storage keys are named constants here (`prefSavedPath`, `prefFormat`, …). Default values are separate named constants (`defaultThemeMode`, `defaultSmoothFPS`, …) in the same file; `Load()` applies those defaults when a stored value is absent.
+Every Fyne preference storage key is a named constant here (`prefSavedPath`, `prefFormat`, …). Default values are separate named constants (`defaultThemeMode`, `defaultSmoothFPS`, …) in the same file; `Load()` applies those defaults when a stored value is absent.
 
 - **`Load() AppPreferences`** — reads the Fyne store and returns a fully-defaulted plain struct. Called once at startup and again each time a secondary window refreshes its controls.
 - **`Save(AppPreferences)`** — writes the struct back. Honours the `savePrefs` gate: if the user has disabled persistence, only the toggle itself is written.
@@ -205,7 +206,7 @@ Owns the session log file handle, two mutexes, daily rotation policy, the UI buf
 
 Package-level helpers: `IsErrorLine(line string) bool` (matches ERROR/FAILED), `ParseBufferLimit(s string) int` (converts the preference string to an integer), `SessionLogPath(dir string)`, `ErrorLogPath(dir string)`.
 
-`appendOutput()` in `helpers.go` is the single call-site for all log writes; it calls `logSvc.WriteToFile` for session logging and `logSvc.WriteToErrorLog` for error mirroring.
+`appendOutput()` in `helpers.go` is the single call-site for all log writes; it calls `logSvc.WriteToFile` for session logging and `logSvc.WriteToErrorLog` for error mirroring. It passes yt-dlp's `[debug]` lines (`IsDebugLine`) to the log view only when `DownloaderApp.showDebug` is set (the "Debug Output" preference, `prefShowDebug`); the log file always gets every line. `UIManager.renderLogLines` also shows consecutive yt-dlp progress lines (`IsProgressLine` in `logscanner.go`) as one line updated in place, so the view holds a few dozen lines per download instead of hundreds.
 
 ---
 

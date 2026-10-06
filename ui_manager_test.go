@@ -28,6 +28,8 @@ func TestRestoreDefaultsResetsWidgetsAndStore(t *testing.T) {
 	ui.prefs.cookies.SetText("cookies.txt")
 	ui.prefs.themeMode.SetSelected("Light")
 	ui.prefs.logLimit.SetSelected("1000")
+	ui.prefs.showDebug.SetChecked(true)
+	app.showDebug.Store(true)
 	ui.postProcess.smoothMotion.SetChecked(true)
 	ui.postProcess.sharpenAmount.SetValue(1.7)
 	ui.download.notify.SetChecked(true)
@@ -65,6 +67,9 @@ func TestRestoreDefaultsResetsWidgetsAndStore(t *testing.T) {
 	}
 	if ui.postProcess.enablePostProcess.Checked != defaultEnablePostProcess {
 		t.Errorf("enablePostProcess = %v, want %v", ui.postProcess.enablePostProcess.Checked, defaultEnablePostProcess)
+	}
+	if ui.prefs.showDebug.Checked || app.showDebug.Load() {
+		t.Error("debug output still shown after restoring defaults")
 	}
 	if got := app.logSvc.BufferLimit(); got != defaultLogBufferLimit {
 		t.Errorf("BufferLimit() = %d, want %d", got, defaultLogBufferLimit)
@@ -360,5 +365,33 @@ func TestClearTerminalOutputDropsQueuedLines(t *testing.T) {
 
 	if got := logTexts(mgr); len(got) != 0 {
 		t.Errorf("log view = %q, want lines queued before the clear dropped", got)
+	}
+}
+
+func TestLogViewShowsLatestProgressLineInPlace(t *testing.T) {
+	mgr := newLogTestManager(t)
+
+	for _, line := range []string{
+		"[download] Destination: GoVid_Clip.f137.mp4",
+		"[download]  10.0% of   10.00MiB at    1.00MiB/s ETA 00:09",
+		"[download]  20.0% of   10.00MiB at    1.00MiB/s ETA 00:08",
+	} {
+		mgr.appendLogLine(line, nil)
+	}
+	mgr.flushLog()
+	// A later flush still updates the same line.
+	mgr.appendLogLine("[download] 100% of   10.00MiB in 00:00:10 at 1.00MiB/s", nil)
+	mgr.appendLogLine("[download] Destination: GoVid_Clip.f140.m4a", nil)
+	mgr.appendLogLine("[download]  50.0% of    2.00MiB at    1.00MiB/s ETA 00:01", nil)
+	mgr.flushLog()
+
+	want := []string{
+		"[download] Destination: GoVid_Clip.f137.mp4",
+		"[download] 100% of   10.00MiB in 00:00:10 at 1.00MiB/s",
+		"[download] Destination: GoVid_Clip.f140.m4a",
+		"[download]  50.0% of    2.00MiB at    1.00MiB/s ETA 00:01",
+	}
+	if got := logTexts(mgr); !slices.Equal(got, want) {
+		t.Errorf("log view = %q, want %q", got, want)
 	}
 }

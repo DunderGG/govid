@@ -33,6 +33,7 @@ const (
 	prefSavePrefs         = "savePrefs"
 	prefCookiesPath       = "cookiesPath"
 	prefLogLimit          = "logLimit"
+	prefShowDebug         = "showDebug"
 	prefBatchMode         = "batchMode"
 	prefSaveLog           = "saveLog"
 	prefNotify            = "notify"
@@ -92,6 +93,7 @@ type AppPreferences struct {
 	ThemeMode         string
 	CookiesPath       string
 	LogLimit          string
+	ShowDebug         bool // show yt-dlp [debug] lines in the log view (they always go to the log file)
 	BatchMode         bool
 	SaveLog           bool
 	Notify            bool
@@ -158,6 +160,7 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		ThemeMode:         prefSvc.store.StringWithFallback(prefThemeMode, defaultThemeMode),
 		CookiesPath:       prefSvc.store.String(prefCookiesPath),
 		LogLimit:          prefSvc.store.StringWithFallback(prefLogLimit, defaultLogLimit),
+		ShowDebug:         prefSvc.store.Bool(prefShowDebug),
 		BatchMode:         prefSvc.store.Bool(prefBatchMode),
 		SaveLog:           prefSvc.store.Bool(prefSaveLog),
 		Notify:            prefSvc.store.Bool(prefNotify),
@@ -240,6 +243,7 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 	prefSvc.store.SetString(prefThemeMode, p.ThemeMode)
 	prefSvc.store.SetString(prefCookiesPath, p.CookiesPath)
 	prefSvc.store.SetString(prefLogLimit, p.LogLimit)
+	prefSvc.store.SetBool(prefShowDebug, p.ShowDebug)
 	prefSvc.store.SetBool(prefBatchMode, p.BatchMode)
 	prefSvc.store.SetBool(prefSaveLog, p.SaveLog)
 	prefSvc.store.SetBool(prefNotify, p.Notify)
@@ -270,7 +274,7 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 func (prefSvc *PreferenceService) Reset() {
 	for _, key := range []string{
 		prefSavedPath, prefFormat, prefQuality, prefMaxSpeed, prefThemeMode,
-		prefSavePrefs, prefCookiesPath, prefLogLimit,
+		prefSavePrefs, prefCookiesPath, prefLogLimit, prefShowDebug,
 		prefBatchMode, prefSaveLog, prefNotify, prefAutoRetry, prefEnablePostProcess,
 		prefSmoothMotion, prefSmoothMotionMode, prefSmoothFPS,
 		prefSharpen, prefSharpenAmount, prefNormalize, prefVividMode,

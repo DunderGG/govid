@@ -146,9 +146,13 @@ func (app *DownloaderApp) showStatus(msg string) {
 
 // appendOutput adds a line of text to the graphical log view and, when log-to-file
 // is enabled, also writes it to the session log on disk. Error-like lines are
-// additionally mirrored to the daily error log via LogService.
+// additionally mirrored to the daily error log via LogService. yt-dlp's
+// [debug] lines (it runs with --verbose) go to the log file only, unless
+// "Show debug output" is enabled, so they do not bury the lines users need.
 func (app *DownloaderApp) appendOutput(line string, col color.Color) {
-	app.onLogLine(line, col)
+	if !IsDebugLine(line) || app.showDebug.Load() {
+		app.onLogLine(line, col)
+	}
 
 	app.logSvc.WriteToFile(line)
 

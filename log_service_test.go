@@ -292,3 +292,19 @@ func TestWriteSessionConfig(t *testing.T) {
 		t.Errorf("session config should be wrapped in banner lines, got first=%q last=%q", lines[0], lines[len(lines)-1])
 	}
 }
+
+func TestIsDebugLine(t *testing.T) {
+	tests := []struct {
+		line string
+		want bool
+	}{
+		{"[debug] Command-line config: ['--verbose']", true},
+		{"[download] Destination: debug.mp4", false},
+		{"WARNING: [debug] is not a prefix here", false},
+	}
+	for _, tt := range tests {
+		if got := IsDebugLine(tt.line); got != tt.want {
+			t.Errorf("IsDebugLine(%q) = %v, want %v", tt.line, got, tt.want)
+		}
+	}
+}

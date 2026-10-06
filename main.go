@@ -51,6 +51,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	prefs := dlApp.prefSvc.Load()
 	applyPreferencesToWidgets(dlApp.ui, prefs)
 	dlApp.logSvc.SetBufferLimit(ParseBufferLimit(prefs.LogLimit))
+	dlApp.showDebug.Store(prefs.ShowDebug)
 
 	// Wire history service to both the app and the UIManager's callbacks.
 	dlApp.historySvc = NewHistoryService()
@@ -67,6 +68,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onMergeConfig = dlApp.prefSvc.MergeConfig
 	dlApp.uiManager.onSetLogBufferLimit = dlApp.logSvc.SetBufferLimit
 	dlApp.uiManager.onLogBufferLimit = dlApp.logSvc.BufferLimit
+	dlApp.uiManager.onSetShowDebug = dlApp.showDebug.Store
 
 	// Wire the dependency-service callbacks and log/status callbacks for
 	// checkDependencies and the "Update yt-dlp" menu action.

@@ -238,7 +238,7 @@ This document outlines planned features, improvements, and known limitations for
 ### General improvements
 > Any general improvements we can think of
 - [X] Make sure only one Preferences window can be opened.
-- [ ] We may want to start limiting how much we are logging. There is a lot of "noise" we don't care about.
+- [x] We may want to start limiting how much we are logging. There is a lot of "noise" we don't care about. (yt-dlp's `[debug]` lines go to the log file only unless the new "Debug Output" preference is on, and the log view shows one in-place progress line per file instead of one line per update. `--verbose` is kept so the log file stays complete for bug reports.)
 - [ ] The code for the guide window needs improving. Get rid of extremely long text strings.
 - [X] Errors from ffmpeg sometimes gets buried in the verbose logs. Maybe Errors should be logged to separate file?
 - [ ] Investigate GPU acceleration for FFmpeg.

@@ -32,6 +32,7 @@ func snapshotPreferences(ui *UIWidgets, savePath string) AppPreferences {
 		ThemeMode:         ui.prefs.themeMode.Selected,
 		CookiesPath:       strings.TrimSpace(ui.prefs.cookies.Text),
 		LogLimit:          ui.prefs.logLimit.Selected,
+		ShowDebug:         ui.prefs.showDebug.Checked,
 		BatchMode:         ui.download.batchMode.Checked,
 		SaveLog:           ui.download.saveLog.Checked,
 		Notify:            ui.download.notify.Checked,
@@ -104,6 +105,7 @@ func newSessionConfig(ui *UIWidgets, urls []string, savePath, trimStart, trimEnd
 
 		SavePrefs: ui.prefs.savePrefs.Checked,
 		LogLimit:  ui.prefs.logLimit.Selected,
+		ShowDebug: ui.prefs.showDebug.Checked,
 		ThemeMode: ui.prefs.themeMode.Selected,
 
 		PP: newPostProcessSettings(ui),
@@ -144,6 +146,7 @@ func applyMainWindowPrefs(ui *UIWidgets, p AppPreferences) {
 func applyGeneralPrefs(ui *UIWidgets, p AppPreferences) {
 	ui.prefs.savePrefs.SetChecked(p.SavePrefs)
 	ui.prefs.logLimit.SetSelected(p.LogLimit)
+	ui.prefs.showDebug.SetChecked(p.ShowDebug)
 	ui.prefs.maxSpeed.SetText(p.MaxSpeed)
 	ui.prefs.themeMode.SetSelected(p.ThemeMode)
 	ui.prefs.cookies.SetText(p.CookiesPath)

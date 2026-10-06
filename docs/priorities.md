@@ -89,9 +89,11 @@ Source references point to the matching section of [roadmap.md](roadmap.md). Tic
 
 ---
 
-## 4. Cut log noise
+## 4. ✅ Cut log noise
 
 **Roadmap:** Technical Improvements → General improvements ("limit how much we are logging").
+
+**Status: Done.** `appendOutput` classifies each line with `IsDebugLine` and hides `[debug]` lines from the view unless the new **Debug Output** preference (`prefShowDebug`, off by default) is on. The log file always gets every line, and the setting is logged in the session configuration. `--verbose` is kept. For progress, we took the "update a single line in place" option: `renderLogLines` replaces a yt-dlp progress line (`IsProgressLine`) with the next one, so each downloaded stream takes one line. FFmpeg's per-frame stats lines were already sent only to the status label (now throttled by #3), so step 4 needed no change. Tests: `TestAppendOutputKeepsDebugLinesOutOfTheView`, `TestLogViewShowsLatestProgressLineInPlace`, `TestIsDebugLine`, and `TestIsProgressLine`.
 
 **Problem.** The on-screen log is full of debug output, which hides the lines users care about. It also adds to the UI load addressed in #2.
 

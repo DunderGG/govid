@@ -263,3 +263,21 @@ func TestWatchOutputReportsPhasesFromEitherStream(t *testing.T) {
 		t.Error("wasConverted = false, want true for a [Merger] line on stdout")
 	}
 }
+
+func TestIsProgressLine(t *testing.T) {
+	tests := []struct {
+		line string
+		want bool
+	}{
+		{"[download]  42.3% of   10.00MiB at    1.20MiB/s ETA 00:07", true},
+		{"[download] 100% of   10.00MiB in 00:00:02 at 4.81MiB/s", true},
+		{"[download] Destination: GoVid_Clip.f137.mp4", false},
+		{"[download] GoVid_Clip.mp4 has already been downloaded", false},
+		{"[Merger] Merging formats into \"GoVid_Clip.mp4\"", false},
+	}
+	for _, tt := range tests {
+		if got := IsProgressLine(tt.line); got != tt.want {
+			t.Errorf("IsProgressLine(%q) = %v, want %v", tt.line, got, tt.want)
+		}
+	}
+}

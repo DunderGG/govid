@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image/color"
 	"math"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -224,5 +227,34 @@ func TestShowDownloadPhaseHoldsProgressBar(t *testing.T) {
 	}
 	if got := app.ui.download.status.Text; got != "Status: Merging…" {
 		t.Errorf("status = %q, want Status: Merging…", got)
+	}
+}
+
+func TestAppendOutputKeepsDebugLinesOutOfTheView(t *testing.T) {
+	_ = test.NewApp()
+	app := newDownloaderApp(test.NewWindow(nil))
+	var shown []string
+	app.onLogLine = func(line string, _ color.Color) { shown = append(shown, line) }
+	logDir := t.TempDir()
+	if _, err := app.logSvc.OpenSessionLog(logDir); err != nil {
+		t.Fatal(err)
+	}
+
+	app.appendOutput("[debug] Encodings: locale cp1252", nil)
+	app.appendOutput("[youtube] Extracting URL", nil)
+	app.showDebug.Store(true)
+	app.appendOutput("[debug] yt-dlp version 2026.09.26", nil)
+	app.logSvc.CloseSessionLog()
+
+	want := []string{"[youtube] Extracting URL", "[debug] yt-dlp version 2026.09.26"}
+	if !slices.Equal(shown, want) {
+		t.Errorf("shown = %q, want %q", shown, want)
+	}
+	data, err := os.ReadFile(SessionLogPath(logDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "[debug] Encodings: locale cp1252") {
+		t.Errorf("log file is missing the hidden debug line:\n%s", data)
 	}
 }

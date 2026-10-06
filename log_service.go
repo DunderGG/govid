@@ -174,6 +174,7 @@ type SessionConfig struct {
 
 	SavePrefs bool
 	LogLimit  string
+	ShowDebug bool
 	ThemeMode string
 
 	PP PostProcessSettings
@@ -204,7 +205,7 @@ func (svc *LogService) WriteSessionConfig(cfg SessionConfig, writeFn func(string
 	writeFn(fmt.Sprintf("[SYSTEM] Max speed: %s", maxSpeed), colSystem)
 	writeFn(fmt.Sprintf("[SYSTEM] Cookies file: %s", cookiesPath), colSystem)
 	writeFn(fmt.Sprintf("[SYSTEM] Runtime toggles: saveLog=%t, notify=%t, autoRetry=%t, postProcess=%t", cfg.SaveLog, cfg.Notify, cfg.AutoRetry, cfg.PostProcessEnabled), colSystem)
-	writeFn(fmt.Sprintf("[SYSTEM] Preferences: savePrefs=%t, logLimit=%s, theme=%s", cfg.SavePrefs, cfg.LogLimit, cfg.ThemeMode), colSystem)
+	writeFn(fmt.Sprintf("[SYSTEM] Preferences: savePrefs=%t, logLimit=%s, showDebug=%t, theme=%s", cfg.SavePrefs, cfg.LogLimit, cfg.ShowDebug, cfg.ThemeMode), colSystem)
 
 	writeFn(fmt.Sprintf("[SYSTEM] URL field (raw): %q", rawURLField), colSystem)
 	for i, url := range cfg.URLs {
@@ -228,6 +229,12 @@ func IsErrorLine(line string) bool {
 	}
 	upper := strings.ToUpper(line)
 	return strings.Contains(upper, "ERROR") || strings.Contains(upper, "FAILED")
+}
+
+// IsDebugLine reports whether line is one of yt-dlp's --verbose [debug]
+// diagnostics, which are kept out of the log view by default.
+func IsDebugLine(line string) bool {
+	return strings.HasPrefix(line, "[debug]")
 }
 
 // ParseBufferLimit converts a log-limit preference string (e.g. "200",

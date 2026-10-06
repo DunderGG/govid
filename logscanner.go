@@ -17,6 +17,7 @@ import (
 	"image/color"
 	"io"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -144,6 +145,18 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 	waitGroup.Wait()
 	result.wasConverted = stdoutConverted || stderrConverted
 	return result
+}
+
+// progressLinePattern matches yt-dlp's per-update progress lines, e.g.
+// "[download]  42.3% of   10.00MiB at    1.20MiB/s ETA 00:07".
+var progressLinePattern = regexp.MustCompile(`^\[download\]\s+\d+(\.\d+)?%`)
+
+// IsProgressLine reports whether line is one of yt-dlp's progress lines.
+// With --newline yt-dlp prints hundreds of them per file, so the log view
+// shows only the latest one in place (see UIManager.renderLogLines); the log
+// file keeps them all.
+func IsProgressLine(line string) bool {
+	return progressLinePattern.MatchString(line)
 }
 
 // parseProgress scans a line of yt-dlp output for percentage markers and size

@@ -84,6 +84,7 @@ type UIManager struct {
 	onMergeConfig        func(cfg *AppConfig, base AppPreferences, validFormats, validQualities []string) (AppPreferences, []string) // PreferenceService.MergeConfig
 	onSetLogBufferLimit  func(limit int)                                                                                             // LogService.SetBufferLimit
 	onLogBufferLimit     func() int                                                                                                  // LogService.BufferLimit
+	onSetShowDebug       func(show bool)                                                                                             // DownloaderApp.showDebug.Store
 }
 
 // NewUIManager returns a UIManager bound to the given primary window.
@@ -330,6 +331,7 @@ func (manager *UIManager) showConfigHelp() {
 		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a **GoVid_log_YYYY-MM-DD.txt** file in your save destination folder. Errors are also mirrored to a separate **GoVid_errors_YYYY-MM-DD.txt** file."},
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
 		{"Log Buffer Limit", "Found in **Tools → Preferences**. The number of lines kept in the Terminal Output panel; older lines are removed from the top. The panel never shows more than the latest **5000** lines, so choosing **Unlimited** only affects the lines kept for the log file. The log file itself is never trimmed. If you scroll up while a download is running, the panel stays where you left it; scroll back to the bottom to follow new lines again."},
+		{"Debug Output", "Found in **Tools → Preferences**. GoVid runs yt-dlp in verbose mode so the log file has everything needed for a bug report, but the **[debug]** lines are hidden from the Terminal Output panel unless this is checked. The panel also shows only the latest download progress line for each file; the log file keeps them all."},
 		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
 		{"Cookies File", "Found in **Tools → Preferences**. Path to a `cookies.txt` file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file."},
@@ -397,6 +399,7 @@ func (manager *UIManager) showPreferences() {
 		Items: []*widget.FormItem{
 			{Text: "Save Preferences", Widget: ui.prefs.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
 			{Text: "Log Buffer Limit", Widget: ui.prefs.logLimit, HintText: "Max lines kept in the log view (never more than 5000); older entries are removed from the top"},
+			{Text: "Debug Output", Widget: ui.prefs.showDebug, HintText: "Show yt-dlp's [debug] lines in the log view; the log file always has them"},
 			{Text: "Max Download Speed", Widget: ui.prefs.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.prefs.themeMode, HintText: "Restart may be required for some changes"},
 			{Text: "Cookies File", Widget: manager.buildCookiesRow(), HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
@@ -415,7 +418,7 @@ func (manager *UIManager) showPreferences() {
 		widget.NewSeparator(),
 		container.NewGridWithColumns(2, loadConfigBtn, resetBtn),
 	)))
-	manager.prefsWindow.Resize(fyne.NewSize(500, 360))
+	manager.prefsWindow.Resize(fyne.NewSize(500, 400))
 	manager.prefsWindow.SetOnClosed(onWindowClosed(&manager.prefsWindow))
 	manager.prefsWindow.Show()
 }
@@ -448,6 +451,7 @@ func (manager *UIManager) buildCookiesRow() fyne.CanvasObject {
 func (manager *UIManager) submitPreferences() {
 	ui := manager.ui
 	manager.onSetLogBufferLimit(ParseBufferLimit(ui.prefs.logLimit.Selected))
+	manager.onSetShowDebug(ui.prefs.showDebug.Checked)
 	manager.savePreferences(ui.download.path.Text)
 
 	// Apply theme change and rebuild the UI so canvas.Rectangle colors
@@ -515,6 +519,7 @@ func (manager *UIManager) restoreDefaults() {
 
 	applyPreferencesToWidgets(manager.ui, defaults)
 	manager.onSetLogBufferLimit(ParseBufferLimit(defaults.LogLimit))
+	manager.onSetShowDebug(defaults.ShowDebug)
 	applyTheme(fyne.CurrentApp(), defaults.ThemeMode)
 	manager.createUI()
 }
@@ -1027,11 +1032,12 @@ func (manager *UIManager) flushLog() {
 }
 
 // renderLogLines appends lines to the log view, trims it once to its limit,
-// and refreshes it once. The view follows new lines only if it was already
-// at (or within followTolerance of) the bottom, so a user who scrolled up to
-// read something is not pulled back down. A nil colour means "default text
-// colour" and is resolved to the current theme's foreground here, on the UI
-// side. Must be called on the UI thread.
+// and refreshes it once. A yt-dlp progress line replaces the one before it
+// instead of adding a line. The view follows new lines only if it was
+// already at (or within followTolerance of) the bottom, so a user who
+// scrolled up to read something is not pulled back down. A nil colour means
+// "default text colour" and is resolved to the current theme's foreground
+// here, on the UI side. Must be called on the UI thread.
 func (manager *UIManager) renderLogLines(lines []pendingLogLine) {
 	logList := manager.ui.download.logList
 	output := manager.ui.download.output
@@ -1041,6 +1047,15 @@ func (manager *UIManager) renderLogLines(lines []pendingLogLine) {
 		col := line.col
 		if col == nil {
 			col = theme.Color(theme.ColorNameForeground)
+		}
+		// Consecutive yt-dlp progress lines share one line of the view,
+		// which shows the latest; the log file keeps every one.
+		if IsProgressLine(line.text) {
+			if last := lastLogText(logList); last != nil && IsProgressLine(last.Text) {
+				last.Text, last.Color = line.text, col
+				last.Refresh()
+				continue
+			}
 		}
 		label := canvas.NewText(line.text, col)
 		label.TextSize = theme.TextSize()
@@ -1059,6 +1074,15 @@ func (manager *UIManager) renderLogLines(lines []pendingLogLine) {
 		output.Content.Resize(output.Content.MinSize().Max(output.Size()))
 		output.ScrollToBottom()
 	}
+}
+
+// lastLogText returns the last line of the log view, or nil when it is empty.
+func lastLogText(logList *fyne.Container) *canvas.Text {
+	if len(logList.Objects) == 0 {
+		return nil
+	}
+	text, _ := logList.Objects[len(logList.Objects)-1].(*canvas.Text)
+	return text
 }
 
 // isScrolledToBottom reports whether scroll shows the end of its content,

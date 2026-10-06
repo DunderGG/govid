@@ -38,6 +38,7 @@ package "Application Core" #F0F4F8 {
         +prefSvc : *PreferenceService
         +sessionFailed : atomic.Bool
         +isRunning : atomic.Bool
+        +showDebug : atomic.Bool
         --
         +SetCancelFunc(cancel context.CancelFunc)
         +RequestCancel() : bool
@@ -114,6 +115,7 @@ package "UI Layer" #F0F8F0 {
         +cookies : *widget.Entry
         +savePrefs : *widget.Check
         +logLimit : *widget.Select
+        +showDebug : *widget.Check
     }
 
     class PostProcessControls <<ui>> {
@@ -157,6 +159,7 @@ package "UI Layer" #F0F8F0 {
         -onMergeConfig : func(*AppConfig, AppPreferences, []string, []string) (AppPreferences, []string)
         -onSetLogBufferLimit : func(int)
         -onLogBufferLimit : func() int
+        -onSetShowDebug : func(bool)
         -onLog : func(string, color.Color)
         -onStatus : func(string)
         -onSetStatusIndicator : func(string)
@@ -449,6 +452,7 @@ package "Preference Service" #FFF0F0 {
         +Quality : string
         +ThemeMode : string
         +LogLimit : string
+        +ShowDebug : bool
         +CookiesPath : string
         +MaxSpeed : string
         +BatchMode : bool
@@ -542,6 +546,7 @@ package "Log Service" #F0F8FF {
         +PostProcessEnabled : bool
         +SavePrefs : bool
         +LogLimit : string
+        +ShowDebug : bool
         +ThemeMode : string
         +PP : PostProcessSettings
     }
@@ -739,7 +744,7 @@ note top of PostProcessSettings
 end note
 
 note top of PreferenceService
-  All 30 pref key strings and default
+  All pref key strings and default
   values live as named constants here.
   AppPreferences is a plain value struct
   — no Fyne widget references.
