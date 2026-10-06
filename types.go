@@ -297,4 +297,8 @@ type DownloaderApp struct {
 	isRunning     atomic.Bool // true while a download or post-processing session is active
 	showDebug     atomic.Bool // true to show yt-dlp [debug] lines in the log view; see appendOutput
 	keepHistory   atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
+
+	// queue is the running (or last) session's download queue, shown in the
+	// Queue panel; yt-dlp's output readers report download progress to it.
+	queue atomic.Pointer[QueueModel]
 }

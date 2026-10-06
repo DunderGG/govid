@@ -45,6 +45,11 @@ func newDownloadHarness(t *testing.T, mode string) *downloadHarness {
 	app.historySvc = &HistoryService{filePath: filepath.Join(t.TempDir(), historyFileName)}
 	app.uiManager.onLoadHistory = app.historySvc.Load
 	app.uiManager.onClearHistory = app.historySvc.Clear
+	// The test driver runs fyne.Do on the calling goroutine instead of the
+	// UI thread, so Queue panel redraws from the throttle's timer goroutine
+	// would race with the session goroutine's own UI updates. Panel tests
+	// redraw it explicitly (see refreshQueue).
+	app.uiManager.queueThrottle = newLatestValueThrottle(statusThrottleInterval, func(int64) {})
 
 	// Anchor the error log in a temp dir rather than beside the test binary.
 	if _, err := app.logSvc.OpenSessionLog(t.TempDir()); err != nil {

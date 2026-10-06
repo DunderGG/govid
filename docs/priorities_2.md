@@ -177,9 +177,16 @@ While testing this, we found that the test harness swapped `historySvc` but left
 
 ---
 
-## 6. Queue panel
+## 6. ✅ Queue panel
 
 **Roadmap:** Medium Priority → Queue Manager (per-item status, cancel, retry, reordering). Pause/resume and saving the queue across restarts are left for later; see below.
+
+**Status: Done** (steps 1–3; step 4 stays open, as planned).
+- **Model** ([queue_model.go](../queue_model.go)). `QueueModel` keeps the items and each one's status (Waiting, Checking, Downloading with its progress, Post-processing, Done, Failed, Skipped) behind a mutex, with `Next`, `SetItem`, `SetStatus`, `SetActiveProgress`, `MarkAll`, `Remove`, `Move`, `Retry`, `Snapshot`, and `Summary`. `OnChanged` goes through a `latestValueThrottle` (versioned with an atomic counter), so the panel is redrawn at most every 150 ms. `Move` only swaps neighbouring *waiting* items: moving above the running item would not change anything.
+- **Queue loop.** `runQueue` takes `Next()` (the first waiting item) instead of indexing `session.items`, so items can be removed, moved, or retried while it runs. `downloadItem`, `checkItem`, and `checkDiskSpace` now take the item rather than an index. The disk-space prompt's batch buttons depend on whether items are still waiting. Whether the session is a batch (per-item Cancel) is fixed when the queue starts. Progress reaches the downloading row through `DownloaderApp.queue` in `updateProgress`. Done items show Post-processing while the session's post-processing runs, and items not reached when the queue stops are marked Skipped.
+- **Panel** ([queue_panel.go](../queue_panel.go)). A collapsible card above the log, titled "Queue — 7 of 20 done, 1 failed", shown while the queue holds more than one item. It keeps its open/closed state when the window is rebuilt (for example on a theme change). Rows show the status and the title (or URL). Waiting rows have Move up / Move down / Remove, the running row has Skip (the per-item cancel, like the Cancel button), and Failed or Skipped rows have Retry while the session runs.
+
+The panel stays on screen after the session with the final statuses, but Retry is offered only while the session runs, since only a running session takes items from the queue; the main **Retry** button re-runs the URLs. Testing showed that the Fyne test driver runs `fyne.Do` on the calling goroutine, so the throttle's timer-goroutine redraws raced with the session's UI updates under `-race`. The test harness therefore turns the timed redraws off, and the panel tests redraw explicitly. In the app, `fyne.Do` is serialized on the UI thread. Tests: `TestQueueEditsDuringSession` (a five-URL batch with a new "ytdlp-mixed" fake mode: remove a waiting item, move one to the front, skip the stalled download, and retry the failed one; checks every row's final status, the run count, and the history order), `TestQueueModelNextTakesFirstWaiting`, `TestQueueModelOnlyWaitingItemsMoveOrGo`, `TestQueueModelRetryRequeuesAtTheEnd`, `TestQueueModelProgressAndSummary`, `TestQueuePanelShowsStatusAndSummary`, `TestQueuePanelHiddenForASingleItem`, and `TestQueueRowOffersActionsByStatus`.
 
 **Problem.** Playlists now turn into dozens of queue items, but the queue can only be followed through `── URL i of N ──` lines in the log. Nothing in the queue can be changed once it starts.
 

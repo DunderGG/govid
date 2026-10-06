@@ -23,6 +23,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Quality Control**: Select your preferred maximum resolution for downloads. GoVid tells you when a video is not available at that resolution, and names the file after the resolution it actually downloaded.
 - **Video Trimming**: Download only a specific segment — specify a start time, an end time, or both (`HH:MM:SS` / `MM:SS` / seconds).
 - **Batch Processing**: Download multiple URLs at once by switching to Batch Mode (one URL per line). Load a `.txt` list of URLs, paste several links at once, or drop a list or an internet shortcut (`.url`) onto the window.
+- **Queue Panel**: With more than one video queued, a Queue panel above the log shows each video's status and progress. Remove or reorder waiting videos, skip the one downloading, or retry one that failed, while the queue runs.
 - **Playlists**: Paste a playlist URL to pick all of it, a range (e.g. `5-8`), or just the linked video; each video is queued separately.
 - **Real-time Progress**: Live progress tracking with per-download progress bars and a scrollable activity log.
 - **Optional Post-Processing**: Seamless integration with FFmpeg for frame interpolation (60FPS), sharpening, and audio normalization.

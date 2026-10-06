@@ -31,6 +31,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -72,6 +73,15 @@ type UIManager struct {
 	notices   []notice
 	noticeBox *fyne.Container
 
+	// The Queue panel; see queue_panel.go. queue, queueSnapshot, queueBox,
+	// and queuePanel are only touched on the UI thread.
+	queue         *QueueModel
+	queueSnapshot []queueEntry
+	queueBox      *fyne.Container
+	queuePanel    *queuePanel
+	queueThrottle *latestValueThrottle[int64] // coalesces redraws; the value is queueVersion
+	queueVersion  atomic.Int64
+
 	// Callbacks bridging DownloaderApp actions and services into the main
 	// window and secondary windows; all set by newDownloaderApp after
 	// construction.
@@ -96,11 +106,16 @@ type UIManager struct {
 	onLogBufferLimit     func() int                                                                                                  // LogService.BufferLimit
 	onSetShowDebug       func(show bool)                                                                                             // DownloaderApp.showDebug.Store
 	onSetKeepHistory     func(keep bool)                                                                                             // DownloaderApp.keepHistory.Store
+	onSessionRunning     func() bool                                                                                                 // DownloaderApp.isRunning.Load
 }
 
 // NewUIManager returns a UIManager bound to the given primary window.
 func NewUIManager(mainWindow fyne.Window) *UIManager {
-	return &UIManager{mainWindow: mainWindow, afterFunc: time.AfterFunc}
+	manager := &UIManager{mainWindow: mainWindow, afterFunc: time.AfterFunc}
+	manager.queueThrottle = newLatestValueThrottle(statusThrottleInterval, func(int64) {
+		fyne.Do(manager.refreshQueue)
+	})
+	return manager
 }
 
 // ── Singleton window helpers ──────────────────────────────────────────────────
@@ -286,6 +301,11 @@ func (manager *UIManager) showConfigHelp() {
 			"  * **Drop onto the window** – a `.txt` list, or an internet shortcut (`.url`). A link dragged straight from a browser is not received on Windows; drag it to the desktop first, then drop the shortcut that makes\n\n" +
 			"In Batch Mode, lines starting with `#` are comments and are not downloaded."},
 		{"Playlists", "Before downloading, GoVid checks each URL. When one is a playlist, it shows the playlist's title, number of videos, and total length, and asks which videos to download:\n  * Leave the range blank and click **Download** to get them all\n  * Enter a range such as `1-10`, `5-`, or `3,5,8` to get only those\n  * For a link to one video inside a playlist (`watch?v=…&list=…`), **Only this video** is the default\n\nEach chosen video becomes its own item in the queue, with its own progress, Cancel, and history entry."},
+		{"Queue", "When a session has more than one video (Batch Mode, or videos picked from a playlist), the **Queue** panel above Terminal Output lists them with their status: Waiting, Checking, Downloading with its percentage, Post-processing, Done, Failed, or Skipped. Its title counts progress, e.g. \"7 of 20 done, 1 failed\". Click the title to fold the panel away.\n\nWhile the queue runs:\n" +
+			"  * **Waiting** videos can be moved up or down (the order is the download order) or removed\n" +
+			"  * The video **downloading** can be skipped (the same as **Cancel**); the queue moves on\n" +
+			"  * A video that **failed** or was **skipped** can be retried; it goes back to the end of the queue\n\n" +
+			"Videos the queue did not get to, because it was stopped, are marked Skipped."},
 		{"Save Destination", "The folder where the downloaded file will be saved. GoVid remembers this between sessions.\n\nBefore each download, GoVid checks that the folder's drive has room for it (with a 10% margin, and twice that with post-processing, which writes a second copy). If it does not, you can continue anyway or cancel; in a batch you can also skip that video. This includes each video picked from a playlist, which GoVid checks just before downloading it. When the site does not say how big a video is, the check is skipped."},
 		{"Output Format", "The container format for the downloaded file:\n" +
 			"  * **" + formatMP4 + "** – widely compatible, recommended for most uses\n" +
@@ -798,12 +818,15 @@ func (manager *UIManager) createUI() {
 
 	manager.noticeBox = container.NewVBox()
 	manager.renderNotices()
+	manager.queueBox = container.NewVBox()
+	manager.renderQueuePanel()
 
 	topContent := container.NewVBox(
 		header,
 		manager.noticeBox,
 		inputCard,
 		statusCard,
+		manager.queueBox,
 		widget.NewSeparator(),
 		widget.NewLabelWithStyle("Terminal Output:", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
 	)

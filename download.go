@@ -42,11 +42,6 @@ func (session downloadSession) hasPostProcess() bool {
 	return len(session.vfFilters) > 0 || len(session.afFilters) > 0
 }
 
-// isBatch reports whether the session's queue holds more than one URL.
-func (session downloadSession) isBatch() bool {
-	return len(session.items) > 1
-}
-
 // startDownload validates the inputs of a new download session, resets the UI
 // for it, and launches the progress smoother and the session goroutine.
 func (app *DownloaderApp) startDownload() {
@@ -187,30 +182,37 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 		app.setStatusIndicator(StatusIdle)
 	}
 
-	finalPaths := app.runQueue(queueCtx, session)
+	queue := NewQueueModel(session.items)
+	app.queue.Store(queue)
+	app.uiManager.showQueue(queue)
+	finalPaths := app.runQueue(queueCtx, session, queue)
 
 	switch {
 	case queueCtx.Err() != nil || len(finalPaths) == 0:
 		// Cancelled, or nothing downloaded: nothing to process or announce.
 	case session.hasPostProcess():
+		queue.MarkAll(queueDone, queuePostProcessing)
 		app.runPostProcessing(queueCtx, stopQueue, finalPaths, session)
+		queue.MarkAll(queuePostProcessing, queueDone)
 		if queueCtx.Err() == nil {
-			app.notifyCompletion(true, len(finalPaths), len(session.items))
+			app.notifyCompletion(true, len(finalPaths), queue.Len())
 		}
 	default:
-		app.notifyCompletion(false, len(finalPaths), len(session.items))
+		app.notifyCompletion(false, len(finalPaths), queue.Len())
 	}
 
 	// Close the log file here, after post-processing, so FFmpeg output is captured.
 	app.logSvc.CloseSessionLog()
 }
 
-// finishSessionUI shows any log lines and status still queued, so the
-// session's summary appears at once, and re-enables the download button,
-// relabelling it "Retry" if any job in the session failed.
+// finishSessionUI shows any log lines, status, and queue changes still
+// waiting to be shown, so the session's summary appears at once, and
+// re-enables the download button, relabelling it "Retry" if any job in the
+// session failed.
 func (app *DownloaderApp) finishSessionUI() {
 	app.uiManager.flushLog()
 	app.statusThrottle.Flush()
+	app.uiManager.flushQueue()
 	fyne.Do(func() {
 		if app.sessionFailed.Load() {
 			app.ui.download.downloadBtn.SetText("Retry")
@@ -219,70 +221,83 @@ func (app *DownloaderApp) finishSessionUI() {
 	})
 }
 
-// runQueue downloads the session's queue one item after another until it is
-// cancelled or the user stops it for lack of disk space, and returns the
-// finalized paths of every successful download so post-processing can run
-// over all of them at once.
-func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSession) []string {
-	if session.isBatch() {
-		app.appendOutput(fmt.Sprintf("[SYSTEM] Batch mode: %d URLs queued.", len(session.items)), colInfo)
+// runQueue downloads the queue's items one after another, always taking the
+// first waiting one (so the Queue panel can remove, reorder, and retry
+// items while it runs), until none is waiting, the session is cancelled, or
+// the user stops it for lack of disk space. Items it did not get to are
+// marked skipped. It returns the finalized paths of every successful
+// download so post-processing can run over all of them at once.
+func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSession, queue *QueueModel) []string {
+	// A queue that starts with several items is a batch: each item gets its
+	// own Cancel (see downloadItem), even if the user removes items later.
+	batch := queue.Len() > 1
+	if batch {
+		app.appendOutput(fmt.Sprintf("[SYSTEM] Batch mode: %d URLs queued.", queue.Len()), colInfo)
 	}
 
 	var finalPaths []string
 	continueLowSpace := false // the user chose to continue despite low disk space
-	for index := range session.items {
-		if queueCtx.Err() != nil {
+	for queueCtx.Err() == nil {
+		id, item, ok := queue.Next()
+		if !ok {
 			break
 		}
-		paths, stop := app.downloadItem(queueCtx, session, index, &continueLowSpace)
+		paths, stop := app.downloadItem(queueCtx, session, queue, id, item, batch, &continueLowSpace)
 		finalPaths = append(finalPaths, paths...)
 		if stop {
 			break
 		}
 	}
+	queue.MarkAll(queueWaiting, queueSkipped)
 	return finalPaths
 }
 
-// downloadItem downloads session.items[index] and returns its finalized
-// paths. It first probes the item if it needs it (see checkItem) and checks
-// for free disk space (see checkDiskSpace); stop is true when the user
-// chose to stop the queue for lack of space.
-func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloadSession, index int, continueLowSpace *bool) (paths []string, stop bool) {
+// downloadItem downloads one queued item and returns its finalized paths,
+// keeping its entry in queue up to date. It first probes the item if it
+// needs it (see checkItem) and checks for free disk space (see
+// checkDiskSpace); stop is true when the user chose to stop the queue for
+// lack of space.
+func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloadSession, queue *QueueModel, id int, item queueItem, batch bool, continueLowSpace *bool) (paths []string, stop bool) {
+	position, total := queue.Position(id)
+
 	// In batch mode, give each URL its own child context so the Cancel
-	// button skips only the active download without killing the queue.
-	// In single-URL mode, runCtx == queueCtx and Cancel stops all.
+	// button (or the Queue panel's Skip) skips only the active download
+	// without killing the queue. In single-URL mode, runCtx == queueCtx and
+	// Cancel stops all.
 	runCtx := queueCtx
-	if session.isBatch() {
+	if batch {
 		var skipItem context.CancelFunc
 		runCtx, skipItem = context.WithCancel(queueCtx)
 		defer skipItem() // release the per-item context whether it was cancelled or not
 		app.SetCancelFunc(skipItem)
-		app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", index+1, len(session.items)), colInfo)
+		app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", position, total), colInfo)
 	}
-	if index > 0 {
-		// Reset progress UI and stats between URLs.
-		app.stats.reset()
-		fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
-	}
+	// Reset progress UI and stats from the previous item.
+	app.stats.reset()
+	fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
 
-	item := app.checkItem(runCtx, session, index)
+	item = app.checkItem(runCtx, session, item, position, total)
+	queue.SetItem(id, item)
 	if runCtx.Err() != nil {
 		app.updateStatus("Status: Canceled.")
 		app.setStatusIndicator(StatusCanceled)
+		queue.SetStatus(id, queueSkipped)
 		return nil, false
 	}
 	req := app.newDownloadRequest(item.url, session.savePath, session.trimStart, session.trimEnd)
 	app.reportQualityFit(item, req)
 	app.reportSubtitles(item, req)
 
-	switch app.checkDiskSpace(queueCtx, session, index, continueLowSpace) {
+	switch app.checkDiskSpace(queueCtx, session, item, queue.HasWaiting(), continueLowSpace) {
 	case spaceSkip:
 		app.appendOutput(fmt.Sprintf("[SYSTEM] Skipped %s: not enough disk space.", item.url), colWarning)
+		queue.SetStatus(id, queueSkipped)
 		return nil, false
 	case spaceStop:
 		app.appendOutput("[SYSTEM] Queue stopped: not enough disk space.", colWarning)
 		app.updateStatus("Status: Stopped (not enough disk space).")
 		app.setStatusIndicator(StatusCanceled)
+		queue.SetStatus(id, queueSkipped)
 		return nil, true
 	}
 
@@ -291,7 +306,17 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 		// The JSON can be large and is not needed again once used.
 		defer func() { item.info.raw = nil }()
 	}
-	return app.runYtDlp(runCtx, req, item, index+1, len(session.items)), false
+	queue.SetStatus(id, queueDownloading)
+	paths = app.runYtDlp(runCtx, req, item, position, total)
+	switch {
+	case runCtx.Err() != nil:
+		queue.SetStatus(id, queueSkipped)
+	case paths == nil:
+		queue.SetStatus(id, queueFailed)
+	default:
+		queue.SetStatus(id, queueDone)
+	}
+	return paths, false
 }
 
 // qualityNoticeID identifies the notice that says a video is downloaded at a

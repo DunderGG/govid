@@ -44,6 +44,7 @@ package "Application Core" #F0F4F8 {
         +isRunning : atomic.Bool
         +showDebug : atomic.Bool
         +keepHistory : atomic.Bool
+        +queue : atomic.Pointer[QueueModel]
         --
         +SetCancelFunc(cancel context.CancelFunc)
         +RequestCancel() : bool
@@ -53,9 +54,10 @@ package "Application Core" #F0F4F8 {
         -checkURLs(ctx, session) : []queueItem
         -expandPlaylist(ctx, url, info) : []queueItem
         -skipDownloaded(ctx, items) : []queueItem
-        -checkItem(ctx, session, index) : queueItem
-        -downloadItem(queueCtx, session, index, continueAll) : ([]string, bool)
-        -checkDiskSpace(ctx, session, index, continueAll) : diskSpaceDecision
+        -checkItem(ctx, session, item, position, total) : queueItem
+        -runQueue(queueCtx, session, queue *QueueModel) : []string
+        -downloadItem(queueCtx, session, queue, id, item, batch, continueAll) : ([]string, bool)
+        -checkDiskSpace(ctx, session, item, moreQueued, continueAll) : diskSpaceDecision
         +runYtDlp(ctx, req DownloadRequest, item queueItem, index, total) : []string
         +openDownloadFolder()
         +updateStatus(msg)
@@ -203,6 +205,9 @@ package "UI Layer" #F0F8F0 {
         +askPlaylist(ctx, prompt) : playlistDecision
         +askDiskSpace(ctx, prompt) : diskSpaceDecision
         +askDuplicate(ctx, prompt) : duplicateDecision
+        +showQueue(queue *QueueModel)
+        +flushQueue()
+        -refreshQueue()
         -readdHistoryURL(url)
         -revealHistoryFile(path)
         -onKeepHistoryChanged(keep bool)
@@ -299,6 +304,24 @@ package "Download Engine" #FFF8F0 {
         +OnStatus : func(msg string)
         +OnProgress : func(pct float64, size string)
         +OnPhase : func(phase string)
+    }
+
+    class QueueModel <<state>> {
+        -mu : sync.Mutex
+        -entries : []*queueEntry
+        +OnChanged : func()
+        --
+        +NewQueueModel(items []queueItem) : *QueueModel
+        +Next() : (id, queueItem, bool)
+        +SetItem(id, item)
+        +SetStatus(id, status)
+        +SetActiveProgress(progress)
+        +MarkAll(from, to)
+        +Remove(id) : bool
+        +Move(id, delta) : bool
+        +Retry(id) : bool
+        +Snapshot() : []queueEntry
+        +Summary() : string
     }
 
     class MediaInfo <<data>> {
@@ -814,6 +837,8 @@ DownloadEngine ..> DownloadOptions  : Run / Execute options
 DownloadEngine ..> DownloadResult   : Run output
 DownloadEngine ..> ProcessCallbacks : Execute bridge
 DownloadEngine ..> MediaInfo : Probe returns
+DownloaderApp --> QueueModel : queue
+UIManager ..> QueueModel : Queue panel
 MediaInfo *--> PlaylistEntry : entries
 DownloadEngine ..> scanResult      : Execute output
 

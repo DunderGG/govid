@@ -108,13 +108,13 @@ func existingDir(path string) string {
 	}
 }
 
-// checkDiskSpace decides whether to download session.items[index], given the
-// size the probe estimated and the free space in the save folder. With too
+// checkDiskSpace decides whether to download item, given the size the probe
+// estimated and the free space in the save folder. moreQueued says whether
+// other items wait after it, so Skip and "continue for all" apply. With too
 // little space it asks the user, unless they already chose to continue for
 // the whole session (*continueAll). An unknown size, or free space that
 // cannot be measured, skips the check, and the log says so.
-func (app *DownloaderApp) checkDiskSpace(ctx context.Context, session downloadSession, index int, continueAll *bool) diskSpaceDecision {
-	item := session.items[index]
+func (app *DownloaderApp) checkDiskSpace(ctx context.Context, session downloadSession, item queueItem, moreQueued bool, continueAll *bool) diskSpaceDecision {
 	estimate, known := uint64(0), false
 	if item.info != nil {
 		estimate, known = item.info.EstimatedSize()
@@ -145,7 +145,7 @@ func (app *DownloaderApp) checkDiskSpace(ctx context.Context, session downloadSe
 		url:    item.url,
 		needed: needed,
 		free:   free,
-		batch:  index < len(session.items)-1,
+		batch:  moreQueued,
 	})
 	if decision == spaceContinueAll {
 		*continueAll = true

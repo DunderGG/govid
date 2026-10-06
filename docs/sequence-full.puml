@@ -100,7 +100,8 @@ group checkURLs(queueCtx, session) [for each URL entered]
     end
 end
 
-group loop [for each item in session.items]
+group loop [while QueueModel.Next() returns a waiting item]
+    note right : the Queue panel may remove, move, or retry\nwaiting items while the loop runs
     alt batch mode (len > 1)
         App -> App : context.WithCancel(queueCtx)\n  → runCtx / skipItem  (per-URL cancel)
         note right : Cancel skips only the active URL;\nqueueCtx and later URLs remain available.

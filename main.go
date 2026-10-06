@@ -72,6 +72,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onLogBufferLimit = dlApp.logSvc.BufferLimit
 	dlApp.uiManager.onSetShowDebug = dlApp.showDebug.Store
 	dlApp.uiManager.onSetKeepHistory = dlApp.keepHistory.Store
+	dlApp.uiManager.onSessionRunning = dlApp.isRunning.Load
 
 	// Wire the dependency-service callbacks and log/status callbacks for
 	// checkDependencies and the "Update yt-dlp" menu action.

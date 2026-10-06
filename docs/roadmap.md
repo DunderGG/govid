@@ -52,8 +52,8 @@ This document outlines planned features, improvements, and known limitations for
 ### Queue Manager
 > Give users better control over batch downloads.
 
-- [ ] Add pause, resume, cancel, retry, and reordering for queued downloads.
-- [ ] Show per-item status, ETA, and completion state in the queue list.
+- [ ] Add pause, resume, cancel, retry, and reordering for queued downloads. (Partly done: the Queue panel (`queue_panel.go`, backed by `QueueModel`) removes and reorders waiting items, skips the running one, and retries failed or skipped ones while the queue runs. Pause/resume is still open: it needs yt-dlp's `.part` files and `--continue`, which conflict with today's `--no-part --no-continue`, plus partial-file cleanup that understands them.)
+- [ ] Show per-item status, ETA, and completion state in the queue list. (Partly done: each row shows Waiting, Checking, Downloading with its percentage, Post-processing, Done, Failed, or Skipped, and the panel title counts progress, e.g. "7 of 20 done, 1 failed". No per-item ETA yet.)
 - [ ] Preserve queued items after app restarts if the user chooses to save the session.
 
 ### Presets / Profiles

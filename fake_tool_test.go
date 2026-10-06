@@ -8,6 +8,7 @@ package main
 // select the behaviour with useFakeTool, so no real yt-dlp or FFmpeg is needed.
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -88,7 +89,7 @@ func runFakeTool(mode string, args []string) int {
 	// yt-dlp probes (-J) are answered first and not counted, so tests that
 	// count downloads are not affected by the probe before each one.
 	if slices.Contains(args, "-J") {
-		return fakeYtDlpProbe(mode, slices.Contains(args, "--no-playlist"))
+		return fakeYtDlpProbe(mode, args[len(args)-1], slices.Contains(args, "--no-playlist"))
 	}
 	if infoPath := argAfter(args, "--load-info-json"); infoPath != "" {
 		if code := checkFakeInfoJSON(infoPath, args); code != 0 {
@@ -114,6 +115,8 @@ func runFakeTool(mode string, args []string) int {
 	switch mode {
 	case "ytdlp-download", "ytdlp-playlist", "ytdlp-probe-fail":
 		return fakeYtDlpDownload(args)
+	case "ytdlp-mixed":
+		return fakeYtDlpMixed(args)
 	case "ytdlp-subtitles-429":
 		if slices.Contains(args, "--write-subs") {
 			fmt.Fprintln(os.Stderr, "ERROR: Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests")
@@ -275,7 +278,7 @@ func checkFakeInfoJSON(path string, args []string) int {
 // mode reports a playlist of fakePlaylistSize videos at
 // https://example.com/v/<n> (unless noPlaylist is set), "ytdlp-probe-fail"
 // fails, and every other mode reports a single 10 MiB, 720p video.
-func fakeYtDlpProbe(mode string, noPlaylist bool) int {
+func fakeYtDlpProbe(mode, url string, noPlaylist bool) int {
 	switch {
 	case mode == "ytdlp-playlist" && !noPlaylist:
 		var entries []string
@@ -289,8 +292,8 @@ func fakeYtDlpProbe(mode string, noPlaylist bool) int {
 		return 1
 	}
 	recordFakeExtraction()
-	fmt.Printf(`{"_type": "video", "id": "fakevid", "extractor_key": "Fake", "title": "Fake Video", "duration": 10, "height": %d, "subtitles": {"en": [], "de": []}, "automatic_captions": {"en": [], "fr": []}, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
-		fakeVideoHeight, fakeVideoSize-1024*1024, 1024*1024)
+	fmt.Printf(`{"_type": "video", "id": "fakevid", "extractor_key": "Fake", "webpage_url": %q, "title": "Fake Video", "duration": 10, "height": %d, "subtitles": {"en": [], "de": []}, "automatic_captions": {"en": [], "fr": []}, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
+		url, fakeVideoHeight, fakeVideoSize-1024*1024, 1024*1024)
 	return 0
 }
 
@@ -445,4 +448,29 @@ func installFakeTool(t *testing.T, dir, toolName string) string {
 		t.Fatalf("close fake tool: %v", err)
 	}
 	return dst
+}
+
+// fakeYtDlpMixed lets one session mix outcomes: a video whose URL contains
+// "/hang" stalls like "ytdlp-hang", one containing "/fail" fails, and any
+// other downloads. The URL is the last argument, or the webpage_url of the
+// --load-info-json file.
+func fakeYtDlpMixed(args []string) int {
+	url := args[len(args)-1]
+	if infoPath := argAfter(args, "--load-info-json"); infoPath != "" {
+		var info struct {
+			WebpageURL string `json:"webpage_url"`
+		}
+		data, _ := os.ReadFile(infoPath)
+		json.Unmarshal(data, &info)
+		url = info.WebpageURL
+	}
+	switch {
+	case strings.Contains(url, "/hang"):
+		return fakeYtDlpHang(args)
+	case strings.Contains(url, "/fail"):
+		fmt.Fprintln(os.Stderr, "ERROR: fake tool failure")
+		return 1
+	default:
+		return fakeYtDlpDownload(args)
+	}
 }

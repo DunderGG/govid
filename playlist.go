@@ -146,22 +146,22 @@ func (app *DownloaderApp) expandPlaylist(ctx context.Context, rawURL string, inf
 	return items
 }
 
-// checkItem returns session.items[index], first probing it when needsProbe
-// says so and recording the answer in the queue. The download then has its
+// checkItem returns item, first probing it when needsProbe says so. The
+// download then has its
 // size, title, and the info JSON it loads instead of extracting the video
 // again. A probe that fails is logged, and the item is downloaded from its
 // URL without a size check. ctx is the item's own context, so Cancel stops
 // the probe too; the item is returned unchanged when ctx is cancelled.
-func (app *DownloaderApp) checkItem(ctx context.Context, session downloadSession, index int) queueItem {
-	item := session.items[index]
+// position and total place the item in the queue, for the status label.
+func (app *DownloaderApp) checkItem(ctx context.Context, session downloadSession, item queueItem, position, total int) queueItem {
 	if !item.needsProbe(time.Now()) {
 		return item
 	}
 	if item.info != nil {
 		app.appendOutput(fmt.Sprintf("[SYSTEM] The info for %s is over %v old; checking it again.", item.url, probeMaxAge), colSystem)
 	}
-	if session.isBatch() {
-		app.updateStatus(fmt.Sprintf("Status: Checking URL %d of %d…", index+1, len(session.items)))
+	if total > 1 {
+		app.updateStatus(fmt.Sprintf("Status: Checking URL %d of %d…", position, total))
 	} else {
 		app.updateStatus("Status: Checking URL…")
 	}
@@ -180,7 +180,6 @@ func (app *DownloaderApp) checkItem(ctx context.Context, session downloadSession
 	default:
 		item = item.withInfo(&info)
 	}
-	session.items[index] = item
 	return item
 }
 

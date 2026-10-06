@@ -44,6 +44,8 @@ govid/
 ├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadRecord and DownloadHistoryEntry types
 ├── history_window.go       UIManager.showHistory — the searchable History list with Re-add / Show in folder / Copy URL
 ├── duplicates.go           skipDownloaded / askDuplicate — "Already downloaded" check before a session downloads
+├── queue_model.go          QueueModel — the session's queue: items, per-item status, Next / Move / Remove / Retry
+├── queue_panel.go          UIManager.showQueue — the collapsible Queue panel above the log
 ├── log_service.go          LogService — session log open/close, error log routing, buffer-limit management
 ├── dependency_service.go   DependencyService — binary path resolution, dependency checks, yt-dlp updater
 ├── ui_manager.go           UIManager — main window layout (createUI, createMainMenu), secondary window lifecycle
@@ -316,18 +318,19 @@ User clicks Download
   └─ startDownload()          validate URLs; open log file; spawn the sequential download worker
        ├─ checkURLs()          engine.Probe per URL; a playlist → askPlaylist prompt → its chosen videos become queue items
        ├─ skipDownloaded()     history match by video ID + extractor (or URL) → askDuplicate: Download again / Skip / Skip all
-       └─ downloadItem()       per queue item
-            ├─ checkItem()          engine.ProbeVideo when the item has no fresh probe answer (playlist entries; answers over 30 min old)
-            ├─ reportQualityFit()   qualityFit(format, quality, probe height) → log line + notice when it differs from the cap
-            ├─ reportSubtitles()    the probe's subtitle languages; warns when none matches --sub-langs (matchSubLangs)
-            ├─ checkDiskSpace()     probe size estimate × 1.1 (× 2 with post-processing) vs freeBytes(save folder)
-            └─ runYtDlp()
-                 ├─ engine.BuildArgs(DownloadRequest)   → []string args (--load-info-json <probe JSON> instead of the URL)
-                 ├─ engine.Execute(ctx, args, opts, cb)   → scanResult
-                 │    ├─ cmd.StdoutPipe / StderrPipe
-                 │    └─ engine.watchOutput() goroutines (parse % / size / phase) → cb.OnProgress, cb.OnPhase
-                 ├─ engine.FinalizeFiles()               glob → rename  (RemovePartialFiles on failure/cancel)
-                 └─ historySvc.AppendAll(DownloadRecord) JSON append
+       └─ runQueue()           QueueModel.Next() → the first waiting item, until none waits (the Queue panel may remove, move, or retry items meanwhile)
+            └─ downloadItem()    per item; status Checking → Downloading x% → Done / Failed / Skipped
+                 ├─ checkItem()          engine.ProbeVideo when the item has no fresh probe answer (playlist entries; answers over 30 min old)
+                 ├─ reportQualityFit()   qualityFit(format, quality, probe height) → log line + notice when it differs from the cap
+                 ├─ reportSubtitles()    the probe's subtitle languages; warns when none matches --sub-langs (matchSubLangs)
+                 ├─ checkDiskSpace()     probe size estimate × 1.1 (× 2 with post-processing) vs freeBytes(save folder)
+                 └─ runYtDlp()
+                      ├─ engine.BuildArgs(DownloadRequest)   → []string args (--load-info-json <probe JSON> instead of the URL)
+                      ├─ engine.Execute(ctx, args, opts, cb)   → scanResult
+                      │    ├─ cmd.StdoutPipe / StderrPipe
+                      │    └─ engine.watchOutput() goroutines (parse % / size / phase) → cb.OnProgress, cb.OnPhase
+                      ├─ engine.FinalizeFiles()               glob → rename  (RemovePartialFiles on failure/cancel)
+                      └─ historySvc.AppendAll(DownloadRecord) JSON append
   └─ applyFFmpegFilters()     if post-processing enabled
        └─ PPEngine.ApplyFilters(ctx, files, vf, af, cb)
               ├─ resolveAutoCrop() / resolveToneMap() per file (sentinels → crop / tone-map filters)
@@ -421,6 +424,8 @@ func classify(err error) Category {
 | Progress bar smoother | `startDownload()` → 33 ms ticker goroutine (frames that would change the bar by less than 0.002 are skipped) | `queueCtx` cancellation |
 | Status dot pulse | `setStatusIndicator("active")` | `stopPulse` channel close |
 | Post-process worker pool | `PPEngine.ApplyFilters()`; GPU jobs additionally wait on `gpuSem` (capacity 2) | same context |
+
+The session's queue is a `QueueModel` (`queue_model.go`): the items plus each one's status (Waiting, Checking, Downloading with its progress, Post-processing, Done, Failed, Skipped), behind a mutex. `runQueue` does not index a slice; it asks `Next()` for the first waiting item each time, so the Queue panel (`queue_panel.go`) can remove or move waiting items and put failed or skipped ones back at the end (`Retry`) while the queue runs. Moves only swap neighbouring waiting items, so finished and running items keep their place. `DownloaderApp.queue` (an `atomic.Pointer`) lets `updateProgress` report download progress to the downloading row. The model's `OnChanged` goes through a `latestValueThrottle`, so the panel is redrawn at most every 150 ms. The panel is a collapsible card above the log, titled with `Summary()` ("Queue — 7 of 20 done, 1 failed"), shown while the queue holds more than one item. Its rows offer Move up / Move down / Remove while waiting, Skip (the per-item cancel, as the Cancel button) while running, and Retry for failed or skipped items while the session runs. Items not reached when the queue stops are marked Skipped. Pause/resume and saving the queue across restarts are not implemented: pausing would need `.part` files and `--continue`, which conflict with `--no-part --no-continue`.
 
 The download queue itself is sequential. Before it starts, `checkURLs` probes
 each URL under `queueCtx` (so Cancel stops the probes) and builds
