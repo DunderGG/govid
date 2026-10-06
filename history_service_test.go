@@ -255,9 +255,11 @@ func TestInferOriginalTitle(t *testing.T) {
 	}{
 		{"GoVid_My Video.mp4", "Best Quality", "My Video"},
 		{"GoVid_My Video_1080p.mp4", "1080p", "My Video"},
+		{"GoVid_My Video_720p.mp4", "1080p", "My Video"}, // the label names the height downloaded
 		{"GoVid_My Video_1080p_TRIM.mkv", "1080p", "My Video"},
 		{"GoVid_My Video_TRIM.webm", "", "My Video"},
-		{"GoVid_Talk_720p.mp3", "1080p", "Talk_720p"},
+		{"GoVid_Talk_720p.mp3", "1080p", "Talk_720p"}, // audio has no label, so this is the title
+		{"GoVid_Live at 1080p.mp4", "Best Quality", "Live at 1080p"},
 		{"No Prefix.mp4", "Best Quality", "No Prefix"},
 		{"GoVid_Dots.In.Title.mp4", "", "Dots.In.Title"},
 	}

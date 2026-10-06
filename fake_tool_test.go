@@ -204,6 +204,10 @@ const fakePlaylistSize = 20
 // 10 MiB, matching the progress lines of fakeYtDlpDownload.
 const fakeVideoSize = 10 * 1024 * 1024
 
+// fakeVideoHeight is the height of the fake single video: the probe reports
+// it, and the download names its file with it.
+const fakeVideoHeight = 720
+
 // fakeYtDlpExpiredLinks mimics a download from saved info whose format URLs
 // have expired: it writes a partial file and fails with HTTP 403.
 func fakeYtDlpExpiredLinks(args []string) int {
@@ -239,7 +243,7 @@ func checkFakeInfoJSON(path string, args []string) int {
 // fakeYtDlpProbe mimics "yt-dlp -J --flat-playlist": the "ytdlp-playlist"
 // mode reports a playlist of fakePlaylistSize videos at
 // https://example.com/v/<n> (unless noPlaylist is set), "ytdlp-probe-fail"
-// fails, and every other mode reports a single 10 MiB video.
+// fails, and every other mode reports a single 10 MiB, 720p video.
 func fakeYtDlpProbe(mode string, noPlaylist bool) int {
 	switch {
 	case mode == "ytdlp-playlist" && !noPlaylist:
@@ -254,8 +258,8 @@ func fakeYtDlpProbe(mode string, noPlaylist bool) int {
 		return 1
 	}
 	recordFakeExtraction()
-	fmt.Printf(`{"_type": "video", "title": "Fake Video", "duration": 10, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
-		fakeVideoSize-1024*1024, 1024*1024)
+	fmt.Printf(`{"_type": "video", "title": "Fake Video", "duration": 10, "height": %d, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
+		fakeVideoHeight, fakeVideoSize-1024*1024, 1024*1024)
 	return 0
 }
 
@@ -271,7 +275,7 @@ func fakeOutputPath(args []string) (path, ext string) {
 	if ext == "" {
 		ext = argAfter(args, "--audio-format")
 	}
-	name := strings.NewReplacer("%(title)s", "Fake Video", "%(ext)s", ext).Replace(template)
+	name := strings.NewReplacer("%(title)s", "Fake Video", heightLabel, fmt.Sprintf("_%dp", fakeVideoHeight), "%(ext)s", ext).Replace(template)
 	return filepath.Join(dir, name), ext
 }
 

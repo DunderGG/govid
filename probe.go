@@ -34,6 +34,10 @@ type MediaInfo struct {
 	Duration float64         `json:"duration"` // seconds; 0 when unknown
 	Entries  []PlaylistEntry `json:"entries"`  // playlist items, in playlist order
 
+	// Height is the height of the video the -f selector picked (for merged
+	// streams, the video stream's); 0 when unknown or audio only.
+	Height int `json:"height"`
+
 	// The size of the format(s) the -f selector picked: one set of sizes
 	// for a single format, or one per stream in RequestedFormats when a
 	// video and an audio stream are merged.

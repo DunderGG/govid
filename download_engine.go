@@ -77,9 +77,17 @@ type DownloadArgs struct {
 
 // formatSelection returns the yt-dlp -f selector and the output extension
 // for a format and quality choice, plus the height cap the quality sets
-// ("" for none). The download and the probe share it, so the probe reports
-// the formats the download will fetch.
+// ("" for none). Audio formats have no picture, so the quality sets no cap
+// for them. The download and the probe share it, so the probe reports the
+// formats the download will fetch.
 func formatSelection(format, quality string) (formatFlag, extension, height string) {
+	switch {
+	case strings.Contains(format, formatMP3):
+		return "bestaudio/best", "mp3", ""
+	case strings.Contains(format, formatM4A):
+		return "bestaudio[ext=m4a]/bestaudio/best", "m4a", ""
+	}
+
 	formatFlag = "bestvideo+bestaudio/best"
 	extension = "mp4"
 
@@ -92,13 +100,6 @@ func formatSelection(format, quality string) (formatFlag, extension, height stri
 		height = "480"
 	case quality360p:
 		height = "360"
-	}
-
-	switch {
-	case strings.Contains(format, formatMP3):
-		return "bestaudio/best", "mp3", height
-	case strings.Contains(format, formatM4A):
-		return "bestaudio[ext=m4a]/bestaudio/best", "m4a", height
 	}
 
 	if height != "" {
@@ -121,15 +122,24 @@ func formatSelection(format, quality string) (formatFlag, extension, height stri
 	return formatFlag, extension, height
 }
 
+// heightLabel is the output-template field that labels a file with the
+// height of the video downloaded, e.g. "_720p". yt-dlp replaces "{}" with
+// the height, and writes nothing when the height is unknown, rather than
+// "_NAp".
+const heightLabel = "%(height&_{}p|)s"
+
 // BuildArgs derives the full yt-dlp argument list from a DownloadRequest.
 // FFmpegPath comes from the engine rather than the request, since it is
 // configured once at engine construction and shared across all downloads.
 func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 	formatFlag, extension, height := formatSelection(req.Format, req.Quality)
 
+	// A capped download is labelled with the height yt-dlp actually picked,
+	// which can be lower than the cap (or, through the selector's final
+	// "/best", higher); see heightLabel.
 	qualitySuffix := ""
 	if height != "" {
-		qualitySuffix = "_" + req.Quality
+		qualitySuffix = heightLabel
 	}
 
 	// Embed a unique token into the filename while yt-dlp is running so it never

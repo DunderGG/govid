@@ -365,7 +365,8 @@ func (manager *UIManager) showConfigHelp() {
 			"  * **" + formatM4A + "** – audio only, Apple/iTunes compatible"},
 		{"Max Quality", "Sets the maximum resolution yt-dlp will request:\n" +
 			"  * **" + qualityBest + "** – downloads the highest resolution available\n" +
-			"  * **" + strings.Join(qualityOptions[1:], "** / **") + "** – caps the resolution to save space or bandwidth"},
+			"  * **" + strings.Join(qualityOptions[1:], "** / **") + "** – caps the resolution to save space or bandwidth\n\n" +
+			"A capped download is named after the resolution it actually got, e.g. `_720p`. When a video is not available at the cap, GoVid says so in the log and in a notice above the input card: it downloads the best version below the cap, or, when the site has no version at or below it, the best version there is, with a warning. Audio formats ignore this setting and get no label."},
 		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\n\nAccepted formats:\n  * `HH:MM:SS` (e.g. 01:30:00)\n  * `MM:SS` (e.g. 01:30)\n  * `Seconds` (e.g. 90)\n\nEither field can be used alone:\n  * **Trim Start only** → downloads from that point to the end\n  * **Trim End only** → downloads from the start to that point"},
 		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a **GoVid_log_YYYY-MM-DD.txt** file in your save destination folder. Errors are also mirrored to a separate **GoVid_errors_YYYY-MM-DD.txt** file."},
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},

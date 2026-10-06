@@ -284,6 +284,7 @@ package "Download Engine" #FFF8F0 {
         +Title : string
         +Duration : float64
         +Entries : []PlaylistEntry
+        +Height : int
         -raw : []byte
         -probedAt : time.Time
         --

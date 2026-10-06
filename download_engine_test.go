@@ -123,10 +123,65 @@ func TestBuildArgsAudioExtraction(t *testing.T) {
 	}
 }
 
-func TestBuildArgsQualitySuffixInTemplate(t *testing.T) {
-	built := NewDownloadEngine("yt-dlp", "").BuildArgs(DownloadRequest{URL: "u", SavePath: "s", Format: "MP4", Quality: "720p"})
-	if got, want := argAfter(built.Args, "-o"), "GoVid_%(title)s_720p_"+built.DownloadID+".%(ext)s"; got != want {
-		t.Errorf("-o = %q, want %q", got, want)
+func TestFormatSelectionHeight(t *testing.T) {
+	tests := []struct {
+		format, quality string
+		wantHeight      string
+	}{
+		{formatMP4, qualityBest, ""},
+		{formatMP4, quality1080p, "1080"},
+		{formatMKV, quality720p, "720"},
+		{formatWebM, quality480p, "480"},
+		{formatMP4, quality360p, "360"},
+		{formatMP3, quality1080p, ""}, // audio has no picture to cap
+		{formatM4A, quality720p, ""},
+	}
+	for _, tt := range tests {
+		if _, _, got := formatSelection(tt.format, tt.quality); got != tt.wantHeight {
+			t.Errorf("formatSelection(%q, %q) height = %q, want %q", tt.format, tt.quality, got, tt.wantHeight)
+		}
+	}
+}
+
+func TestBuildArgsQualityLabelInTemplate(t *testing.T) {
+	tests := []struct {
+		format, quality string
+		wantLabel       string
+	}{
+		{formatMP4, quality720p, heightLabel}, // the height downloaded, not the cap
+		{formatMKV, quality1080p, heightLabel},
+		{formatMP4, qualityBest, ""},
+		{formatMP3, quality1080p, ""},
+		{formatM4A, quality360p, ""},
+	}
+	engine := NewDownloadEngine("yt-dlp", "")
+	for _, tt := range tests {
+		built := engine.BuildArgs(DownloadRequest{URL: "u", SavePath: "s", Format: tt.format, Quality: tt.quality})
+		if got, want := argAfter(built.Args, "-o"), "GoVid_%(title)s"+tt.wantLabel+"_"+built.DownloadID+".%(ext)s"; got != want {
+			t.Errorf("%s/%s: -o = %q, want %q", tt.format, tt.quality, got, want)
+		}
+	}
+}
+
+func TestQualityFit(t *testing.T) {
+	tests := []struct {
+		format, quality string
+		height          int
+		wantMessage     string
+		wantAbove       bool
+	}{
+		{formatMP4, quality1080p, 720, "1080p isn't available for this video; downloading 720p (the best there is).", false},
+		{formatMP4, quality480p, 1080, "No version at or below 480p; downloading 1080p.", true},
+		{formatMP4, quality720p, 720, "", false},
+		{formatMP4, qualityBest, 360, "", false},
+		{formatMP4, quality1080p, 0, "", false}, // height unknown
+		{formatMP3, quality1080p, 720, "", false},
+	}
+	for _, tt := range tests {
+		message, above := qualityFit(tt.format, tt.quality, tt.height)
+		if message != tt.wantMessage || above != tt.wantAbove {
+			t.Errorf("qualityFit(%q, %q, %d) = %q, %v; want %q, %v", tt.format, tt.quality, tt.height, message, above, tt.wantMessage, tt.wantAbove)
+		}
 	}
 }
 
@@ -160,7 +215,7 @@ func TestBuildArgsTrim(t *testing.T) {
 			if built.TrimDisplayStart != tt.wantDisplayStart || built.TrimDisplayEnd != tt.wantDisplayEnd {
 				t.Errorf("trim display = %q → %q, want %q → %q", built.TrimDisplayStart, built.TrimDisplayEnd, tt.wantDisplayStart, tt.wantDisplayEnd)
 			}
-			if got, want := argAfter(built.Args, "-o"), "GoVid_%(title)s_1080p_TRIM_"+built.DownloadID+".%(ext)s"; got != want {
+			if got, want := argAfter(built.Args, "-o"), "GoVid_%(title)s"+heightLabel+"_TRIM_"+built.DownloadID+".%(ext)s"; got != want {
 				t.Errorf("-o = %q, want %q", got, want)
 			}
 			if last := built.Args[len(built.Args)-1]; last != "u" {

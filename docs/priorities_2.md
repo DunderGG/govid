@@ -43,9 +43,16 @@ Tests: `TestStartDownloadExtractsSingleVideoOnce` and `TestStartDownloadExtracts
 
 ---
 
-## 2. Correct quality labels and the "Smart Downscale" notice
+## 2. ✅ Correct quality labels and the "Smart Downscale" notice
 
 **Roadmap:** Technical Improvements → Automatic "Best-Fit" Quality ("Show a 'Smart Downscale' notification if the requested resolution isn't available").
+
+**Status: Done.**
+- **Audio.** `formatSelection` returns the audio selectors before it looks at the quality, so MP3/M4A have no height cap and no label.
+- **Label.** A capped download's template now has `heightLabel`, `%(height&_{}p|)s`, instead of `_<Quality>`. yt-dlp writes `_720p` from the height it downloaded, and nothing (not `_NAp`) when the height is unknown. Best Quality still has no label. Checked against the bundled yt-dlp 2026.03.17. `inferOriginalTitle` strips any `_<n>p` label from a video's name, but not from an audio file's.
+- **Notice.** `MediaInfo.Height` is read from the probe. `downloadItem` calls `reportQualityFit` after `checkItem`, so playlist entries are covered too. `qualityFit` gives "1080p isn't available for this video; downloading 720p (the best there is)." (logged in blue) or, for the `/best` fallback, "No version at or below 480p; downloading 1080p." (a warning). The message, with the video's title, is logged and shown as a notice above the input card. The notice is replaced by the next one and cleared when a new session starts.
+
+Tests: `TestFormatSelectionHeight`, `TestBuildArgsQualityLabelInTemplate`, `TestQualityFit`, `TestStartDownloadLabelsDownscaledVideoWithItsHeight`, `TestStartDownloadAudioHasNoQualityLabel`, and new `TestInferOriginalTitle` cases.
 
 **Problem.** The quality label in the filename is often wrong, and the user is never told when they get a different resolution from the one they asked for.
 

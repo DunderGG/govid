@@ -18,7 +18,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Cross-Platform GUI**: Modern interface built with the [Fyne toolkit](https://fyne.io/).
 - **Multiple Formats**: Support for MP4, MKV, WebM, MP3, and M4A.
 - **Metadata & Cover Art**: Writes title, artist, and date tags, the thumbnail as cover art, and (optionally) chapters into downloaded files, and keeps them through post-processing.
-- **Quality Control**: Select your preferred maximum resolution for downloads.
+- **Quality Control**: Select your preferred maximum resolution for downloads. GoVid tells you when a video is not available at that resolution, and names the file after the resolution it actually downloaded.
 - **Video Trimming**: Download only a specific segment — specify a start time, an end time, or both (`HH:MM:SS` / `MM:SS` / seconds).
 - **Batch Processing**: Download multiple URLs at once by switching to Batch Mode (one URL per line).
 - **Playlists**: Paste a playlist URL to pick all of it, a range (e.g. `5-8`), or just the linked video; each video is queued separately.

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"image/color"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -132,6 +133,7 @@ func (app *DownloaderApp) resetSession() {
 	app.updateStatus("Status: Initializing...")
 	app.stats.reset()
 	app.clearTerminalOutput()
+	app.uiManager.dismissNotice(qualityNoticeID) // it was about the previous session
 	app.ui.download.cancelBtn.Enable()
 	app.ui.download.downloadBtn.Disable()
 	app.ui.download.downloadBtn.SetText("Download Now!")
@@ -265,6 +267,8 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 		app.setStatusIndicator(StatusCanceled)
 		return nil, false
 	}
+	req := app.newDownloadRequest(item.url, session.savePath, session.trimStart, session.trimEnd)
+	app.reportQualityFit(item, req)
 
 	switch app.checkDiskSpace(queueCtx, session, index, continueLowSpace) {
 	case spaceSkip:
@@ -277,13 +281,59 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 		return nil, true
 	}
 
-	req := app.newDownloadRequest(item.url, session.savePath, session.trimStart, session.trimEnd)
 	if item.info != nil {
 		req.InfoJSON = item.info.raw
 		// The JSON can be large and is not needed again once used.
 		defer func() { item.info.raw = nil }()
 	}
 	return app.runYtDlp(runCtx, req, index+1, len(session.items)), false
+}
+
+// qualityNoticeID identifies the notice that says a video is downloaded at a
+// different resolution from the one asked for.
+const qualityNoticeID = "quality-fit"
+
+// qualityFit compares the height the probe says the download will have with
+// the cap the format and quality set. It returns a message for the user when
+// they differ, and whether the download is above the cap, which happens when
+// the selector falls back to "best" because no version is small enough. It
+// returns "" for no cap, audio, or an unknown height.
+func qualityFit(format, quality string, height int) (message string, aboveCap bool) {
+	_, _, capText := formatSelection(format, quality)
+	capHeight, err := strconv.Atoi(capText)
+	if err != nil || height <= 0 {
+		return "", false
+	}
+	switch {
+	case height < capHeight:
+		return fmt.Sprintf("%s isn't available for this video; downloading %dp (the best there is).", quality, height), false
+	case height > capHeight:
+		return fmt.Sprintf("No version at or below %s; downloading %dp.", quality, height), true
+	default:
+		return "", false
+	}
+}
+
+// reportQualityFit tells the user, in the log and in a notice, when the
+// probe says item will download at a different resolution from req's
+// quality cap. Nothing is said when its resolution is not known.
+func (app *DownloaderApp) reportQualityFit(item queueItem, req DownloadRequest) {
+	if item.info == nil {
+		return
+	}
+	message, aboveCap := qualityFit(req.Format, req.Quality, item.info.Height)
+	if message == "" {
+		return
+	}
+	if title := strings.TrimSpace(item.info.Title); title != "" {
+		message = fmt.Sprintf("%q: %s", title, message)
+	}
+	col := colInfo
+	if aboveCap {
+		col = colWarning
+	}
+	app.appendOutput("[SYSTEM] "+message, col)
+	app.uiManager.showNotice(notice{id: qualityNoticeID, text: message})
 }
 
 // runPostProcessing runs the session's filters over every downloaded file in

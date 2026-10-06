@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -160,14 +161,21 @@ func (svc *HistoryService) buildEntries(rec DownloadRecord, timestamp string) []
 	return result
 }
 
+// heightSuffixPattern matches the height label at the end of a capped
+// video's name, e.g. "_720p" (see heightLabel).
+var heightSuffixPattern = regexp.MustCompile(`_\d+p$`)
+
 // inferOriginalTitle derives a human-readable title from a saved filename by
-// stripping the GoVid_ prefix, quality suffix, and file extension.
+// stripping the GoVid_ prefix, height label, and file extension. Only a
+// capped video download has a height label, which names the height
+// downloaded rather than the quality chosen.
 func inferOriginalTitle(filename, quality string) string {
-	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+	ext := filepath.Ext(filename)
+	base := strings.TrimSuffix(filename, ext)
 	base = strings.TrimPrefix(base, "GoVid_")
 	base = strings.TrimSuffix(base, "_TRIM")
-	if quality != "" && quality != qualityBest {
-		base = strings.TrimSuffix(base, "_"+quality)
+	if quality != "" && quality != qualityBest && !isAudioOnlyExt(ext) {
+		base = heightSuffixPattern.ReplaceAllString(base, "")
 	}
 	return base
 }

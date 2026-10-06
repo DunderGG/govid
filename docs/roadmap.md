@@ -200,7 +200,7 @@ This document outlines planned features, improvements, and known limitations for
 ### Automatic "Best-Fit" Quality
 > Smart handling of missing quality tiers.
 
-- [ ] Show a "Smart Downscale" notification if the requested resolution isn't available.
+- [x] Show a "Smart Downscale" notification if the requested resolution isn't available. (`qualityFit` compares the probe's `height` with the cap and logs and shows a notice, e.g. "1080p isn't available for this video; downloading 720p", or warns when the selector fell back to a higher resolution. Capped files are named after the height actually downloaded (`%(height&_{}p|)s`), and audio files get no quality label.)
 
 ### Linux Polish
 > Close the gap on the currently supported non-Windows platform.

@@ -468,6 +468,47 @@ func TestStartDownloadSingleURL(t *testing.T) {
 	}
 }
 
+func TestStartDownloadLabelsDownscaledVideoWithItsHeight(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download") // the fake video is 720p
+	h.app.ui.download.quality.SetSelected(quality1080p)
+	h.app.ui.download.entry.SetText("https://example.com/v")
+
+	h.startAndWait(t)
+
+	if files := h.savedFiles(t); !slices.Equal(files, []string{"GoVid_Fake Video_720p.mp4"}) {
+		t.Errorf("saved files = %q, want the 720p video labelled _720p", files)
+	}
+	const message = `"Fake Video": 1080p isn't available for this video; downloading 720p (the best there is).`
+	if !strings.Contains(h.joinedLogs(), message) {
+		t.Errorf("log missing the downscale notice:\n%s", h.joinedLogs())
+	}
+	var shown []string
+	fyne.DoAndWait(func() {
+		for _, n := range h.app.uiManager.notices {
+			shown = append(shown, n.text)
+		}
+	})
+	if !slices.Equal(shown, []string{message}) {
+		t.Errorf("notices = %q, want the downscale notice", shown)
+	}
+}
+
+func TestStartDownloadAudioHasNoQualityLabel(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	h.app.ui.download.format.SetSelected(formatMP3)
+	h.app.ui.download.quality.SetSelected(quality1080p)
+	h.app.ui.download.entry.SetText("https://example.com/v")
+
+	h.startAndWait(t)
+
+	if files := h.savedFiles(t); !slices.Equal(files, []string{"GoVid_Fake Video.mp3"}) {
+		t.Errorf("saved files = %q, want an MP3 without a quality label", files)
+	}
+	if strings.Contains(h.joinedLogs(), "isn't available") {
+		t.Errorf("audio download got a resolution notice:\n%s", h.joinedLogs())
+	}
+}
+
 func TestStartDownloadFailureOffersRetry(t *testing.T) {
 	h := newDownloadHarness(t, "fail")
 	h.app.ui.download.entry.SetText("https://example.com/v")
