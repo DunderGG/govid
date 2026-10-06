@@ -1,5 +1,7 @@
 # GoVid — Next Ten Priorities
 
+> All ten items below are done in code, each in its own commit. Hand checks still to do: **#4**, a real YouTube video downloaded with **Embed** showing a selectable subtitle track in a player; **#10**, a release build one version behind updating itself from a real GitHub release.
+
 The next ten items to work on, in order. They follow the first ten in [priorities.md](priorities.md), which are all done. Each item was checked against the code as it was on 2026-10-06, after commit `50d7081`.
 
 How the order was chosen:
