@@ -28,6 +28,7 @@ package "Application Core" #F0F4F8 {
         +historySvc : *HistoryService
         +depSvc : *DependencyService
         +gpuSvc : *GPUCapabilityService
+        +releaseSvc : *ReleaseService
         +onLogLine : func(string, color.Color)
         +cancelMu : sync.Mutex
         +cancelFn : context.CancelFunc
@@ -116,6 +117,7 @@ package "UI Layer" #F0F8F0 {
         +savePrefs : *widget.Check
         +logLimit : *widget.Select
         +showDebug : *widget.Check
+        +checkUpdates : *widget.Check
     }
 
     class PostProcessControls <<ui>> {
@@ -160,6 +162,9 @@ package "UI Layer" #F0F8F0 {
         -onSetLogBufferLimit : func(int)
         -onLogBufferLimit : func() int
         -onSetShowDebug : func(bool)
+        -onYtDlpVersions : func() (string, string)
+        -notices : []notice
+        -noticeBox : *fyne.Container
         -onLog : func(string, color.Color)
         -onStatus : func(string)
         -onSetStatusIndicator : func(string)
@@ -173,7 +178,10 @@ package "UI Layer" #F0F8F0 {
         +createUI()
         +createMainMenu()
         +checkDependencies()
+        +confirmYtDlpUpdate()
         +runUpdateInUI()
+        +showNotice(n notice)
+        +dismissNotice(id)
         +showAbout()
         +showHistory()
         +showConfigHelp()
@@ -253,6 +261,7 @@ package "Download Engine" #FFF8F0 {
         +sourceExts : []string
         +wasConverted : bool
         +hadTransientErr : bool
+        +hadExtractorErr : bool
     }
 
 }
@@ -455,6 +464,7 @@ package "Preference Service" #FFF0F0 {
         +ThemeMode : string
         +LogLimit : string
         +ShowDebug : bool
+        +CheckUpdates : bool
         +CookiesPath : string
         +MaxSpeed : string
         +BatchMode : bool
@@ -491,6 +501,7 @@ package "Dependency Service" #FFFFF0 {
 
     class DependencyService <<service>> {
         -binDir : string
+        -isWritable : func(dir string) bool
         --
         +LocalPath(toolName string) : string
         +Resolve(toolName string) : string
@@ -498,6 +509,7 @@ package "Dependency Service" #FFFFF0 {
         +Version(toolName string) : (string, error)
         +RunUpdate(cb UpdateCallbacks)
         +UpdateCLI() : error
+        -updateFailureHint() : string
     }
 
     class UpdateCallbacks <<bridge>> {
@@ -508,6 +520,35 @@ package "Dependency Service" #FFFFF0 {
     }
 
 }
+
+' ════════════════════════════════════════════════════════════
+' RELEASE SERVICE
+' ════════════════════════════════════════════════════════════
+package "Release Service" #FFF5E8 {
+
+    class ReleaseService <<service>> {
+        -client : *http.Client
+        -baseURL : string
+        -userAgent : string
+        -cache : releaseCache
+        --
+        +Latest(ctx, owner, repo, maxAge) : (Release, error)
+    }
+
+    class Release <<data>> {
+        +TagName : string
+        +HTMLURL : string
+        +Body : string
+        +Assets : []ReleaseAsset
+    }
+
+    class "compareVersions()" as CompareVersionsFn <<free function>> {
+        compareVersions(a, b string) : int
+    }
+
+}
+
+ReleaseService ..> Release : returns
 
 ' ════════════════════════════════════════════════════════════
 ' LOG SERVICE
@@ -637,6 +678,7 @@ DownloaderApp *--> HistoryService   : historySvc
 DownloaderApp *--> LogService     : logSvc
 DownloaderApp *--> DependencyService : depSvc
 DownloaderApp *--> GPUCapabilityService : gpuSvc
+DownloaderApp *--> ReleaseService : releaseSvc
 DownloaderApp *--> DownloadStats   : stats
 DownloaderApp *--> latestValueThrottle : statusThrottle
 

@@ -74,12 +74,13 @@ func NewDownloadControls() *DownloadControls {
 
 // PreferenceControls holds the widgets shown in the Preferences dialog.
 type PreferenceControls struct {
-	maxSpeed  *widget.Entry      // Download speed limit (e.g. 5M)
-	themeMode *widget.RadioGroup // Theme mode selector (Dark / Light)
-	cookies   *widget.Entry      // Path to a Mozilla/Netscape-format cookies file
-	savePrefs *widget.Check      // Option to persist preferences between sessions
-	logLimit  *widget.Select     // Max lines kept in the graphical log view
-	showDebug *widget.Check      // Option to show yt-dlp [debug] lines in the log view
+	maxSpeed     *widget.Entry      // Download speed limit (e.g. 5M)
+	themeMode    *widget.RadioGroup // Theme mode selector (Dark / Light)
+	cookies      *widget.Entry      // Path to a Mozilla/Netscape-format cookies file
+	savePrefs    *widget.Check      // Option to persist preferences between sessions
+	logLimit     *widget.Select     // Max lines kept in the graphical log view
+	showDebug    *widget.Check      // Option to show yt-dlp [debug] lines in the log view
+	checkUpdates *widget.Check      // Option to check for newer yt-dlp and GoVid releases on startup
 }
 
 // NewPreferenceControls constructs the Preferences dialog's widgets.
@@ -94,12 +95,13 @@ func NewPreferenceControls() *PreferenceControls {
 	cookies.SetPlaceHolder("Path to cookies.txt (optional)")
 
 	return &PreferenceControls{
-		maxSpeed:  maxSpeed,
-		themeMode: themeMode,
-		cookies:   cookies,
-		savePrefs: widget.NewCheck("Save preferences between sessions", nil),
-		logLimit:  widget.NewSelect(logLimitOptions, nil),
-		showDebug: widget.NewCheck("Show yt-dlp debug output", nil),
+		maxSpeed:     maxSpeed,
+		themeMode:    themeMode,
+		cookies:      cookies,
+		savePrefs:    widget.NewCheck("Save preferences between sessions", nil),
+		logLimit:     widget.NewSelect(logLimitOptions, nil),
+		showDebug:    widget.NewCheck("Show yt-dlp debug output", nil),
+		checkUpdates: widget.NewCheck("Check for updates on startup", nil),
 	}
 }
 
@@ -250,6 +252,7 @@ type DownloaderApp struct {
 	historySvc *HistoryService                    // Download history persistence
 	depSvc     *DependencyService                 // Binary path resolution, dependency checks, and yt-dlp updater
 	gpuSvc     *GPUCapabilityService              // GPU backend capability detection and cache
+	releaseSvc *ReleaseService                    // Latest-release lookups on GitHub for update checks
 	onLogLine  func(line string, col color.Color) // Renders a log line in the UI; set to uiManager.appendLogLine
 
 	// statusThrottle rate-limits and de-duplicates status label updates;

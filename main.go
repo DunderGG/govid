@@ -35,13 +35,14 @@ var (
 func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	depSvc := NewDependencyService()
 	dlApp := &DownloaderApp{
-		window:    window,
-		uiManager: NewUIManager(window),
-		ui:        NewUIWidgets(),
-		stats:     &DownloadStats{},
-		logSvc:    NewLogService(),
-		depSvc:    depSvc,
-		gpuSvc:    NewGPUCapabilityService(depSvc.Resolve("ffmpeg")),
+		window:     window,
+		uiManager:  NewUIManager(window),
+		ui:         NewUIWidgets(),
+		stats:      &DownloadStats{},
+		logSvc:     NewLogService(),
+		depSvc:     depSvc,
+		gpuSvc:     NewGPUCapabilityService(depSvc.Resolve("ffmpeg")),
+		releaseSvc: NewReleaseService(fyne.CurrentApp().Preferences(), "GoVid/"+version),
 	}
 
 	// Load saved preferences and apply them to all widgets.
@@ -74,6 +75,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	// checkDependencies and the "Update yt-dlp" menu action.
 	dlApp.uiManager.onCheckDependencies = depSvc.Check
 	dlApp.uiManager.onRunUpdate = depSvc.RunUpdate
+	dlApp.uiManager.onYtDlpVersions = dlApp.ytDlpVersions
 	dlApp.uiManager.onLog = dlApp.appendOutput
 	dlApp.uiManager.onStatus = dlApp.updateStatus
 	dlApp.uiManager.onSetStatusIndicator = dlApp.setStatusIndicator
@@ -122,6 +124,7 @@ func main() {
 	dlApp.uiManager.createMainMenu()
 	dlApp.uiManager.createUI()
 	dlApp.uiManager.checkDependencies()
+	dlApp.startUpdateChecks(dlApp.prefSvc.Load().CheckUpdates)
 	dlApp.startGPUDetection()
 
 	// Show a confirmation dialog if a download or post-processing job is

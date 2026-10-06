@@ -154,9 +154,20 @@ zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:de
 
 ---
 
-## 6. yt-dlp version check
+## 6. ✅ yt-dlp version check
 
 **Roadmap:** Medium Priority → yt-dlp Auto-Update. (The one-click "Update yt-dlp" menu item is already done; the version check is what remains.)
+
+**Status: Done.**
+- `ReleaseService.Latest(ctx, owner, repo, maxAge)` ([release_service.go](../release_service.go)) caches each answer with its check time in the preferences store. HTTP 403/429 returns `errReleaseUnknown` and is cached as well, so a rate-limited check isn't repeated on every start.
+- `compareVersions` compares versions part by part, numerically, which covers yt-dlp's date versions including nightlies.
+- `startUpdateChecks` ([update_check.go](../update_check.go)) runs after `checkDependencies`. An outdated yt-dlp is logged once, and `UIManager.showNotice` shows a new non-blocking notice bar above the input card with **Update now** (→ `runUpdateInUI`). A successful update dismisses it.
+- New "Check for updates on startup" preference, on by default.
+- The Update yt-dlp dialog and About show the installed and latest versions.
+- Failed downloads with "Unable to extract" / "Sign in to confirm" / "HTTP Error 403" errors log a hint to update yt-dlp.
+- A failed `yt-dlp -U` checks whether the yt-dlp folder is writable and, if not, explains how to fix it (in both the GUI and `--update`).
+
+While testing, GitHub returned 403 (rate limit) to this machine, which is exactly the "unknown" case. Tests: `release_service_test.go`, `update_check_test.go`, `TestNoticeActionRunsAndDismisses`, `TestDependencyRunUpdateExplainsUnwritableFolder`, `TestWatchOutputDetectsExtractorErrors`, and `TestRunYtDlpExtractorErrorSuggestsUpdate`.
 
 **Problem.** An outdated yt-dlp is the most common reason a downloader suddenly stops working. Sites, YouTube above all, often change in ways that break older yt-dlp versions within weeks. Users currently get no warning.
 

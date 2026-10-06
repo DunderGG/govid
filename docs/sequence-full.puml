@@ -29,6 +29,12 @@ group Startup
     alt dependency missing
         UIM -> App : onLog warning for missing tool
     end
+    opt "Check for updates on startup" enabled
+        App -> App  : go checkYtDlpUpdate()\n  — depSvc.Version("yt-dlp") vs releaseSvc.Latest(yt-dlp/yt-dlp)\n    (GitHub asked at most once a day; 403 = unknown)
+        alt installed yt-dlp is older
+            App -> UIM : showNotice("yt-dlp X is out of date", "Update now" → runUpdateInUI)
+        end
+    end
     App -> App  : go startGPUDetection()\n  — gpuSvc.Detect(ctx) runs in the background,\n    populating the GPUBackend → BackendCapability cache once
     UI  -> U    : ShowAndRun() — window visible
 end

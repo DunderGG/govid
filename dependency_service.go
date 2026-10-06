@@ -23,6 +23,10 @@ import (
 // It has no UI or Fyne dependency.
 type DependencyService struct {
 	binDir string // absolute path to the bin/ directory beside the executable
+
+	// isWritable reports whether files can be created in a directory; nil
+	// means dirWritable. Replaced in tests.
+	isWritable func(dir string) bool
 }
 
 // NewDependencyService returns a DependencyService pointed at the bin/
@@ -131,7 +135,12 @@ func (svc *DependencyService) RunUpdate(cb UpdateCallbacks) {
 
 		if err != nil {
 			cb.OnLog(fmt.Sprintf("[ERROR] Update failed: %v", err), colError)
-			cb.OnStatus("Status: Update failed.")
+			if hint := svc.updateFailureHint(); hint != "" {
+				cb.OnLog("[ERROR] "+hint, colError)
+				cb.OnStatus("Status: Update failed — the yt-dlp folder is not writable.")
+			} else {
+				cb.OnStatus("Status: Update failed.")
+			}
 			cb.OnFailure()
 		} else {
 			cb.OnLog("[SYSTEM] yt-dlp is up to date.", colSuccess)
@@ -151,7 +160,58 @@ func (svc *DependencyService) UpdateCLI() error {
 	out, err := cmd.CombinedOutput()
 	fmt.Print(string(out))
 	if err != nil {
+		if hint := svc.updateFailureHint(); hint != "" {
+			return fmt.Errorf("yt-dlp update failed: %w\n%s", err, hint)
+		}
 		return fmt.Errorf("yt-dlp update failed: %w", err)
 	}
 	return nil
+}
+
+// updateFailureHint explains a failed update when the folder holding yt-dlp
+// cannot be written to (for example under Program Files), since yt-dlp -U
+// replaces the yt-dlp executable in place. It returns "" when the folder is
+// writable or cannot be found.
+func (svc *DependencyService) updateFailureHint() string {
+	dir := svc.ytDlpDir()
+	if dir == "" || svc.writable(dir) {
+		return ""
+	}
+	return fmt.Sprintf("GoVid cannot write to %s, which yt-dlp needs to update itself. "+
+		"Run GoVid as administrator once to update it, or move GoVid to a folder you can write to, such as one in your user folder.", dir)
+}
+
+// ytDlpDir returns the folder holding the yt-dlp that Resolve picks, or ""
+// when yt-dlp cannot be found.
+func (svc *DependencyService) ytDlpDir() string {
+	path := svc.Resolve("yt-dlp")
+	if !filepath.IsAbs(path) {
+		found, err := exec.LookPath(path)
+		if err != nil {
+			return ""
+		}
+		path = found
+	}
+	return filepath.Dir(path)
+}
+
+// writable reports whether files can be created in dir.
+func (svc *DependencyService) writable(dir string) bool {
+	if svc.isWritable != nil {
+		return svc.isWritable(dir)
+	}
+	return dirWritable(dir)
+}
+
+// dirWritable reports whether a file can be created in dir, by creating and
+// removing one.
+func dirWritable(dir string) bool {
+	file, err := os.CreateTemp(dir, ".govid-write-test-*")
+	if err != nil {
+		return false
+	}
+	name := file.Name()
+	file.Close()
+	os.Remove(name)
+	return true
 }

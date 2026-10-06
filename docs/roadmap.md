@@ -65,9 +65,9 @@ This document outlines planned features, improvements, and known limitations for
 ### yt-dlp Auto-Update
 > Keep the bundled downloader current without manual steps.
 
-- [ ] Check whether yt-dlp is outdated when the app starts or on demand.
-- [ ] Add a one-click update action for yt-dlp in the Tools menu.
-- [ ] Show the currently installed yt-dlp version alongside the latest available version.
+- [x] Check whether yt-dlp is outdated when the app starts or on demand. (A background check at startup, at most once a day via the GitHub Releases API, shows a notice with an "Update now" button; it can be turned off with the "Check for updates on startup" preference. Tools → Update yt-dlp checks on demand.)
+- [x] Add a one-click update action for yt-dlp in the Tools menu.
+- [x] Show the currently installed yt-dlp version alongside the latest available version. (In the Update yt-dlp dialog and the About window.)
 
 ### Format Browser
 > Make yt-dlp format selection easier to understand.

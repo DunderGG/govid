@@ -123,6 +123,9 @@ func runFakeTool(mode string, args []string) int {
 	case "fail":
 		fmt.Fprintln(os.Stderr, "ERROR: fake tool failure")
 		return 1
+	case "ytdlp-extractor-error":
+		fmt.Fprintln(os.Stderr, "ERROR: [youtube] fake: Unable to extract initial player response")
+		return 1
 	}
 	fmt.Fprintf(os.Stderr, "fake tool: unknown mode %q\n", mode)
 	return 3

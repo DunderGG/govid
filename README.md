@@ -29,6 +29,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Config Support**: Configuration file support via `govid.json` for startup defaults and repeatable workflows.
 - **Log Export**: Option to save download logs to `.txt` files for troubleshooting.
 - **Completion Notifications**: Optional desktop notifications when downloads complete.
+- **yt-dlp Update Check**: Warns when the installed `yt-dlp` is out of date and updates it with one click.
 - **Dark / Light Theme**: Built-in light and dark themes configurable in Preferences.
 
 ## 📥 Download
@@ -100,7 +101,7 @@ Ensure you have [Go 1.26+](https://go.dev/dl/) installed.
 7. **Save Location**: Choose where the output file should be saved.
 8. **Download**: Click **Download Now** to start.
 
-> **Note:** If a download fails, run `--update` to refresh `yt-dlp` and try again.
+> **Note:** GoVid checks once a day whether a newer `yt-dlp` is available and offers to update it. If a download fails, use **Tools → Update yt-dlp** (or run `GoVid --update`) and try again. An outdated `yt-dlp` is the most common reason downloads stop working.
 
 ### Command Line Options
 

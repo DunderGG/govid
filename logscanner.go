@@ -27,6 +27,15 @@ type scanResult struct {
 	sourceExts      []string // file extensions seen in "[download] Destination:" lines
 	wasConverted    bool     // true when [Merger] or [VideoConvertor] appeared in the output
 	hadTransientErr bool     // true when a recoverable network/rate-limit error was seen in stderr
+	hadExtractorErr bool     // true when stderr showed an error typical of a site change that a newer yt-dlp may fix
+}
+
+// extractorErrPatterns are substrings of yt-dlp errors that usually mean the
+// site changed in a way an outdated yt-dlp cannot handle.
+var extractorErrPatterns = []string{
+	"Unable to extract",
+	"Sign in to confirm",
+	"HTTP Error 403",
 }
 
 // transientErrPatterns are substrings that indicate a temporary failure worth retrying.
@@ -61,6 +70,16 @@ func detectPhase(line string) string {
 	default:
 		return ""
 	}
+}
+
+// containsAny reports whether line contains any of patterns.
+func containsAny(line string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if strings.Contains(line, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 // isConversionLine reports whether a yt-dlp output line shows ffmpeg merging
@@ -118,14 +137,10 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 			}
 			stderrConverted = stderrConverted || isConversionLine(line)
 			// Detect transient network / rate-limit errors so the caller can retry.
-			if !result.hadTransientErr {
-				for _, pattern := range transientErrPatterns {
-					if strings.Contains(line, pattern) {
-						result.hadTransientErr = true
-						break
-					}
-				}
-			}
+			result.hadTransientErr = result.hadTransientErr || containsAny(line, transientErrPatterns)
+			// Detect errors a newer yt-dlp may fix, so the caller can say so.
+			isError := strings.Contains(line, "ERROR:")
+			result.hadExtractorErr = result.hadExtractorErr || (isError && containsAny(line, extractorErrPatterns))
 			var logColor color.Color // nil = default foreground, resolved by the UI
 			switch {
 			case strings.Contains(line, "ERROR:"):

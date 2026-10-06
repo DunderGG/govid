@@ -12,12 +12,14 @@
 //     UIManager's own widget field and injected service callbacks.
 //   - savePreferences, restoreDefaults: preference persistence and the
 //     "Restore Defaults" reset used by showPreferences.
-//   - checkDependencies, runUpdateInUI: thin delegates to the injected
+//   - checkDependencies, confirmYtDlpUpdate, runUpdateInUI: thin delegates to the injected
 //     dependency-service callbacks for the startup tool check and the
 //     "Update yt-dlp" menu action.
 //   - appendLogLine, flushLog: batched rendering of the Terminal Output log
 //     view, capped at maxScreenLogLines and following new lines only while
 //     the view is scrolled to the bottom.
+//   - showNotice, dismissNotice: non-blocking notices above the input card,
+//     such as "a newer yt-dlp is available".
 package main
 
 import (
@@ -64,6 +66,11 @@ type UIManager struct {
 	logFlushArmed bool                                    // true while a flush timer is pending
 	afterFunc     func(time.Duration, func()) *time.Timer // schedules the flush; time.AfterFunc, replaced in tests
 
+	// Notices shown above the input card; see showNotice. Only touched on
+	// the UI thread.
+	notices   []notice
+	noticeBox *fyne.Container
+
 	// Callbacks bridging DownloaderApp actions and services into the main
 	// window and secondary windows; all set by newDownloaderApp after
 	// construction.
@@ -77,6 +84,7 @@ type UIManager struct {
 	onClearHistory       func() error                                                                                                // HistoryService.Clear
 	onCheckDependencies  func(onWarning func(msg string))                                                                            // DependencyService.Check
 	onRunUpdate          func(cb UpdateCallbacks)                                                                                    // DependencyService.RunUpdate
+	onYtDlpVersions      func() (installed, latest string)                                                                           // DownloaderApp.ytDlpVersions
 	onLoadPreferences    func() AppPreferences                                                                                       // PreferenceService.Load
 	onSavePreferences    func(AppPreferences)                                                                                        // PreferenceService.Save
 	onResetPreferences   func()                                                                                                      // PreferenceService.Reset
@@ -132,13 +140,7 @@ func (manager *UIManager) createMainMenu() {
 		manager.clearTerminalOutput()
 	})
 
-	updateMenu := fyne.NewMenuItem("Update yt-dlp", func() {
-		dialog.ShowConfirm("Update yt-dlp", "This will run 'yt-dlp -U' to update the tool. Continue?", func(ok bool) {
-			if ok {
-				manager.runUpdateInUI()
-			}
-		}, manager.mainWindow)
-	})
+	updateMenu := fyne.NewMenuItem("Update yt-dlp", manager.confirmYtDlpUpdate)
 
 	prefsMenu := fyne.NewMenuItem("Preferences", func() {
 		manager.showPreferences()
@@ -171,17 +173,38 @@ func (manager *UIManager) checkDependencies() {
 	})
 }
 
+// confirmYtDlpUpdate shows the installed and latest yt-dlp versions and asks
+// whether to update. Finding the versions runs yt-dlp and may ask GitHub,
+// so it happens off the UI thread before the dialog opens.
+func (manager *UIManager) confirmYtDlpUpdate() {
+	go func() {
+		installed, latest := manager.onYtDlpVersions()
+		message := fmt.Sprintf("Installed version: %s\nLatest version: %s\n\nThis will run 'yt-dlp -U' to update the tool. Continue?", installed, latest)
+		fyne.Do(func() {
+			dialog.ShowConfirm("Update yt-dlp", message, func(ok bool) {
+				if ok {
+					manager.runUpdateInUI()
+				}
+			}, manager.mainWindow)
+		})
+	}()
+}
+
 // runUpdateInUI sets the initial UI state for an update and delegates
 // execution to DependencyService, which runs yt-dlp -U in a background
-// goroutine and reports progress via UpdateCallbacks.
+// goroutine and reports progress via UpdateCallbacks. A successful update
+// dismisses the "yt-dlp is out of date" notice.
 func (manager *UIManager) runUpdateInUI() {
 	manager.onLog("[SYSTEM] Starting yt-dlp update...", colSystem)
 	manager.onSetStatusIndicator(StatusActive)
 	manager.onStatus("Status: Updating yt-dlp...")
 	manager.onRunUpdate(UpdateCallbacks{
-		OnLog:     manager.onLog,
-		OnStatus:  manager.onStatus,
-		OnSuccess: func() { manager.onSetStatusIndicator(StatusSuccess) },
+		OnLog:    manager.onLog,
+		OnStatus: manager.onStatus,
+		OnSuccess: func() {
+			manager.onSetStatusIndicator(StatusSuccess)
+			manager.dismissNotice(ytDlpNoticeID)
+		},
 		OnFailure: func() { manager.onSetStatusIndicator(StatusFailed) },
 	})
 }
@@ -203,6 +226,13 @@ func (manager *UIManager) showAbout() {
 	appName.Alignment = fyne.TextAlignCenter
 
 	versionLabel := widget.NewLabelWithStyle("v"+version, fyne.TextAlignCenter, fyne.TextStyle{Monospace: true})
+	ytDlpLabel := widget.NewLabelWithStyle("yt-dlp: checking…", fyne.TextAlignCenter, fyne.TextStyle{Monospace: true})
+	go func() {
+		installed, latest := manager.onYtDlpVersions()
+		fyne.Do(func() {
+			ytDlpLabel.SetText(fmt.Sprintf("yt-dlp %s (latest: %s)", installed, latest))
+		})
+	}()
 	tagline := widget.NewLabelWithStyle("A high-performance video downloader\nbuilt with Go and Fyne.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 	author := widget.NewLabelWithStyle("Created by David Bennehag", fyne.TextAlignCenter, fyne.TextStyle{})
 	website := widget.NewHyperlink("dunder.gg", parseURL("https://dunder.gg"))
@@ -213,6 +243,7 @@ func (manager *UIManager) showAbout() {
 		container.NewCenter(logo),
 		container.NewCenter(appName),
 		container.NewCenter(versionLabel),
+		container.NewCenter(ytDlpLabel),
 		container.NewCenter(tagline),
 		widget.NewSeparator(),
 		container.NewCenter(author),
@@ -221,7 +252,7 @@ func (manager *UIManager) showAbout() {
 
 	manager.aboutWindow = fyne.CurrentApp().NewWindow("About GoVid")
 	manager.aboutWindow.SetContent(container.NewPadded(content))
-	manager.aboutWindow.Resize(fyne.NewSize(360, 280))
+	manager.aboutWindow.Resize(fyne.NewSize(360, 310))
 	manager.aboutWindow.SetFixedSize(true)
 	manager.aboutWindow.SetOnClosed(onWindowClosed(&manager.aboutWindow))
 	manager.aboutWindow.Show()
@@ -332,6 +363,7 @@ func (manager *UIManager) showConfigHelp() {
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
 		{"Log Buffer Limit", "Found in **Tools → Preferences**. The number of lines kept in the Terminal Output panel; older lines are removed from the top. The panel never shows more than the latest **5000** lines, so choosing **Unlimited** only affects the lines kept for the log file. The log file itself is never trimmed. If you scroll up while a download is running, the panel stays where you left it; scroll back to the bottom to follow new lines again."},
 		{"Debug Output", "Found in **Tools → Preferences**. GoVid runs yt-dlp in verbose mode so the log file has everything needed for a bug report, but the **[debug]** lines are hidden from the Terminal Output panel unless this is checked. The panel also shows only the latest download progress line for each file; the log file keeps them all."},
+		{"Updates", "Found in **Tools → Preferences**. When **Check for updates on startup** is checked, GoVid asks GitHub (at most once a day) whether a newer yt-dlp is available and, if so, shows a notice with an **Update now** button. Sites change often, and an outdated yt-dlp is the most common reason downloads stop working. **Tools → Update yt-dlp** shows the installed and latest versions and updates on demand.\n\nIf the update fails because GoVid's folder cannot be written to (for example under `Program Files`), run GoVid as administrator once, or move it to a folder you own."},
 		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
 		{"Cookies File", "Found in **Tools → Preferences**. Path to a `cookies.txt` file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file."},
@@ -400,6 +432,7 @@ func (manager *UIManager) showPreferences() {
 			{Text: "Save Preferences", Widget: ui.prefs.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
 			{Text: "Log Buffer Limit", Widget: ui.prefs.logLimit, HintText: "Max lines kept in the log view (never more than 5000); older entries are removed from the top"},
 			{Text: "Debug Output", Widget: ui.prefs.showDebug, HintText: "Show yt-dlp's [debug] lines in the log view; the log file always has them"},
+			{Text: "Updates", Widget: ui.prefs.checkUpdates, HintText: "Check GitHub once a day for newer yt-dlp and GoVid releases"},
 			{Text: "Max Download Speed", Widget: ui.prefs.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.prefs.themeMode, HintText: "Restart may be required for some changes"},
 			{Text: "Cookies File", Widget: manager.buildCookiesRow(), HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
@@ -418,7 +451,7 @@ func (manager *UIManager) showPreferences() {
 		widget.NewSeparator(),
 		container.NewGridWithColumns(2, loadConfigBtn, resetBtn),
 	)))
-	manager.prefsWindow.Resize(fyne.NewSize(500, 400))
+	manager.prefsWindow.Resize(fyne.NewSize(500, 440))
 	manager.prefsWindow.SetOnClosed(onWindowClosed(&manager.prefsWindow))
 	manager.prefsWindow.Show()
 }
@@ -765,8 +798,12 @@ func (manager *UIManager) createUI() {
 	logPane := manager.buildLogPane()
 	footer := buildFooter()
 
+	manager.noticeBox = container.NewVBox()
+	manager.renderNotices()
+
 	topContent := container.NewVBox(
 		header,
+		manager.noticeBox,
 		inputCard,
 		statusCard,
 		widget.NewSeparator(),
@@ -775,6 +812,72 @@ func (manager *UIManager) createUI() {
 
 	content := container.NewBorder(topContent, footer, nil, nil, logPane)
 	manager.mainWindow.SetContent(container.NewPadded(content))
+}
+
+// notice is a message shown in a bar above the main window's input card
+// until the user acts on it or dismisses it, such as "a newer yt-dlp is
+// available". Unlike a dialog it does not block the window.
+type notice struct {
+	id          string // a notice replaces any shown notice with the same id
+	text        string
+	actionLabel string // label of the action button; "" for no button
+	action      func() // run on the UI thread when the action button is tapped
+}
+
+// showNotice shows n in the notice area, replacing any notice with the same
+// id. It is safe to call from any goroutine. Notices survive createUI
+// rebuilding the window.
+func (manager *UIManager) showNotice(n notice) {
+	fyne.Do(func() {
+		manager.notices = slices.DeleteFunc(manager.notices, func(shown notice) bool { return shown.id == n.id })
+		manager.notices = append(manager.notices, n)
+		manager.renderNotices()
+	})
+}
+
+// dismissNotice removes the notice with the given id, if shown. It is safe
+// to call from any goroutine.
+func (manager *UIManager) dismissNotice(id string) {
+	fyne.Do(func() {
+		manager.notices = slices.DeleteFunc(manager.notices, func(shown notice) bool { return shown.id == id })
+		manager.renderNotices()
+	})
+}
+
+// renderNotices rebuilds the notice area from manager.notices. Must be
+// called on the UI thread.
+func (manager *UIManager) renderNotices() {
+	if manager.noticeBox == nil {
+		return
+	}
+	manager.noticeBox.Objects = nil
+	for _, n := range manager.notices {
+		manager.noticeBox.Add(manager.buildNotice(n))
+	}
+	manager.noticeBox.Refresh()
+}
+
+// buildNotice lays out one notice: its text, its action button (which also
+// dismisses it), and a dismiss button.
+func (manager *UIManager) buildNotice(n notice) fyne.CanvasObject {
+	text := widget.NewLabel(n.text)
+	text.Wrapping = fyne.TextWrapWord
+
+	buttons := container.NewHBox()
+	if n.actionLabel != "" {
+		actionBtn := widget.NewButton(n.actionLabel, func() {
+			manager.dismissNotice(n.id)
+			n.action()
+		})
+		actionBtn.Importance = widget.HighImportance
+		buttons.Add(actionBtn)
+	}
+	buttons.Add(widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+		manager.dismissNotice(n.id)
+	}))
+
+	card := roundedCard("", container.NewBorder(nil, nil, nil, container.NewCenter(buttons), text))
+	return container.NewBorder(nil, nil, accentBar(), nil, card)
 }
 
 // buildHeader constructs the app logo/title header shown atop the main window.

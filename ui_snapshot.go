@@ -33,6 +33,7 @@ func snapshotPreferences(ui *UIWidgets, savePath string) AppPreferences {
 		CookiesPath:       strings.TrimSpace(ui.prefs.cookies.Text),
 		LogLimit:          ui.prefs.logLimit.Selected,
 		ShowDebug:         ui.prefs.showDebug.Checked,
+		CheckUpdates:      ui.prefs.checkUpdates.Checked,
 		BatchMode:         ui.download.batchMode.Checked,
 		SaveLog:           ui.download.saveLog.Checked,
 		Notify:            ui.download.notify.Checked,
@@ -147,6 +148,7 @@ func applyGeneralPrefs(ui *UIWidgets, p AppPreferences) {
 	ui.prefs.savePrefs.SetChecked(p.SavePrefs)
 	ui.prefs.logLimit.SetSelected(p.LogLimit)
 	ui.prefs.showDebug.SetChecked(p.ShowDebug)
+	ui.prefs.checkUpdates.SetChecked(p.CheckUpdates)
 	ui.prefs.maxSpeed.SetText(p.MaxSpeed)
 	ui.prefs.themeMode.SetSelected(p.ThemeMode)
 	ui.prefs.cookies.SetText(p.CookiesPath)

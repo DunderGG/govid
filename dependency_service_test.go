@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/color"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -207,6 +208,44 @@ func TestDependencyRunUpdateFailure(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Errorf("log missing %q, got:\n%s", want, joined)
 		}
+	}
+}
+
+func TestDependencyRunUpdateExplainsUnwritableFolder(t *testing.T) {
+	binDir := t.TempDir()
+	installFakeTool(t, binDir, "yt-dlp")
+	useFakeTool(t, "fail")
+	svc := &DependencyService{binDir: binDir, isWritable: func(string) bool { return false }}
+
+	result := runUpdateAndWait(t, svc)
+
+	if result.success {
+		t.Fatal("update reported success for failing tool")
+	}
+	if !strings.Contains(result.status, "not writable") {
+		t.Errorf("status = %q, want it to say the folder is not writable", result.status)
+	}
+	joined := strings.Join(result.lines, "\n")
+	if !strings.Contains(joined, "GoVid cannot write to "+binDir) {
+		t.Errorf("log does not explain the unwritable folder:\n%s", joined)
+	}
+
+	err := svc.UpdateCLI()
+	if err == nil || !strings.Contains(err.Error(), "cannot write to") {
+		t.Errorf("UpdateCLI() = %v, want the unwritable-folder hint", err)
+	}
+}
+
+func TestDirWritable(t *testing.T) {
+	dir := t.TempDir()
+	if !dirWritable(dir) {
+		t.Error("dirWritable(temp dir) = false, want true")
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("dirWritable left %d file(s) behind", len(entries))
+	}
+	if dirWritable(filepath.Join(dir, "missing")) {
+		t.Error("dirWritable(missing dir) = true, want false")
 	}
 }
 

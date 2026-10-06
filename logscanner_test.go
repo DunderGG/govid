@@ -264,6 +264,28 @@ func TestWatchOutputReportsPhasesFromEitherStream(t *testing.T) {
 	}
 }
 
+func TestWatchOutputDetectsExtractorErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		stderr string
+		want   bool
+	}{
+		{"bot check", "ERROR: [youtube] abc: Sign in to confirm you're not a bot.", true},
+		{"extraction", "ERROR: [vimeo] 123: Unable to extract info section", true},
+		{"forbidden", "ERROR: unable to download video data: HTTP Error 403: Forbidden", true},
+		{"warning only", "WARNING: [youtube] Unable to extract yt initial data; retrying", false},
+		{"other error", "ERROR: Unsupported URL: https://example.com", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := NewDownloadEngine("", "").watchOutput(strings.NewReader(""), strings.NewReader(tt.stderr+"\n"), newLogCollector().callbacks())
+			if result.hadExtractorErr != tt.want {
+				t.Errorf("hadExtractorErr = %v, want %v", result.hadExtractorErr, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsProgressLine(t *testing.T) {
 	tests := []struct {
 		line string

@@ -46,6 +46,8 @@ govid/
 ├── ui_manager.go           UIManager — main window layout (createUI, createMainMenu), secondary window lifecycle
 │                           (About, Help, History, Prefs, PP), and preference/dependency UI wrapper methods
 ├── gpu_capability.go       GPUCapabilityService — GPU backend capability detection and cache (see docs/gpu-acceleration.md)
+├── release_service.go      ReleaseService — latest GitHub release lookups with a daily cache; version comparison
+├── update_check.go         Startup yt-dlp update check, "Update now" notice, installed/latest yt-dlp versions
 │
 ├── ── Orchestration ───────────────────────────────────────────────
 ├── download.go             DownloaderApp.startDownload / runYtDlp — UI orchestration for a download session
@@ -91,6 +93,7 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `logSvc *LogService` | Session and error log files (see §4.7) |
 | `depSvc *DependencyService` | Binary path resolution, dependency checks, updater (see §4.9) |
 | `gpuSvc *GPUCapabilityService` | GPU backend capability detection and cache (see §4.11) |
+| `releaseSvc *ReleaseService` | Latest-release lookups for update checks (see §4.12) |
 | `stats *DownloadStats` | Real-time download metrics for progress smoothing |
 | `statusThrottle *latestValueThrottle[string]` | Rate-limits status label updates to one per 150 ms and skips repeats; `updateStatus` goes through it (`throttle.go`) |
 | `cancelMu sync.Mutex` | Guards access to the active cancellation callbacks (`cancelFn`, `stopFn`) |
@@ -149,7 +152,7 @@ A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and pr
 
 The private `watchOutput(stdout, stderr, cb) scanResult` and `parseProgress(line, cb)` methods own all output-scanning; they hold no UI state and report every line and progress tick through `ProcessCallbacks`.
 
-`scanResult` records the source extensions seen in `[download] Destination:` lines, whether yt-dlp converted or merged the media (a `[Merger]`/`[VideoConvertor]` line on either stream; real yt-dlp prints them to stdout), and whether a retryable network/rate-limit error was observed. The final result retains this metadata for the completion summary and retry decision.
+`scanResult` records the source extensions seen in `[download] Destination:` lines, whether yt-dlp converted or merged the media (a `[Merger]`/`[VideoConvertor]` line on either stream; real yt-dlp prints them to stdout), whether a retryable network/rate-limit error was observed, and whether an `ERROR:` line looked like a site change (`hadExtractorErr`: "Unable to extract", "Sign in to confirm", "HTTP Error 403"). The final result retains this metadata for the completion summary, the retry decision, and the "update yt-dlp" hint `reportDownloadResult` logs after such a failure.
 
 `ProcessCallbacks` is a bridge struct: it carries closures (`OnLog`, `OnStatus`, `OnProgress`, `OnPhase`) that let the engine report progress back to the UI without importing Fyne. `OnProgress(pct float64, size string)` is called for each parsed percentage; `size` is the last reported downloaded-size token, or empty when the line had none. `OnPhase(phase string)` is called when yt-dlp starts a post-download ffmpeg step (`detectPhase`: `[Merger]` → `phaseMerging`; `[VideoConvertor]`/`[ExtractAudio]` → `phaseConverting`) on either stream; `DownloaderApp.showDownloadPhase` then holds the progress bar at 95% and shows "Merging…"/"Converting…". `DownloaderApp.runYtDlp()` is the only caller.
 
@@ -235,7 +238,8 @@ Owns the `binDir` path (resolved once at construction from the executable locati
 - **`LocalPath(toolName string) string`** — returns the path to `toolName` inside `binDir`, appending `.exe` on Windows.
 - **`Resolve(toolName string) string`** — returns the bundled path when it exists on disk, otherwise the bare name for system PATH lookup. Called by `runYtDlp` and `applyFFmpegFilters` when constructing `DownloadEngine` and `PPEngine`.
 - **`Check(onWarning func(msg string))`** — verifies `yt-dlp` and `ffmpeg` are reachable; calls `onWarning` for each missing tool. Called at startup via `UIManager.checkDependencies()`, a thin delegate to the injected `onCheckDependencies` callback.
-- **`RunUpdate(cb UpdateCallbacks)`** — runs `yt-dlp -U` in a background goroutine and reports lines/success/failure through `UpdateCallbacks`. Called via `UIManager.runUpdateInUI()`, wired to the injected `onRunUpdate` callback.
+- **`RunUpdate(cb UpdateCallbacks)`** — runs `yt-dlp -U` in a background goroutine and reports lines/success/failure through `UpdateCallbacks`. Called via `UIManager.runUpdateInUI()`, wired to the injected `onRunUpdate` callback. When the update fails and the folder holding yt-dlp cannot be written to (`updateFailureHint`, using `dirWritable` or the test-injected `isWritable`), it explains that and how to fix it; `UpdateCLI` adds the same hint to its error.
+- **`Version(toolName string) (string, error)`** — runs `<tool> --version`; used by the yt-dlp update check (§4.12).
 
 `UpdateCallbacks` is a bridge struct (`OnLog`, `OnStatus`, `OnSuccess`, `OnFailure`) with no Fyne dependency, following the same pattern as `PPCallbacks` and `ProcessCallbacks`.
 
@@ -263,6 +267,20 @@ Detects, once per app run, which GPU acceleration backends the bundled ffmpeg bi
 **Encoder resolution:** the package-level `PlanEncoder(requested GPUBackend, capabilities map[GPUBackend]BackendCapability, containerExt string) EncoderPlan` function (not a service method) always resolves to a runnable `-c:v` argument set. It resolves `BackendAuto` to the highest-priority `Available` backend (`backendPriority`: NVIDIA → Intel → AMD → VAAPI → VideoToolbox), falls back to the existing CPU encoder (`libx264` CRF 18, or `libvpx-vp9` CRF 31 for WebM — WebM always stays on CPU regardless of the requested backend) when the resolved backend is unavailable or `containerExt` is `.webm`, and otherwise returns the backend's constant-quality GPU args (e.g. `h264_nvenc -rc constqp -qp 19`). `EncoderPlan{Args, Label, UsedGPU, Backend}` carries the result; `Label` is a human-readable string used in job summaries and logs. `PPEngine.buildFFmpegArgsForBackend` calls `PlanEncoder` when building each job's FFmpeg command line (§4.5).
 
 **UI and preference wiring:** `GPUBackendOptions() []string` returns the backend labels applicable to the current OS, in priority order, for the Post-Processing dialog's "Encoder Backend" `*widget.Select` (`UIWidgets.postProcess.gpuBackend`); `GPUBackendFromLabel(label string) GPUBackend` maps a selected label back to its identifier. The selection persists via `PreferenceService`'s `GPUBackend` field/`prefGPUBackend` key. `FormatGPUDiagnostics(capabilities) []string` renders one availability line per applicable backend for the startup session log and the About window's GPU Acceleration section.
+
+---
+
+### 4.12 `ReleaseService` — update checks
+*Defined in:* `release_service.go`; used by `update_check.go`
+
+Looks up the latest release of a GitHub repository through `GET /repos/<owner>/<repo>/releases/latest`, with a 5 s timeout and a `GoVid/<version>` User-Agent. It has no UI dependency.
+
+- **`Latest(ctx, owner, repo string, maxAge time.Duration) (Release, error)`** — returns `Release{TagName, HTMLURL, Body, Assets}`. An answer younger than `maxAge` is served from the cache (`releaseCheckInterval` = 24 h for the startup check; `0` always asks GitHub). The cache is a JSON entry with the check time, kept in the Fyne preferences store under `latestRelease:<owner>/<repo>`; the store is injected as the two-method `releaseCache` interface. HTTP 403/429 (the unauthenticated rate limit) returns `errReleaseUnknown` and is cached too, so a rate-limited check is not repeated on every start; other failures are returned and not cached.
+- **`compareVersions(a, b)` / `isOlderVersion(installed, latest)`** — numeric, part-by-part ordering of version strings, ignoring a leading `v` and a `stable@` channel prefix. It handles yt-dlp's date versions (`2025.09.26`, nightly `2025.09.26.232302`) and GoVid's own release tags.
+
+`update_check.go` holds the `DownloaderApp` side. `startUpdateChecks(enabled)` runs `checkYtDlpUpdate` in the background after `checkDependencies` at startup, when the "Check for updates on startup" preference (`prefCheckUpdates`, on by default) is set. When the installed yt-dlp (`DependencyService.Version`) is older than the latest release, it logs one line and calls `UIManager.showNotice` with an "Update now" button wired to `runUpdateInUI`. A check that cannot complete is written to the log file only. `ytDlpVersions()` returns the installed and latest versions (or "unknown") for the Update yt-dlp confirmation dialog and the About window, which fetch them off the UI thread.
+
+**Notices:** `UIManager.showNotice(notice{id, text, actionLabel, action})` shows a non-blocking bar above the input card. A notice with the same `id` replaces the old one; the action button and the dismiss button both remove it (`dismissNotice`). Notices live in `UIManager.notices` and are re-rendered by `createUI`, so they survive a theme change. A successful yt-dlp update dismisses the yt-dlp notice.
 
 ---
 
@@ -405,6 +423,7 @@ and finally calls `quit` inside `fyne.Do`.
 | Session log | `<save dir>/GoVid_log_YYYY-MM-DD.txt` | Plain text | `LogService` |
 | Error log | `<save dir>/GoVid_errors_YYYY-MM-DD.txt` | Plain text | `LogService` |
 | Download history | `<exe dir>/download_history.json` | JSON array | `HistoryService` |
+| Latest-release cache | Fyne app data (`latestRelease:<owner>/<repo>` keys) | JSON in the Fyne KV store | `ReleaseService` |
 | Override config | `<cwd>/govid.json` | JSON object | `PreferenceService` (`LoadFromFile` / `MergeConfig`); `AppConfig` is defined in `preference_service.go` |
 
 ---
@@ -415,6 +434,7 @@ and finally calls `quit` inside `fyne.Do`.
 |---|---|---|
 | `yt-dlp` | `DownloadEngine.Execute()` | Download video/audio from URLs |
 | `ffmpeg` | `PPEngine.runJob()`, `PPEngine.detectCropFilter()` | Post-processing encode / cropdetect |
+| GitHub REST API | `ReleaseService.Latest()` | Latest yt-dlp release for the startup update check (at most once a day) |
 | `ffprobe` | `PPEngine` probe methods (`pp_engine.go`) | Frame count, duration, and colour-tag queries (optional; `probeColorInfo` falls back to `ffmpeg -i`) |
 
 Tools are resolved with `depSvc.Resolve(toolName)`: prefers `./bin/<tool>[.exe]` beside the executable, falls back to `$PATH`. If neither is found, `depSvc.Check()` (called via `uiManager.checkDependencies()` at startup) prints a warning to the log.

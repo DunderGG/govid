@@ -401,6 +401,9 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 			app.updateStatus("Status: Failed. Check output below.")
 			app.setStatusIndicator(StatusFailed)
 			app.sessionFailed.Store(true)
+			if dl.Scan.hadExtractorErr {
+				app.appendOutput(ytDlpUpdateHint, colInfo)
+			}
 			if app.ui.download.notify.Checked {
 				fyne.CurrentApp().SendNotification(&fyne.Notification{
 					Title:   "GoVid — Download Failed",

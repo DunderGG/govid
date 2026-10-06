@@ -360,6 +360,26 @@ func TestRunYtDlpFailure(t *testing.T) {
 	}
 }
 
+func TestRunYtDlpExtractorErrorSuggestsUpdate(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-extractor-error")
+
+	h.app.runYtDlp(context.Background(), "https://example.com/v", h.saveDir, "", "", 1, 1)
+
+	if !strings.Contains(h.joinedLogs(), ytDlpUpdateHint) {
+		t.Errorf("log missing the update hint:\n%s", h.joinedLogs())
+	}
+}
+
+func TestRunYtDlpOtherFailureGivesNoUpdateHint(t *testing.T) {
+	h := newDownloadHarness(t, "fail")
+
+	h.app.runYtDlp(context.Background(), "https://example.com/v", h.saveDir, "", "", 1, 1)
+
+	if strings.Contains(h.joinedLogs(), ytDlpUpdateHint) {
+		t.Errorf("log has the update hint for an unrelated error:\n%s", h.joinedLogs())
+	}
+}
+
 func TestRunYtDlpCancel(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-hang")
 	ctx, cancel := context.WithCancel(context.Background())

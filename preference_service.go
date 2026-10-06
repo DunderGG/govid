@@ -34,6 +34,7 @@ const (
 	prefCookiesPath       = "cookiesPath"
 	prefLogLimit          = "logLimit"
 	prefShowDebug         = "showDebug"
+	prefCheckUpdates      = "checkUpdates"
 	prefBatchMode         = "batchMode"
 	prefSaveLog           = "saveLog"
 	prefNotify            = "notify"
@@ -71,6 +72,7 @@ const (
 	defaultThemeMode         = themeDark
 	defaultQuality           = qualityBest
 	defaultSavePrefs         = true
+	defaultCheckUpdates      = true
 	defaultSmoothMotionMode  = smoothModeBalanced
 	defaultSmoothFPS         = 60.0
 	defaultDenoiseMode       = denoiseModeHQDN3D
@@ -94,6 +96,7 @@ type AppPreferences struct {
 	CookiesPath       string
 	LogLimit          string
 	ShowDebug         bool // show yt-dlp [debug] lines in the log view (they always go to the log file)
+	CheckUpdates      bool // check for newer yt-dlp and GoVid releases on startup
 	BatchMode         bool
 	SaveLog           bool
 	Notify            bool
@@ -161,6 +164,7 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		CookiesPath:       prefSvc.store.String(prefCookiesPath),
 		LogLimit:          prefSvc.store.StringWithFallback(prefLogLimit, defaultLogLimit),
 		ShowDebug:         prefSvc.store.Bool(prefShowDebug),
+		CheckUpdates:      prefSvc.store.BoolWithFallback(prefCheckUpdates, defaultCheckUpdates),
 		BatchMode:         prefSvc.store.Bool(prefBatchMode),
 		SaveLog:           prefSvc.store.Bool(prefSaveLog),
 		Notify:            prefSvc.store.Bool(prefNotify),
@@ -244,6 +248,7 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 	prefSvc.store.SetString(prefCookiesPath, p.CookiesPath)
 	prefSvc.store.SetString(prefLogLimit, p.LogLimit)
 	prefSvc.store.SetBool(prefShowDebug, p.ShowDebug)
+	prefSvc.store.SetBool(prefCheckUpdates, p.CheckUpdates)
 	prefSvc.store.SetBool(prefBatchMode, p.BatchMode)
 	prefSvc.store.SetBool(prefSaveLog, p.SaveLog)
 	prefSvc.store.SetBool(prefNotify, p.Notify)
@@ -274,7 +279,7 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 func (prefSvc *PreferenceService) Reset() {
 	for _, key := range []string{
 		prefSavedPath, prefFormat, prefQuality, prefMaxSpeed, prefThemeMode,
-		prefSavePrefs, prefCookiesPath, prefLogLimit, prefShowDebug,
+		prefSavePrefs, prefCookiesPath, prefLogLimit, prefShowDebug, prefCheckUpdates,
 		prefBatchMode, prefSaveLog, prefNotify, prefAutoRetry, prefEnablePostProcess,
 		prefSmoothMotion, prefSmoothMotionMode, prefSmoothFPS,
 		prefSharpen, prefSharpenAmount, prefNormalize, prefVividMode,
