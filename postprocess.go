@@ -64,6 +64,48 @@ var loadBlockThresholds = [...]int{15, 35, 65, 100, 130}
 // PPEngine.resolveAutoCrop replaces it per file once cropdetect has run.
 const autoCropSentinel = "__autocrop__"
 
+// toneMapSentinel stands in for the HDR-to-SDR chain in the filter chain
+// built by buildPostProcessFilters. PPEngine.resolveToneMap replaces it per
+// file with toneMapFilter for that file's transfer function, or drops it for
+// SDR sources.
+const toneMapSentinel = "__tonemap__"
+
+// HDR transfer functions, as ffprobe and ffmpeg name them.
+const (
+	transferPQ  = "smpte2084"    // HDR10 / Dolby Vision base layer
+	transferHLG = "arib-std-b67" // Hybrid Log-Gamma
+)
+
+// toneMapFilterPrefix starts every chain toneMapFilter returns.
+const toneMapFilterPrefix = "zscale=tin="
+
+// toneMapFilter returns the HDR-to-SDR chain for a source with the given
+// transfer function, or "" when the source is not HDR (PQ or HLG). The
+// input transfer, matrix, and primaries are stated explicitly rather than
+// read from the frame tags, which are often missing after yt-dlp merges
+// VP9/AV1 streams; zscale would otherwise assume BT.709 and wash the
+// picture out. The chain linearises the BT.2020 input, tone maps it with
+// Hable, and converts it to 8-bit BT.709.
+func toneMapFilter(transfer string) string {
+	if transfer != transferPQ && transfer != transferHLG {
+		return ""
+	}
+	return toneMapFilterPrefix + transfer + ":min=bt2020nc:pin=bt2020:t=linear:npl=100," +
+		"format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0," +
+		"zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
+}
+
+// hasToneMap reports whether a resolved filter chain tone maps to SDR, in
+// which case the output must be tagged as BT.709.
+func hasToneMap(vfFilters []string) bool {
+	for _, filter := range vfFilters {
+		if strings.HasPrefix(filter, toneMapFilterPrefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // PostProcessSettings is a plain-value snapshot of the post-processing UI
 // state, decoupling buildPostProcessFilters and computeProcessingLoad from
 // *UIWidgets.
@@ -127,8 +169,9 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 		vfFilters = append(vfFilters, "deband")
 	}
 	if ppSetting.HDRToSDR {
-		// Multi-step HDR-to-SDR pipeline: linearise → tonemap (Hable) → convert to BT.709.
-		vfFilters = append(vfFilters, "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:min=gbr:r=tv,format=yuv420p")
+		// The chain depends on each file's transfer function (and SDR files
+		// must not be touched), so the engine resolves it per file.
+		vfFilters = append(vfFilters, toneMapSentinel)
 	}
 	if ppSetting.Denoise {
 		switch ppSetting.DenoiseMode {
@@ -306,7 +349,7 @@ func filterShortName(filterStr string) string {
 		return "Denoise (NLMeans)"
 	case strings.HasPrefix(filterStr, "hqdn3d"):
 		return "Denoise (hqdn3d)"
-	case strings.HasPrefix(filterStr, "zscale=t=linear"):
+	case strings.HasPrefix(filterStr, toneMapFilterPrefix):
 		return "HDR to SDR"
 	case filterStr == "deband":
 		return "Deband"

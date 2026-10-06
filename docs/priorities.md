@@ -113,9 +113,20 @@ Source references point to the matching section of [roadmap.md](roadmap.md). Tic
 
 ---
 
-## 5. Fix HDR → SDR tone mapping
+## 5. ✅ Fix HDR → SDR tone mapping
 
 **Roadmap:** Technical Improvements → Post-Processing Features ("HDR to SDR Tone Mapping … Does not seem to work properly").
+
+**Status: Done.** `buildPostProcessFilters` now emits a `__tonemap__` sentinel. `PPEngine.resolveToneMap` replaces it per file with `toneMapFilter(transfer)` (the proposed chain, with `tin=smpte2084` or `tin=arib-std-b67`), or drops it and logs "Source is SDR, skipping tone mapping". Tone-mapped output is tagged `-color_primaries bt709 -color_trc bt709 -colorspace bt709`. Two additions beyond the plan:
+- `probeColorInfo` falls back to parsing `ffmpeg -i`'s stream summary, because ffprobe is not bundled. Without the fallback, release users would never get tone mapping.
+- A BT.2020 file with no transfer tag is treated as PQ. VP9/AV1 bitstreams carry the matrix but not the transfer, so the transfer tag is the one lost in merges.
+
+The bundled ffmpeg 8.1 has `zscale` and `tonemap` (now recorded in [gpu-acceleration.md](gpu-acceleration.md#5-current-bundled-build-inventory)). `testdata/hdr_pq_sample.mkv` is a 16 KiB PQ clip for manual checks. We ran it through `ApplyFilters` with the bundled ffmpeg and no ffprobe:
+- The tagged PQ clip is tone mapped.
+- An SDR clip is left byte-for-byte unchanged.
+- With the transfer tag removed, the old chain produced no output at all, while the new chain produced the same frames as for the tagged clip.
+
+Comparing against a browser's rendering of a real HDR YouTube video still needs a manual check. Tests: `TestToneMapFilter`, `TestResolveToneMap`, `TestColorInfoHDRTransfer`, `TestParseFFmpegColorInfo`, `TestParseFFprobeColorInfo`, and `TestBuildFFmpegArgsTagsToneMappedOutputAsBT709`.
 
 **Problem.** This feature has already shipped, but it produces washed-out output.
 

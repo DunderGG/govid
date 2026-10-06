@@ -101,13 +101,37 @@ func TestBuildPostProcessFiltersSingleOption(t *testing.T) {
 
 func TestBuildPostProcessFiltersHDRToSDR(t *testing.T) {
 	vf, _ := buildPostProcessFilters(PostProcessSettings{HDRToSDR: true})
-	if len(vf) != 1 {
-		t.Fatalf("vf = %q, want one filter chain", vf)
+	// The chain depends on each file's transfer, so it is resolved per file.
+	if !reflect.DeepEqual(vf, []string{toneMapSentinel}) {
+		t.Fatalf("vf = %q, want only the tone-map sentinel", vf)
 	}
-	for _, step := range []string{"zscale=t=linear", "tonemap=tonemap=hable", "format=yuv420p"} {
-		if !strings.Contains(vf[0], step) {
-			t.Errorf("HDR chain %q missing %q", vf[0], step)
-		}
+}
+
+func TestToneMapFilter(t *testing.T) {
+	const pq = "zscale=tin=smpte2084:min=bt2020nc:pin=bt2020:t=linear:npl=100," +
+		"format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0," +
+		"zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
+	const hlg = "zscale=tin=arib-std-b67:min=bt2020nc:pin=bt2020:t=linear:npl=100," +
+		"format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0," +
+		"zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
+
+	tests := []struct {
+		name     string
+		transfer string
+		want     string
+	}{
+		{"PQ", transferPQ, pq},
+		{"HLG", transferHLG, hlg},
+		{"SDR BT.709", "bt709", ""},
+		{"SDR sRGB", "iec61966-2-1", ""},
+		{"untagged", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := toneMapFilter(tt.transfer); got != tt.want {
+				t.Errorf("toneMapFilter(%q) = %q, want %q", tt.transfer, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -115,7 +139,7 @@ func TestBuildPostProcessFiltersAllEnabledOrder(t *testing.T) {
 	vf, af := buildPostProcessFilters(allFiltersSettings())
 
 	wantPrefixes := []string{
-		"minterpolate", "cas=", "eq=", "deband", "zscale=t=linear",
+		"minterpolate", "cas=", "eq=", "deband", toneMapSentinel,
 		"hqdn3d", "bwdif", "deshake", autoCropSentinel, "scale=",
 	}
 	if len(vf) != len(wantPrefixes) {
@@ -164,8 +188,8 @@ func TestEveryBuiltFilterHasShortName(t *testing.T) {
 	for _, s := range settings {
 		vf, af := buildPostProcessFilters(s)
 		for _, filter := range append(vf, af...) {
-			if filter == autoCropSentinel {
-				continue // replaced by a concrete crop= filter before use
+			if filter == autoCropSentinel || filter == toneMapSentinel {
+				continue // replaced per file by a concrete filter before use
 			}
 			if got := filterShortName(filter); got == filter {
 				t.Errorf("filterShortName(%q) has no friendly label", filter)
@@ -185,6 +209,8 @@ func TestFilterShortName(t *testing.T) {
 		{"crop=1920:800:0:140", "Auto-Crop"},
 		{"nlmeans=2.0:7:5:15:9", "Denoise (NLMeans)"},
 		{"hqdn3d=4:3:6:4.5", "Denoise (hqdn3d)"},
+		{toneMapFilter(transferPQ), "HDR to SDR"},
+		{toneMapFilter(transferHLG), "HDR to SDR"},
 		{"unknownfilter=1", "unknownfilter=1"},
 	}
 	for _, tt := range tests {

@@ -704,7 +704,7 @@ func (manager *UIManager) buildPostProcessForm(fpsValue, sharpenValue binding.Fl
 			{Text: "Sharpen Video", Widget: pp.sharpen, HintText: "CAS (Contrast Adaptive Sharpening) — sharpens edges without haloing or noise amplification"},
 			{Text: "Sharpen Intensity", Widget: container.NewHBox(fixedWidth(pp.sharpenAmount, 200), sharpenLabel), HintText: "1.0x is gentle, 1.5x is moderate, 2.0x is strong"},
 			{Text: "Fix Banding", Widget: pp.deband, HintText: "Remove gradient banding steps in skies and dark scenes (deband)"},
-			{Text: "HDR to SDR", Widget: pp.hdrToSdr, HintText: "Tone-map 4K HDR content for standard monitors (zscale + Hable tonemap)"},
+			{Text: "HDR to SDR", Widget: pp.hdrToSdr, HintText: "Tone-map HDR (PQ/HLG) videos for standard monitors; SDR videos are left unchanged"},
 			{Text: "", Widget: sectionDivider()},
 			// ── NOISE & ARTIFACTS ───────────────────────────────────────────
 			{Text: "", Widget: sectionHeader("NOISE & ARTIFACTS")},

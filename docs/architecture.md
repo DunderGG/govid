@@ -166,7 +166,8 @@ Owns the resolved paths to `ffmpeg` and `ffprobe`, plus the GPU acceleration sta
 
 Internal flow per file:
 1. `resolveAutoCrop` — replaces the `__autocrop__` sentinel by running a 60-second `cropdetect` pass via `detectCropFilter`.
-2. `runJob` — runs the main FFmpeg encode. Streams stderr in real-time. On success, renames the `_pp` temp file over the original. On failure, deletes the temp file (CPU jobs) or retries once on the CPU (GPU jobs — see below).
+2. `resolveToneMap` — replaces the `__tonemap__` sentinel with `toneMapFilter(transfer)` for the file's HDR transfer (PQ or HLG), or drops it for SDR files. `probeColorInfo` reads the colour tags with ffprobe, falling back to parsing ffmpeg's input summary because ffprobe is not bundled; a BT.2020 file with no transfer tag is taken to be PQ. The chain states the input transfer, matrix, and primaries explicitly, and `buildFFmpegArgsForBackend` tags tone-mapped output as BT.709.
+3. `runJob` — runs the main FFmpeg encode. Streams stderr in real-time. On success, renames the `_pp` temp file over the original. On failure, deletes the temp file (CPU jobs) or retries once on the CPU (GPU jobs — see below).
 
 Private probe methods (`probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, `parseRationalFPS`) use `engine.FFprobePath` to measure frame counts and durations for progress reporting. Private argument builders `buildFFmpegArgs`/`buildFFmpegArgsForBackend` assemble the FFmpeg command-line for each job, resolving the video encoder via the package-level `PlanEncoder(requested, capabilities, containerExt) EncoderPlan` function (§4.11), with the per-job thread count passed in once `ApplyFilters` has sized the worker pool.
 
@@ -281,7 +282,7 @@ User clicks Download
               └─ historySvc.AppendAll(DownloadRecord) JSON append
   └─ applyFFmpegFilters()     if post-processing enabled
        └─ PPEngine.ApplyFilters(ctx, files, vf, af, cb)
-              ├─ resolveAutoCrop() per file (sentinel → crop filter)
+              ├─ resolveAutoCrop() / resolveToneMap() per file (sentinels → crop / tone-map filters)
               └─ runJob() per file (CPU worker pool; GPU jobs also use gpuSem, max 2)
 ```
 
@@ -414,7 +415,7 @@ and finally calls `quit` inside `fyne.Do`.
 |---|---|---|
 | `yt-dlp` | `DownloadEngine.Execute()` | Download video/audio from URLs |
 | `ffmpeg` | `PPEngine.runJob()`, `PPEngine.detectCropFilter()` | Post-processing encode / cropdetect |
-| `ffprobe` | `postprocess.go` probe functions | Frame count and duration queries for progress estimation |
+| `ffprobe` | `PPEngine` probe methods (`pp_engine.go`) | Frame count, duration, and colour-tag queries (optional; `probeColorInfo` falls back to `ffmpeg -i`) |
 
 Tools are resolved with `depSvc.Resolve(toolName)`: prefers `./bin/<tool>[.exe]` beside the executable, falls back to `$PATH`. If neither is found, `depSvc.Check()` (called via `uiManager.checkDependencies()` at startup) prints a warning to the log.
 

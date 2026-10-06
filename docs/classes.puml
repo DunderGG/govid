@@ -273,10 +273,12 @@ package "Post-Processing Engine" #F8F0FF {
         +ApplyFilters(ctx, files, vf, af, cb)
         -detectCropFilter(ctx, input, cb) : string
         -resolveAutoCrop(ctx, input, filters, cb) : []string
+        -resolveToneMap(ctx, input, filters, cb) : []string
         -runJob(ctx, job, cb)
         -retryWithCPU(ctx, job, cb, reason)
         -probeFrameCount(ctx, input) : int64
         -probeDuration(ctx, input) : float64
+        -probeColorInfo(ctx, input) : (colorInfo, error)
         -computeOutputFrameCount(ctx, input,\n  frames, filters) : int64
         -parseRationalFPS(s) : float64
         -buildFFmpegArgs(input, tmpOutput,\n  vf, af, threads) : []string

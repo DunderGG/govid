@@ -3,8 +3,11 @@
 // Responsibilities:
 //   - PPEngine: typed component holding FFmpeg tool paths, with methods for
 //     crop detection, filter resolution, and concurrent post-processing jobs.
-//   - Probe methods: probeFrameCount, probeDuration, computeOutputFrameCount,
-//     parseRationalFPS — ffprobe wrappers and FPS/duration maths.
+//   - Probe methods: probeFrameCount, probeDuration, probeColorInfo,
+//     computeOutputFrameCount, parseRationalFPS — ffprobe wrappers (with an
+//     ffmpeg fallback for colour information) and FPS/duration maths.
+//   - Filter resolution: resolveAutoCrop and resolveToneMap replace the
+//     per-file sentinels in the session's filter chain.
 //   - Argument builders: buildFFmpegArgs, buildFFmpegArgsForBackend — pure
 //     helpers that construct the FFmpeg command-line for each post-processing job.
 //   - PostProcessJob: the inputs for one file's FFmpeg pass.
@@ -20,6 +23,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -192,17 +196,49 @@ func (engine *PPEngine) resolveAutoCrop(ctx context.Context, inputPath string, f
 
 	// Run cropdetect on the file to get the actual crop filter.
 	cropFilter := engine.detectCropFilter(ctx, inputPath, cb)
+	return replaceSentinel(filters, autoCropSentinel, cropFilter)
+}
+
+// replaceSentinel returns filters with every sentinel replaced by
+// replacement, or removed when replacement is "".
+func replaceSentinel(filters []string, sentinel, replacement string) []string {
 	var resolved []string
 	for _, filter := range filters {
-		if filter == autoCropSentinel {
-			if cropFilter != "" {
-				resolved = append(resolved, cropFilter)
-			}
-		} else {
+		switch {
+		case filter != sentinel:
 			resolved = append(resolved, filter)
+		case replacement != "":
+			resolved = append(resolved, replacement)
 		}
 	}
 	return resolved
+}
+
+// resolveToneMap replaces toneMapSentinel in a vfFilters slice with the
+// HDR-to-SDR chain for this file's transfer function. SDR files, and files
+// whose colour information cannot be read, keep the rest of the chain but
+// are not tone mapped, since tone mapping an SDR picture washes it out.
+func (engine *PPEngine) resolveToneMap(ctx context.Context, inputPath string, filters []string, cb PPCallbacks) []string {
+	if !slices.Contains(filters, toneMapSentinel) {
+		return filters
+	}
+
+	info, err := engine.probeColorInfo(ctx, inputPath)
+	if err != nil {
+		cb.OnLog(fmt.Sprintf("[SYSTEM] HDR to SDR: could not read the colour information (%v), skipping tone mapping.", err), colWarning)
+		return replaceSentinel(filters, toneMapSentinel, "")
+	}
+	transfer, assumed := info.hdrTransfer()
+	toneMap := toneMapFilter(transfer)
+	switch {
+	case toneMap == "":
+		cb.OnLog(fmt.Sprintf("[SYSTEM] HDR to SDR: source is SDR (transfer: %s), skipping tone mapping.", info.describeTransfer()), colSystem)
+	case assumed:
+		cb.OnLog("[SYSTEM] HDR to SDR: BT.2020 source without a transfer tag, assuming HDR10 (PQ); tone mapping to BT.709.", colSystem)
+	default:
+		cb.OnLog(fmt.Sprintf("[SYSTEM] HDR to SDR: %s source, tone mapping to BT.709.", info.describeTransfer()), colSystem)
+	}
+	return replaceSentinel(filters, toneMapSentinel, toneMap)
 }
 
 // retryWithCPU rebuilds job's ffmpeg args using the CPU encoder and runs it
@@ -453,6 +489,143 @@ func (engine *PPEngine) probeFrameCount(ctx context.Context, inputPath string) i
 	return 0
 }
 
+// colorInfo is the colour description of a file's first video stream, as
+// ffprobe names it (e.g. "smpte2084", "bt2020", "bt2020nc"). Empty fields
+// are unknown.
+type colorInfo struct {
+	Transfer  string
+	Primaries string
+	Space     string
+}
+
+// hdrTransfer returns the HDR transfer function to tone map from, or "" for
+// an SDR source. A source tagged with BT.2020 primaries or matrix but no
+// transfer function is taken to be HDR10 (PQ), and assumed is true: the VP9
+// and AV1 bitstreams carry the matrix but not the transfer, so the transfer
+// tag is the one that goes missing when yt-dlp merges streams, and YouTube
+// serves BT.2020 video only for HDR.
+func (info colorInfo) hdrTransfer() (transfer string, assumed bool) {
+	switch {
+	case info.Transfer == transferPQ || info.Transfer == transferHLG:
+		return info.Transfer, false
+	case info.Transfer == "" && (info.Primaries == "bt2020" || strings.HasPrefix(info.Space, "bt2020")):
+		return transferPQ, true
+	default:
+		return "", false
+	}
+}
+
+// describeTransfer names the transfer function for log messages.
+func (info colorInfo) describeTransfer() string {
+	switch info.Transfer {
+	case transferPQ:
+		return "HDR10 (PQ)"
+	case transferHLG:
+		return "HLG"
+	case "":
+		return "unknown"
+	default:
+		return info.Transfer
+	}
+}
+
+// probeColorInfo reads the colour description of the file's first video
+// stream with ffprobe. ffprobe is optional and not bundled, so when it cannot
+// be run the same tags are read from ffmpeg's stream summary instead.
+func (engine *PPEngine) probeColorInfo(ctx context.Context, inputPath string) (colorInfo, error) {
+	out, err := newToolCommand(ctx, engine.FFprobePath,
+		"-v", "error",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=color_transfer,color_primaries,color_space",
+		"-of", "default=noprint_wrappers=1",
+		inputPath,
+	).Output()
+	if err == nil {
+		return parseFFprobeColorInfo(string(out)), nil
+	}
+
+	// ffmpeg exits with an error when given no output file, but it has
+	// printed the input's stream summary by then.
+	out, _ = newToolCommand(ctx, engine.FFmpegPath, "-hide_banner", "-i", inputPath).CombinedOutput()
+	info, ok := parseFFmpegColorInfo(string(out))
+	if !ok {
+		return colorInfo{}, errors.New("no video stream found")
+	}
+	return info, nil
+}
+
+// parseFFprobeColorInfo parses ffprobe's "key=value" output for the
+// color_transfer, color_primaries, and color_space entries. ffprobe reports
+// "unknown" for untagged streams, which is treated as empty.
+func parseFFprobeColorInfo(out string) colorInfo {
+	var info colorInfo
+	for _, line := range strings.Split(out, "\n") {
+		key, value, found := strings.Cut(strings.TrimSpace(line), "=")
+		if !found || value == "unknown" {
+			continue
+		}
+		switch key {
+		case "color_transfer":
+			info.Transfer = value
+		case "color_primaries":
+			info.Primaries = value
+		case "color_space":
+			info.Space = value
+		}
+	}
+	return info
+}
+
+// ffmpegColorPattern matches the colour description in a video stream line
+// of ffmpeg's input summary: "(tv, bt2020nc/bt2020/smpte2084" names the
+// matrix, primaries, and transfer, and "(tv, bt709" names one value for all
+// three.
+var ffmpegColorPattern = regexp.MustCompile(`\((?:tv|pc), ([a-z0-9-]+)(?:/([a-z0-9-]+)/([a-z0-9-]+))?`)
+
+// parseFFmpegColorInfo finds the first video stream in ffmpeg's input
+// summary, e.g.
+//
+//	Stream #0:0: Video: vp9 (Profile 2), yuv420p10le(tv, bt2020nc/bt2020/smpte2084), 3840x2160
+//
+// and returns its colour description; untagged values ("unknown") are left
+// empty. ok is false when the summary lists no video stream.
+func parseFFmpegColorInfo(out string) (info colorInfo, ok bool) {
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, "Stream #") || !strings.Contains(line, "Video:") {
+			continue
+		}
+		match := ffmpegColorPattern.FindStringSubmatch(line)
+		switch {
+		case match == nil:
+		case match[2] == "" && isFieldOrder(match[1]):
+			// "(tv, progressive)": no colour description at all.
+		case match[2] == "":
+			info = colorInfo{Space: match[1], Primaries: match[1], Transfer: match[1]}
+		default:
+			info = colorInfo{Space: match[1], Primaries: match[2], Transfer: match[3]}
+		}
+		return info.withoutUnknown(), true
+	}
+	return colorInfo{}, false
+}
+
+// isFieldOrder reports whether word starts the field order ffmpeg prints
+// after the colour description ("progressive", "top first", "bottom first"),
+// which takes its place when the stream has no colour tags.
+func isFieldOrder(word string) bool {
+	return word == "progressive" || word == "top" || word == "bottom"
+}
+
+// withoutUnknown clears the fields ffmpeg reports as "unknown".
+func (info colorInfo) withoutUnknown() colorInfo {
+	for _, field := range []*string{&info.Transfer, &info.Primaries, &info.Space} {
+		if *field == "unknown" {
+			*field = ""
+		}
+	}
+	return info
+}
+
 // computeOutputFrameCount adjusts the probed input frame count to account for
 // filters that change the output frame rate or total frame count.
 //   - minterpolate=fps=N: outputs at a fixed target fps → duration × N
@@ -539,6 +712,10 @@ func (engine *PPEngine) buildFFmpegArgsForBackend(inputPath, tmpOutput string, v
 		args = append(args, "-vf", strings.Join(vfFilters, ","))
 		plan := PlanEncoder(backend, engine.GPUCapabilities, filepath.Ext(tmpOutput))
 		args = append(args, plan.Args...)
+		if hasToneMap(vfFilters) {
+			// Without these tags players may still treat the output as BT.2020.
+			args = append(args, "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709")
+		}
 	} else {
 		args = append(args, "-c:v", "copy")
 	}
@@ -571,6 +748,7 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 			activeVF = nil // video filters do not apply to audio-only files
 		} else {
 			activeVF = engine.resolveAutoCrop(ctx, inputPath, activeVF, cb)
+			activeVF = engine.resolveToneMap(ctx, inputPath, activeVF, cb)
 		}
 		if len(activeVF) == 0 && len(afFilters) == 0 {
 			continue

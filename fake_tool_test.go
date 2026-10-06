@@ -27,6 +27,34 @@ const fakeToolEnv = "GOVID_FAKE_TOOL"
 // run, so tests can count invocations across retries.
 const fakeToolStateEnv = "GOVID_FAKE_TOOL_STATE"
 
+// fakeColorEnv holds the "transfer,primaries,space" colour tags reported by
+// the "ffprobe-color" and "ffmpeg-summary" modes.
+const fakeColorEnv = "GOVID_FAKE_COLOR"
+
+// fakeFFprobeColor mimics ffprobe printing a stream's colour entries.
+func fakeFFprobeColor() int {
+	transfer, rest, _ := strings.Cut(os.Getenv(fakeColorEnv), ",")
+	primaries, space, _ := strings.Cut(rest, ",")
+	fmt.Printf("color_space=%s\ncolor_transfer=%s\ncolor_primaries=%s\n", space, transfer, primaries)
+	return 0
+}
+
+// fakeFFmpegSummary mimics "ffmpeg -i in.mkv" with no output file: it prints
+// the input summary, colour tags included, and fails.
+func fakeFFmpegSummary() int {
+	transfer, rest, _ := strings.Cut(os.Getenv(fakeColorEnv), ",")
+	primaries, space, _ := strings.Cut(rest, ",")
+	// ffmpeg names the matrix, primaries, and transfer, in that order.
+	tags := fmt.Sprintf("%s/%s/%s, ", space, primaries, transfer)
+	if transfer == "" && primaries == "" && space == "" {
+		tags = ""
+	}
+	fmt.Fprintln(os.Stderr, "Input #0, matroska,webm, from 'in.mkv':")
+	fmt.Fprintf(os.Stderr, "  Stream #0:0: Video: vp9 (Profile 2), yuv420p10le(tv, %sprogressive), 3840x2160\n", tags)
+	fmt.Fprintln(os.Stderr, "At least one output file must be specified")
+	return 1
+}
+
 // fakeToolVersion is the version string the "version" mode reports.
 const fakeToolVersion = "2026.09.01"
 
@@ -73,6 +101,10 @@ func runFakeTool(mode string, args []string) int {
 		return fakeYtDlpSpawnChild()
 	case "tick":
 		return fakeTick()
+	case "ffprobe-color":
+		return fakeFFprobeColor()
+	case "ffmpeg-summary":
+		return fakeFFmpegSummary()
 	case "version":
 		if !slices.Contains(args, "--version") {
 			fmt.Fprintf(os.Stderr, "fake tool: expected --version, got %q\n", args)

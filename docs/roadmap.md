@@ -221,7 +221,7 @@ This document outlines planned features, improvements, and known limitations for
 - [x] **Normalize Audio**: Loudness normalization via the `loudnorm` filter.
 - [x] **Vivid Mode**: Automated color correction (brightness, contrast, saturation).
 - [x] **Denoise (Advanced)**: HQ noise reduction via `nlmeans` or `atadenoise` to clean up low-quality web videos.
-- [ ] **HDR to SDR Tone Mapping**: Convert 4K HDR downloads for standard monitors via `zscale` to prevent "washed out" colors. Does not seem to work properly.
+- [x] **HDR to SDR Tone Mapping**: Convert 4K HDR downloads for standard monitors via `zscale` to prevent "washed out" colors. (Fixed: each file's colour tags are probed, only PQ/HLG sources are tone mapped with the input colour space stated explicitly, SDR sources are left unchanged, and the output is tagged BT.709.)
 - [x] **Fix Gradient Banding**: Use the `deband` filter to remove "steps" in skies or dark scenes caused by web compression.
 - [x] **Auto-Crop Black Bars**: Detect and remove letterboxing/pillarboxing automatically.
 - [x] **Video Stabilization**: Use `deshake` to smooth out handheld footage or shaky web uploads.

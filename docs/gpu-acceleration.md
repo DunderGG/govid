@@ -112,6 +112,10 @@ The binary reports `cuda`, `qsv`, `amf`, `d3d11va`, `d3d12va`, `dxva2`, and `vaa
 | VideoToolbox | None | None | None | Not compiled in, as expected for Windows |
 | Vulkan / OpenCL | None reported by the targeted inventory | None reported by the targeted inventory | None reported by the targeted inventory | Not available in this build |
 
+### CPU filters used by post-processing
+
+Checked on 2026-10-06 with `ffmpeg -hide_banner -filters`: the build includes `zscale` (libzimg) and `tonemap`, which the HDR to SDR chain needs, as well as the `libx265` and `libvpx-vp9` encoders used to generate the HDR sample in `testdata/`.
+
 This confirms that the current package contains the components needed to attempt the three primary Windows pipelines. It does not confirm that any pipeline works on the current or an end user's GPU. Driver and device initialization belong to runtime capability detection.
 
 Windows is currently the only platform with a bundled artifact in this repository. Repeat this inventory and record a platform-specific binary checksum when Linux packages are added.
@@ -140,7 +144,7 @@ Decided 2026-08-20, scoped against the checkbox filters built by `buildPostProce
 | `upscaleVideo` | `scale` (lanczos) | Deferred | Cross-vendor GPU equivalents exist (`scale_cuda`, `scale_qsv`, `scale_vaapi`) but only work cleanly in a full hardware pipeline when scaling is the sole active filter; needs `-hwaccel`/pixel-format plumbing not yet designed. |
 | `deinterlace` | `bwdif` | Deferred | Cross-vendor GPU equivalents exist (`bwdif_cuda`, `deinterlace_qsv`, `deinterlace_vaapi`) with the same sole-active-filter constraint as `upscaleVideo`. |
 | `denoise` | `nlmeans` / `hqdn3d` | CPU (stays) | Only a VAAPI-specific equivalent (`denoise_vaapi`) exists in the bundled build; not cross-vendor. Matches the CPU-first guidance in §6. |
-| `hdrToSdr` | `zscale`/`tonemap` | CPU (stays) | Only a VAAPI-specific equivalent (`tonemap_vaapi`) exists; this filter is already flagged as unreliable in the roadmap, so added complexity is avoided for now. |
+| `hdrToSdr` | `zscale`/`tonemap` | CPU (stays) | Only a VAAPI-specific equivalent (`tonemap_vaapi`) exists; the CPU path is kept for simplicity. Since 2026-10 the CPU chain probes each file and states the input colour space explicitly (see `toneMapFilter` in `postprocess.go`). |
 | `sharpen` | `cas` | CPU (stays) | No direct GPU equivalent; VAAPI's `sharpness_vaapi` is a different algorithm and single-vendor. |
 | `vividMode` | `eq` | CPU (stays) | No direct GPU equivalent; VAAPI's `procamp_vaapi` is single-vendor and not equivalent. |
 | `deband` | `deband` | CPU (stays) | No GPU equivalent in the bundled build. |
