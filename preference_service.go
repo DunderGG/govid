@@ -5,14 +5,12 @@
 //     making the full set of configurable options visible in one place.
 //   - PreferenceService: reads from and writes to the Fyne Preferences store,
 //     applying fallbacks where appropriate. Has no dependency on any UI widget.
-//   - AppConfig, LoadFromFile / MergeConfig: load and merge a govid.json config override
-//     into AppPreferences without touching any widget.
+//   - LoadFromFile / MergeConfig / ExportConfig: govid.json, whose AppConfig
+//     type and rules live in config_file.go.
 //   - Named constants for every preference key and default value.
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -326,133 +324,4 @@ func (prefSvc *PreferenceService) Reset() {
 	} {
 		prefSvc.store.RemoveValue(key)
 	}
-}
-
-// ── Config file ──────────────────────────────────────────────────────────────
-
-// AppConfig represents the JSON configuration file structure.
-type AppConfig struct {
-	Format   string `json:"format"`
-	Quality  string `json:"quality"`
-	Path     string `json:"path"`
-	MaxSpeed string `json:"maxSpeed"`
-
-	// The embedding toggles are pointers so a field left out of the file
-	// (nil) is told apart from one set to false.
-	EmbedMetadata  *bool `json:"embedMetadata"`
-	EmbedThumbnail *bool `json:"embedThumbnail"`
-	EmbedChapters  *bool `json:"embedChapters"`
-
-	// Subtitles is one of subtitleModeOptions; SubtitleLangs uses yt-dlp's
-	// --sub-langs syntax.
-	Subtitles     string `json:"subtitles"`
-	SubtitleLangs string `json:"subtitleLangs"`
-	AutoSubtitles *bool  `json:"autoSubtitles"`
-	KeepHistory   *bool  `json:"keepHistory"`
-}
-
-// parseAppConfig unmarshals raw JSON bytes into an AppConfig.
-//
-// Unlike C++, it is safe to return a pointer to a local variable here.
-// The Go compiler performs escape analysis — when it detects that
-// a local variable's address outlives the function (e.g. because it is returned),
-// the variable is automatically allocated on the heap instead of the stack. The
-// garbage collector then owns that memory and frees it once nothing holds a
-// reference to it. You never call delete or free.
-func parseAppConfig(data []byte) (*AppConfig, error) {
-	var config AppConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, err
-	}
-	return &config, nil
-}
-
-// isValidOption reports whether value is present in the options slice.
-func isValidOption(value string, options []string) bool {
-	for _, opt := range options {
-		if opt == value {
-			return true
-		}
-	}
-	return false
-}
-
-// configFileName is the optional JSON override file read by "Load from Config".
-const configFileName = "govid.json"
-
-// LoadFromFile reads and parses a govid.json config override file at the given
-// path. Returns (*AppConfig, nil) on success or (nil, err) if the file cannot
-// be read or contains invalid JSON.
-func (svc *PreferenceService) LoadFromFile(path string) (*AppConfig, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	return parseAppConfig(data)
-}
-
-// MergeConfig applies the non-empty fields of cfg onto base, validating format
-// and quality against the supplied option slices and confirming that path
-// exists as a directory on disk. It returns the merged AppPreferences and a
-// slice of human-readable validation messages for any fields that were skipped.
-func (svc *PreferenceService) MergeConfig(cfg *AppConfig, base AppPreferences, validFormats, validQualities []string) (AppPreferences, []string) {
-	var errs []string
-
-	if cfg.Format != "" {
-		if isValidOption(cfg.Format, validFormats) {
-			base.Format = cfg.Format
-		} else {
-			errs = append(errs, fmt.Sprintf("invalid format: %s", cfg.Format))
-		}
-	}
-
-	if cfg.Quality != "" {
-		if isValidOption(cfg.Quality, validQualities) {
-			base.Quality = cfg.Quality
-		} else {
-			errs = append(errs, fmt.Sprintf("invalid quality: %s", cfg.Quality))
-		}
-	}
-
-	if cfg.Path != "" {
-		info, err := os.Stat(cfg.Path)
-		if err == nil && info.IsDir() {
-			base.SavedPath = cfg.Path
-		} else {
-			errs = append(errs, fmt.Sprintf("invalid path: %s", cfg.Path))
-		}
-	}
-
-	if cfg.MaxSpeed != "" {
-		base.MaxSpeed = cfg.MaxSpeed
-	}
-
-	if cfg.EmbedMetadata != nil {
-		base.EmbedMetadata = *cfg.EmbedMetadata
-	}
-	if cfg.EmbedThumbnail != nil {
-		base.EmbedThumbnail = *cfg.EmbedThumbnail
-	}
-	if cfg.EmbedChapters != nil {
-		base.EmbedChapters = *cfg.EmbedChapters
-	}
-
-	if cfg.Subtitles != "" {
-		if isValidOption(cfg.Subtitles, subtitleModeOptions) {
-			base.Subtitles = cfg.Subtitles
-		} else {
-			errs = append(errs, fmt.Sprintf("invalid subtitles: %s", cfg.Subtitles))
-		}
-	}
-	if cfg.SubtitleLangs != "" {
-		base.SubtitleLangs = cfg.SubtitleLangs
-	}
-	if cfg.AutoSubtitles != nil {
-		base.AutoSubtitles = *cfg.AutoSubtitles
-	}
-	if cfg.KeepHistory != nil {
-		base.KeepHistory = *cfg.KeepHistory
-	}
-
-	return base, errs
 }

@@ -115,33 +115,48 @@ Ensure you have [Go 1.26+](https://go.dev/dl/) installed.
 
 ## ⚙️ Advanced Configuration (govid.json)
 
-For power users, GoVid supports a `govid.json` file in the application directory. This allows you to define startup defaults or automated paths.
+Every setting can be set from a JSON file. **Tools → Export settings…** writes all of your current settings to a file, and **Tools → Import settings…** applies one, for example on another machine. A file named `govid.json` in the application directory is applied by **Load from Config** in the Preferences window.
 
-Example `govid.json`:
+A key left out of the file leaves that setting unchanged, so a file can hold just the settings you want to change:
 ```json
 {
-  "path": "C:\\Downloads\\YouTube",
+  "path": "C:\Downloads\YouTube",
   "format": "MP4",
   "quality": "1080p",
   "maxSpeed": "5M"
 }
 ```
 
-| Field | Supported Values |
+| Key | Supported Values (default) |
 | :--- | :--- |
-| `format` | `MP4`, `MKV`, `WebM`, `MP3`, `M4A` |
-| `quality` | `Best Quality`, `1080p`, `720p`, `480p`, `360p` |
-| `path` | Any valid absolute folder path |
-| `maxSpeed` | Numeric value with unit (e.g., `50K`, `5M`, `1G`) |
-| `embedMetadata` | `true` or `false`: write title, artist, and date tags into downloads (default `true`) |
-| `embedThumbnail` | `true` or `false`: write the thumbnail as cover art (default `true`; skipped for WebM) |
-| `embedChapters` | `true` or `false`: write chapter markers (default `false`) |
-| `subtitles` | `Off`, `Embed`, `Save as .srt`, `Both` (default `Off`) |
-| `subtitleLangs` | Subtitle languages in yt-dlp's `--sub-langs` syntax, e.g. `en.*,de` (default `en.*`) |
-| `autoSubtitles` | `true` or `false`: also take auto-generated captions (default `false`) |
-| `keepHistory` | `true` or `false`: record downloads and warn before repeating one (default `true`) |
+| `path` | An existing folder (the application folder) |
+| `format` | `MP4`, `MKV`, `WebM`, `MP3`, `M4A` (`MP4` on Windows and macOS, `MKV` elsewhere) |
+| `quality` | `Best Quality`, `1080p`, `720p`, `480p`, `360p` (`Best Quality`) |
+| `maxSpeed` | A rate with unit, e.g. `50K`, `5M`, `1G`; `""` for unlimited (`""`) |
+| `cookiesPath` | An existing cookies.txt file, or `""` for none (`""`) |
+| `themeMode` | `Dark`, `Light` (`Dark`) |
+| `logLimit` | `100`, `200`, `500`, `1000`, `5000`, `Unlimited` (`200`) |
+| `savePrefs` | `true` or `false`: remember settings between sessions (`true`) |
+| `showDebug`, `checkUpdates` | `true` or `false`: show yt-dlp's debug lines (`false`); check for updates at startup (`true`) |
+| `embedMetadata`, `embedThumbnail`, `embedChapters` | `true` or `false`: write tags, cover art (skipped for WebM), chapters into downloads (`true`, `true`, `false`) |
+| `subtitles` | `Off`, `Embed`, `Save as .srt`, `Both` (`Off`) |
+| `subtitleLangs` | Subtitle languages in yt-dlp's `--sub-langs` syntax, e.g. `en.*,de` (`en.*`) |
+| `autoSubtitles` | `true` or `false`: also take auto-generated captions (`false`) |
+| `keepHistory` | `true` or `false`: record downloads and warn before repeating one (`true`) |
+| `batchMode`, `saveLog`, `notify`, `autoRetry` | `true` or `false`: the main window's toggles (all `false`) |
+| `postProcess` | `true` or `false`: the main window's Post-Processing toggle (`true`) |
+| `smoothMotion`, `sharpen`, `normalizeAudio`, `vividMode`, `denoise`, `hdrToSdr`, `deband`, `autoCrop`, `stabilize`, `deinterlace`, `nightMode`, `upscaleVideo` | `true` or `false`: the post-processing filters (all `false`) |
+| `smoothMotionMode` | `Precise (slow)`, `Balanced`, `Fast` (`Balanced`) |
+| `smoothFPS` | A number from 24 to 120 (`60`) |
+| `sharpenAmount` | A number from 0 to 2 (`1`) |
+| `denoiseMode` | `NLMeans (HQ, slow)`, `hqdn3d (Balanced)` (`hqdn3d (Balanced)`) |
+| `upscaleTarget` | `2× (Double)`, `1080p`, `1440p`, `4K (2160p)` (`2× (Double)`) |
+| `gpuBackend` | `Auto (Recommended)`, `Off`, or a backend the Post-Processing window offers on your system (`Auto (Recommended)`) |
 
-> **Note:** Standard JSON does not support comments. Adding them will cause a loading error. Use the **Load from Config** button in the Preferences window to apply changes.
+A value that is not allowed is skipped, and GoVid lists every skipped value when it loads the file. For a setting with fixed choices, `""` also leaves it unchanged. The [govid.json](govid.json) in the repository lists every key.
+
+> **Note:** Standard JSON does not support comments. Adding them will cause a loading error.
+
 
 ## 🛠️ Built With
 

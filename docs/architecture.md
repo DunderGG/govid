@@ -39,8 +39,8 @@ govid/
 ├── download_engine.go      DownloadEngine — yt-dlp arg builder and retry executor
 ├── probe.go                DownloadEngine.Probe / ProbeVideo — yt-dlp -J --flat-playlist; MediaInfo / PlaylistEntry
 ├── pp_engine.go            PPEngine — concurrent FFmpeg post-processing worker pool
-├── preference_service.go   PreferenceService — preference keys, defaults, Load/Save/Reset, LoadFromFile, MergeConfig;
-│                           savePreferences, parseAppConfig, isValidOption co-located
+├── preference_service.go   PreferenceService — preference keys, defaults, Load/Save/Reset
+├── config_file.go          AppConfig / configRules — govid.json: LoadFromFile, MergeConfig, ExportConfig, WriteConfigFile
 ├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadRecord and DownloadHistoryEntry types
 ├── history_window.go       UIManager.showHistory — the searchable History list with Re-add / Show in folder / Copy URL
 ├── duplicates.go           skipDownloaded / askDuplicate — "Already downloaded" check before a session downloads
@@ -204,8 +204,10 @@ Every Fyne preference storage key is a named constant here (`prefSavedPath`, `pr
 - **`Load() AppPreferences`** — reads the Fyne store and returns a fully-defaulted plain struct. Called once at startup and again each time a secondary window refreshes its controls.
 - **`Save(AppPreferences)`** — writes the struct back. Honours the `savePrefs` gate: if the user has disabled persistence, only the toggle itself is written.
 - **`Reset()`** — removes all managed keys so the next `Load` returns defaults.
-- **`LoadFromFile(path string) (*AppConfig, error)`** — reads and parses a `govid.json` override file. Delegates JSON parsing to the package-level `parseAppConfig` helper in `preference_service.go`. Besides `format`, `quality`, `path`, and `maxSpeed`, `AppConfig` has the `embedMetadata`/`embedThumbnail`/`embedChapters` toggles as `*bool`, so a field missing from the file leaves the stored value alone.
-- **`MergeConfig(cfg, base, validFormats, validQualities) (AppPreferences, []string)`** — validates each non-empty config field against the supplied option slices and confirms the path exists as a directory, then merges valid fields onto `base`. Returns the merged struct and a slice of validation error strings for any skipped fields. No widget dependency.
+- **`LoadFromFile(path string) (*AppConfig, error)`** — reads and parses a settings file (`parseAppConfig`, in `config_file.go`). `AppConfig` has one pointer field per `AppPreferences` field, with the same name (the JSON keys are listed in the README), so a key left out of the file is `nil` and leaves the setting alone. `TestEveryPreferenceHasAConfigKey` checks the two structs with reflection, so a new preference without a config key fails the build's tests.
+- **`MergeConfig(cfg, base) (AppPreferences, []string)`** — walks `AppConfig`'s fields with reflection and copies each set value onto the `AppPreferences` field of the same name, unless `configRules` rejects it: choices must be one of the lists in `options.go` (`GPUBackendOptions()` for the GPU backend), `smoothFPS` and `sharpenAmount` must be within their sliders' ranges, `path` must be an existing folder, and `cookiesPath` an existing file or `""`. For a choice (and `path`), `""` leaves the setting unchanged. It returns every rejected value as a message, so all problems are reported at once.
+- **`ExportConfig(AppPreferences) AppConfig`** and **`WriteConfigFile(path, AppConfig) error`** — turn preferences into a complete `AppConfig`, every key set, and write it as indented JSON (atomically, through `writeFileAtomic`). Tools → Export settings… uses them; Tools → Import settings… and the Preferences window's **Load from Config** go through `UIManager.importConfig` → `MergeConfig` → `applyAndSavePreferences` (widgets, runtime preferences, store, theme).
+
 
 `AppPreferences` is a plain value struct with no widget references. `applyPreferencesToWidgets(AppPreferences)` in `helpers.go` is the single translator from struct → widget state. `UIManager.savePreferences(path)` reads widget state and delegates to `prefSvc.Save`; `DownloaderApp.savePreferences` in `preference_service.go` is a one-line delegate to it. `UIManager.resetPreferences()` (data + log-buffer reset) and `UIManager.rebuildUI()` (dark theme + `createUI`) together handle a full application reset; separating them lets callers invoke only what they need.
 
@@ -477,7 +479,7 @@ and finally calls `quit` inside `fyne.Do`.
 | Error log | `<save dir>/GoVid_errors_YYYY-MM-DD.txt` | Plain text | `LogService` |
 | Download history | `<exe dir>/download_history.json` | JSON array | `HistoryService` |
 | Latest-release cache | Fyne app data (`latestRelease:<owner>/<repo>` keys) | JSON in the Fyne KV store | `ReleaseService` |
-| Override config | `<cwd>/govid.json` | JSON object | `PreferenceService` (`LoadFromFile` / `MergeConfig`); `AppConfig` is defined in `preference_service.go` |
+| Override config | `<cwd>/govid.json`, or any file picked in Tools → Import settings… | JSON object | `PreferenceService` (`LoadFromFile` / `MergeConfig`; `ExportConfig` / `WriteConfigFile` for Tools → Export settings…); `AppConfig` is defined in `config_file.go` |
 
 ---
 

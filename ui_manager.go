@@ -85,28 +85,29 @@ type UIManager struct {
 	// Callbacks bridging DownloaderApp actions and services into the main
 	// window and secondary windows; all set by newDownloaderApp after
 	// construction.
-	onLog                func(line string, col color.Color)                                                                          // appends a line to the terminal output panel
-	onStatus             func(msg string)                                                                                            // updates the short status label
-	onSetStatusIndicator func(state StatusState)                                                                                     // updates the status dot color
-	onStartDownload      func()                                                                                                      // begins a download/batch run
-	onOpenFolder         func()                                                                                                      // opens the save destination in the system file manager
-	onRequestCancel      func() bool                                                                                                 // cancels the active download or post-process job
-	onLoadHistory        func() ([]DownloadHistoryEntry, error)                                                                      // HistoryService.Load
-	onClearHistory       func() error                                                                                                // HistoryService.Clear
-	onCheckDependencies  func(onWarning func(msg string))                                                                            // DependencyService.Check
-	onRunUpdate          func(cb UpdateCallbacks)                                                                                    // DependencyService.RunUpdate
-	onYtDlpVersions      func() (installed, latest string)                                                                           // DownloaderApp.ytDlpVersions
-	onCheckGoVidRelease  func() (release Release, newer bool, err error)                                                             // DownloaderApp.checkGoVidRelease
-	onLoadPreferences    func() AppPreferences                                                                                       // PreferenceService.Load
-	onSavePreferences    func(AppPreferences)                                                                                        // PreferenceService.Save
-	onResetPreferences   func()                                                                                                      // PreferenceService.Reset
-	onLoadConfigFile     func(path string) (*AppConfig, error)                                                                       // PreferenceService.LoadFromFile
-	onMergeConfig        func(cfg *AppConfig, base AppPreferences, validFormats, validQualities []string) (AppPreferences, []string) // PreferenceService.MergeConfig
-	onSetLogBufferLimit  func(limit int)                                                                                             // LogService.SetBufferLimit
-	onLogBufferLimit     func() int                                                                                                  // LogService.BufferLimit
-	onSetShowDebug       func(show bool)                                                                                             // DownloaderApp.showDebug.Store
-	onSetKeepHistory     func(keep bool)                                                                                             // DownloaderApp.keepHistory.Store
-	onSessionRunning     func() bool                                                                                                 // DownloaderApp.isRunning.Load
+	onLog                func(line string, col color.Color)                                   // appends a line to the terminal output panel
+	onStatus             func(msg string)                                                     // updates the short status label
+	onSetStatusIndicator func(state StatusState)                                              // updates the status dot color
+	onStartDownload      func()                                                               // begins a download/batch run
+	onOpenFolder         func()                                                               // opens the save destination in the system file manager
+	onRequestCancel      func() bool                                                          // cancels the active download or post-process job
+	onLoadHistory        func() ([]DownloadHistoryEntry, error)                               // HistoryService.Load
+	onClearHistory       func() error                                                         // HistoryService.Clear
+	onCheckDependencies  func(onWarning func(msg string))                                     // DependencyService.Check
+	onRunUpdate          func(cb UpdateCallbacks)                                             // DependencyService.RunUpdate
+	onYtDlpVersions      func() (installed, latest string)                                    // DownloaderApp.ytDlpVersions
+	onCheckGoVidRelease  func() (release Release, newer bool, err error)                      // DownloaderApp.checkGoVidRelease
+	onLoadPreferences    func() AppPreferences                                                // PreferenceService.Load
+	onSavePreferences    func(AppPreferences)                                                 // PreferenceService.Save
+	onResetPreferences   func()                                                               // PreferenceService.Reset
+	onLoadConfigFile     func(path string) (*AppConfig, error)                                // PreferenceService.LoadFromFile
+	onMergeConfig        func(cfg *AppConfig, base AppPreferences) (AppPreferences, []string) // PreferenceService.MergeConfig
+	onExportConfig       func(path string, p AppPreferences) error                            // PreferenceService.ExportConfig + WriteConfigFile
+	onSetLogBufferLimit  func(limit int)                                                      // LogService.SetBufferLimit
+	onLogBufferLimit     func() int                                                           // LogService.BufferLimit
+	onSetShowDebug       func(show bool)                                                      // DownloaderApp.showDebug.Store
+	onSetKeepHistory     func(keep bool)                                                      // DownloaderApp.keepHistory.Store
+	onSessionRunning     func() bool                                                          // DownloaderApp.isRunning.Load
 }
 
 // NewUIManager returns a UIManager bound to the given primary window.
@@ -179,6 +180,8 @@ func (manager *UIManager) createMainMenu() {
 			fyne.NewMenuItem("Check for GoVid updates", manager.checkForGoVidUpdates),
 			fyne.NewMenuItemSeparator(),
 			prefsMenu,
+			fyne.NewMenuItem("Import settings…", manager.showImportSettings),
+			fyne.NewMenuItem("Export settings…", manager.showExportSettings),
 			fyne.NewMenuItem("Post-Processing", func() {
 				manager.showPostProcessing()
 			}),
@@ -345,14 +348,23 @@ func (manager *UIManager) showConfigHelp() {
 		{"Post-Processing", "Found in **Tools → Post-Processing**. Enhance your downloads using FFmpeg. Most filters trigger a full re-encode.\n\n⚠️ **WebM files** use VP9 encoding which is significantly slower than H.264 — use MKV for faster post-processing."},
 		{"Cancel", "Stops the active download immediately and deletes its partly downloaded files. In batch mode, it skips the current URL and moves on to the next one."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
-		{"JSON Configuration", "For advanced users, GoVid supports loading settings from a `govid.json` file located in the application folder.\n\n**Supported Values:**\n" +
+		{"JSON Configuration", "Every setting can be stored in a JSON file. **Tools → Export settings…** saves all of your current settings, and **Tools → Import settings…** applies a saved file, for example on another computer. A file named `govid.json` in the application folder is applied by **Load from Config** in **Tools → Preferences**.\n\n" +
+			"A key left out of the file leaves that setting unchanged, so a file can hold only the settings you want to set. A value that is not allowed is skipped, and GoVid lists every skipped value.\n\n**Keys and values:**\n" +
+			"* **path**: an existing folder\n" +
 			"* **format**: " + codeList(formatOptions) + "\n" +
 			"* **quality**: " + codeList(qualityOptions) + "\n" +
-			"* **path**: Any valid absolute folder path\n* **maxSpeed**: Numeric value with unit, e.g., `50K`, `5M`, `1G` (or blank for unlimited)\n" +
-			"* **embedMetadata**, **embedThumbnail**, **embedChapters**: `true` or `false`\n" +
+			"* **maxSpeed**: a rate with unit, e.g. `50K`, `5M`, `1G`, or `\"\"` for unlimited\n" +
+			"* **cookiesPath**: an existing cookies file, or `\"\"` for none\n" +
+			"* **themeMode**: " + codeList(themeOptions) + "\n" +
+			"* **logLimit**: " + codeList(logLimitOptions) + "\n" +
 			"* **subtitles**: " + codeList(subtitleModeOptions) + "\n" +
 			"* **subtitleLangs**: yt-dlp `--sub-langs` syntax, e.g. `en.*,de`\n" +
-			"* **autoSubtitles**, **keepHistory**: `true` or `false`"},
+			"* **smoothMotionMode**: " + codeList(smoothModeOptions) + "\n" +
+			"* **smoothFPS**: 24 to 120; **sharpenAmount**: 0 to 2\n" +
+			"* **denoiseMode**: " + codeList(denoiseModeOptions) + "\n" +
+			"* **upscaleTarget**: " + codeList(upscaleTargetOptions) + "\n" +
+			"* **gpuBackend**: " + codeList(GPUBackendOptions()) + "\n" +
+			"* `true` or `false`: **savePrefs**, **showDebug**, **checkUpdates**, **embedMetadata**, **embedThumbnail**, **embedChapters**, **autoSubtitles**, **keepHistory**, **batchMode**, **saveLog**, **notify**, **autoRetry**, **postProcess**, **smoothMotion**, **sharpen**, **normalizeAudio**, **vividMode**, **denoise**, **hdrToSdr**, **deband**, **autoCrop**, **stabilize**, **deinterlace**, **nightMode**, **upscaleVideo**"},
 	}
 
 	content := container.NewVBox()
@@ -523,25 +535,87 @@ func (manager *UIManager) confirmRestoreDefaults() {
 // loadConfigFile merges govid.json into the stored preferences, applies the
 // result to the widgets and saves it, then reports any skipped settings.
 func (manager *UIManager) loadConfigFile() {
-	ui := manager.ui
-	config, err := manager.onLoadConfigFile(configFileName)
+	manager.importConfig(configFileName, manager.prefsWindow)
+}
+
+// importConfig merges the settings file at path into the stored preferences,
+// applies and saves the result (see applyAndSavePreferences), and then
+// reports, over parent, any settings it skipped.
+func (manager *UIManager) importConfig(path string, parent fyne.Window) {
+	name := filepath.Base(path)
+	config, err := manager.onLoadConfigFile(path)
 	if err != nil {
-		dialog.ShowError(fmt.Errorf("failed to load govid.json: %v", err), manager.prefsWindow)
+		dialog.ShowError(fmt.Errorf("failed to load %s: %v", name, err), parent)
 		return
 	}
 
-	merged, errs := manager.onMergeConfig(config, manager.onLoadPreferences(), ui.download.format.Options, ui.download.quality.Options)
-	applyPreferencesToWidgets(ui, merged)
-	manager.applyRuntimePrefs(merged)
-	manager.onSavePreferences(merged)
+	merged, errs := manager.onMergeConfig(config, manager.onLoadPreferences())
+	manager.applyAndSavePreferences(merged)
 
 	if len(errs) > 0 {
-		dialog.ShowCustom("Config Loaded with Warnings", "OK",
-			widget.NewLabel(fmt.Sprintf("some settings were skipped:\n- %s", strings.Join(errs, "\n- "))),
-			manager.prefsWindow)
+		dialog.ShowCustom("Settings Loaded with Warnings", "OK",
+			widget.NewLabel(fmt.Sprintf("Some settings in %s were skipped:\n- %s", name, strings.Join(errs, "\n- "))),
+			parent)
 		return
 	}
-	dialog.ShowInformation("Config Loaded", "Preferences updated from govid.json", manager.prefsWindow)
+	dialog.ShowInformation("Settings Loaded", fmt.Sprintf("Preferences updated from %s.", name), parent)
+}
+
+// applyAndSavePreferences puts p into effect: the widgets, the runtime
+// preferences, the store, and the theme, rebuilding the main window so its
+// colours follow the theme.
+func (manager *UIManager) applyAndSavePreferences(p AppPreferences) {
+	applyPreferencesToWidgets(manager.ui, p)
+	manager.applyRuntimePrefs(p)
+	manager.onSavePreferences(p)
+	applyTheme(fyne.CurrentApp(), p.ThemeMode)
+	manager.createUI()
+}
+
+// showImportSettings picks a settings file (an exported one, or any
+// govid.json) and imports it.
+func (manager *UIManager) showImportSettings() {
+	picker := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		if err != nil {
+			dialog.ShowError(err, manager.mainWindow)
+			return
+		}
+		if reader == nil {
+			return // cancelled
+		}
+		path := reader.URI().Path()
+		reader.Close()
+		manager.importConfig(path, manager.mainWindow)
+	}, manager.mainWindow)
+	picker.SetFilter(storage.NewExtensionFileFilter([]string{".json"}))
+	picker.Show()
+}
+
+// showExportSettings asks where to save the current settings, then writes
+// every one of them there as a govid.json-style file.
+func (manager *UIManager) showExportSettings() {
+	picker := dialog.NewFileSave(func(writer fyne.URIWriteCloser, err error) {
+		if err != nil {
+			dialog.ShowError(err, manager.mainWindow)
+			return
+		}
+		if writer == nil {
+			return // cancelled
+		}
+		path := writer.URI().Path()
+		writer.Close()
+		prefs := snapshotPreferences(manager.ui, manager.ui.download.path.Text)
+		if err := manager.onExportConfig(path, prefs); err != nil {
+			dialog.ShowError(fmt.Errorf("failed to export settings: %w", err), manager.mainWindow)
+			return
+		}
+		dialog.ShowInformation("Settings Exported",
+			fmt.Sprintf("Saved every setting to %s.\n\nLoad it with Tools → Import settings…, or name it %s, put it beside GoVid, and use Load from Config in Preferences.", path, configFileName),
+			manager.mainWindow)
+	}, manager.mainWindow)
+	picker.SetFileName(configFileName)
+	picker.SetFilter(storage.NewExtensionFileFilter([]string{".json"}))
+	picker.Show()
 }
 
 // savePreferences snapshots the current widget state (see snapshotPreferences)

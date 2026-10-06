@@ -206,6 +206,10 @@ package "UI Layer" #F0F8F0 {
         +askDiskSpace(ctx, prompt) : diskSpaceDecision
         +askDuplicate(ctx, prompt) : duplicateDecision
         +showQueue(queue *QueueModel)
+        -importConfig(path, parent)
+        -applyAndSavePreferences(p AppPreferences)
+        -showImportSettings()
+        -showExportSettings()
         +flushQueue()
         -refreshQueue()
         -readdHistoryURL(url)
@@ -577,7 +581,9 @@ package "Preference Service" #FFF0F0 {
         +Save(p AppPreferences)
         +Reset()
         +LoadFromFile(path) : *AppConfig
-        +MergeConfig(cfg, base, formats,\n  qualities) : (AppPreferences, []string)
+        +MergeConfig(cfg, base) : (AppPreferences, []string)
+        +ExportConfig(p AppPreferences) : AppConfig
+        +WriteConfigFile(path, cfg AppConfig) : error
     }
 
     class AppPreferences <<data>> {
@@ -751,18 +757,20 @@ package "Support Types" #F5F5F5 {
     }
 
     class AppConfig <<data>> {
-        +Format : string
-        +Quality : string
-        +Path : string
-        +MaxSpeed : string
-        +EmbedMetadata : *bool
-        +EmbedThumbnail : *bool
-        +EmbedChapters : *bool
-        +Subtitles : string
-        +SubtitleLangs : string
-        +AutoSubtitles : *bool
+        one pointer field per AppPreferences
+        field, with the same name (nil = unset)
+        +SavedPath : *string  «json: path»
+        +Format : *string
+        +SmoothFPS : *float64
         +KeepHistory : *bool
+        … (all AppPreferences fields)
     }
+
+    note bottom of AppConfig
+      configRules validate choices, ranges, and paths;
+      MergeConfig and ExportConfig map fields by name
+      with reflection (config_file.go)
+    end note
 
 }
 

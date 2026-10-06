@@ -68,6 +68,9 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onResetPreferences = dlApp.prefSvc.Reset
 	dlApp.uiManager.onLoadConfigFile = dlApp.prefSvc.LoadFromFile
 	dlApp.uiManager.onMergeConfig = dlApp.prefSvc.MergeConfig
+	dlApp.uiManager.onExportConfig = func(path string, p AppPreferences) error {
+		return dlApp.prefSvc.WriteConfigFile(path, dlApp.prefSvc.ExportConfig(p))
+	}
 	dlApp.uiManager.onSetLogBufferLimit = dlApp.logSvc.SetBufferLimit
 	dlApp.uiManager.onLogBufferLimit = dlApp.logSvc.BufferLimit
 	dlApp.uiManager.onSetShowDebug = dlApp.showDebug.Store

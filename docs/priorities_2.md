@@ -208,9 +208,18 @@ The panel stays on screen after the session with the final statuses, but Retry i
 
 ---
 
-## 7. Make the config file cover every setting
+## 7. ✅ Make the config file cover every setting
 
 **Roadmap:** Low Priority → Config File Support ("Override all the other preferences as well from the file").
+
+**Status: Done** (new file [config_file.go](../config_file.go), split out of `preference_service.go`).
+- **Every setting.** `AppConfig` now has one pointer field for each of the 40 `AppPreferences` fields, with the same name, so a key left out changes nothing. The JSON keys follow the preference names, plus `path` (kept from before) and `postProcess`. `omitempty` on the pointers means a partial config (#8's presets) serializes only the keys it sets.
+- **Validation.** `MergeConfig(cfg, base)` walks the fields with reflection and copies each set value onto the preference of the same name, unless `configRules` rejects it. Choices must be in the `options.go` lists (and `GPUBackendOptions()`), `smoothFPS` must be 24–120 and `sharpenAmount` 0–2 (the slider ranges), `path` an existing folder, and `cookiesPath` an existing file or `""`. Every rejected value is reported, and the rest still apply. Using reflection means merging cannot forget a field. The old `validFormats, validQualities` parameters are gone, since the lists come from `options.go`.
+- **`""`.** For choices and `path`, `""` leaves the setting unchanged, so old files with `"format": ""` still load. One behaviour change: `"maxSpeed": ""` used to be ignored and now means "unlimited", which an export needs in order to round-trip.
+- **Export / import.** **Tools → Export settings…** writes every current setting with `ExportConfig` + `WriteConfigFile` (indented, atomic). **Tools → Import settings…** loads any such file. Import, and the existing **Load from Config**, go through `importConfig` → `applyAndSavePreferences`, which now also applies the runtime preferences and the theme.
+- **Docs.** The README table, the guide's JSON section, and the repository's `govid.json` list every key; a test checks that file's keys and values.
+
+Tests: `TestEveryPreferenceHasAConfigKey` (same names, pointer types, unique JSON keys, no stray rules), `TestExportedConfigRoundTrip` (every field changed, then export → file → import → `DeepEqual`), `TestChangedPreferencesChangesEverySetting` (keeps that fixture honest), `TestExportedConfigHasEveryKey`, `TestMergeConfigReportsEveryInvalidValue`, `TestMergeConfigEmptyChoiceKeepsTheSetting`, `TestRepositoryConfigFileIsValid`, and `TestImportConfigAppliesEverySetting` (through the UI).
 
 **Problem.** `govid.json` covers only seven settings, and there is no way to save the current settings to a file. Presets (#8) and Portable Mode both need settings as a file, so this comes first.
 

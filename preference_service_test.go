@@ -117,7 +117,7 @@ func TestMergeConfigEmbedToggles(t *testing.T) {
 	}
 	base := AppPreferences{EmbedMetadata: true, EmbedThumbnail: true}
 
-	merged, errs := (&PreferenceService{}).MergeConfig(cfg, base, formatOptions, qualityOptions)
+	merged, errs := (&PreferenceService{}).MergeConfig(cfg, base)
 
 	if len(errs) != 0 {
 		t.Errorf("errs = %q, want none", errs)
@@ -143,14 +143,14 @@ func TestMergeConfigSubtitles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	merged, errs := (&PreferenceService{}).MergeConfig(cfg, AppPreferences{Subtitles: subtitlesOff}, formatOptions, qualityOptions)
+	merged, errs := (&PreferenceService{}).MergeConfig(cfg, AppPreferences{Subtitles: subtitlesOff})
 
 	if len(errs) != 0 || merged.Subtitles != subtitlesBoth || merged.SubtitleLangs != "en,de" || !merged.AutoSubtitles {
 		t.Errorf("merged = %q/%q/%v, errs %q; want Both/en,de/true", merged.Subtitles, merged.SubtitleLangs, merged.AutoSubtitles, errs)
 	}
 
 	bad, _ := parseAppConfig([]byte(`{"subtitles": "Sometimes"}`))
-	merged, errs = (&PreferenceService{}).MergeConfig(bad, AppPreferences{Subtitles: subtitlesOff}, formatOptions, qualityOptions)
+	merged, errs = (&PreferenceService{}).MergeConfig(bad, AppPreferences{Subtitles: subtitlesOff})
 	if merged.Subtitles != subtitlesOff || len(errs) != 1 {
 		t.Errorf("invalid mode: merged %q, errs %q; want it skipped with one error", merged.Subtitles, errs)
 	}

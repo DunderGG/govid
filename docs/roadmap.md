@@ -382,7 +382,7 @@ This document outlines planned features, improvements, and known limitations for
 
 - [X] Support a `govid.json` or `govid.toml` config file in the app directory.
 - [X] Override format, quality, path, and speed limit defaults from the file.
-- [ ] Override all the other preferences as well from the file.
+- [x] Override all the other preferences as well from the file. (`AppConfig` in `config_file.go` has a key for every preference, validated by `configRules`; a test fails if a preference is added without one. Tools → Export settings… writes them all, and Tools → Import settings… loads any such file.)
 
 ### Download History
 > Keep a record of previously downloaded files.
