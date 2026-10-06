@@ -39,9 +39,11 @@ Source references point to the matching section of [roadmap.md](roadmap.md). Tic
 
 ---
 
-## 2. Batch the log rendering
+## 2. ✅ Batch the log rendering
 
 **Roadmap:** UI Performance & Stability → Log Rendering Efficiency.
+
+**Status: Done.** `UIManager.appendLogLine` queues lines under a mutex, and the first queued line arms a 100 ms timer. `flushLog` then adds every queued line, trims once, and refreshes once inside a single `fyne.Do`. The session end calls `flushLog` directly so the summary appears immediately. The view holds at most `maxScreenLogLines` (5000) lines even when "Unlimited" is selected; the Preferences hint and the guide say so. The view follows new lines only when it was already within 8 px of the bottom. Step 4 (a virtualized `widget.List`) was not needed: a flush now costs one layout instead of one per line. Tests: `TestAppendLogLineBatchesUntilFlush`, `TestLogViewCapsLinesEvenWhenUnlimited`, `TestLogViewFollowsOnlyWhenAtBottom`, and `TestClearTerminalOutputDropsQueuedLines`.
 
 **Problem.** Every log line goes through its own UI-thread round trip. Verbose yt-dlp and ffmpeg output can produce hundreds of lines per second. This is the most likely cause of the freezes the roadmap's freeze-report items describe.
 

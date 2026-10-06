@@ -15,6 +15,9 @@
 //   - checkDependencies, runUpdateInUI: thin delegates to the injected
 //     dependency-service callbacks for the startup tool check and the
 //     "Update yt-dlp" menu action.
+//   - appendLogLine, flushLog: batched rendering of the Terminal Output log
+//     view, capped at maxScreenLogLines and following new lines only while
+//     the view is scrolled to the bottom.
 package main
 
 import (
@@ -24,6 +27,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -53,6 +58,12 @@ type UIManager struct {
 	// writing default values into the widgets. Only touched on the UI goroutine.
 	restoringDefaults bool
 
+	// Log lines queued by appendLogLine and not yet rendered; see flushLog.
+	logMu         sync.Mutex
+	pendingLog    []pendingLogLine
+	logFlushArmed bool                                    // true while a flush timer is pending
+	afterFunc     func(time.Duration, func()) *time.Timer // schedules the flush; time.AfterFunc, replaced in tests
+
 	// Callbacks bridging DownloaderApp actions and services into the main
 	// window and secondary windows; all set by newDownloaderApp after
 	// construction.
@@ -77,7 +88,7 @@ type UIManager struct {
 
 // NewUIManager returns a UIManager bound to the given primary window.
 func NewUIManager(mainWindow fyne.Window) *UIManager {
-	return &UIManager{mainWindow: mainWindow}
+	return &UIManager{mainWindow: mainWindow, afterFunc: time.AfterFunc}
 }
 
 // ── Singleton window helpers ──────────────────────────────────────────────────
@@ -318,6 +329,7 @@ func (manager *UIManager) showConfigHelp() {
 		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\n\nAccepted formats:\n  * `HH:MM:SS` (e.g. 01:30:00)\n  * `MM:SS` (e.g. 01:30)\n  * `Seconds` (e.g. 90)\n\nEither field can be used alone:\n  * **Trim Start only** → downloads from that point to the end\n  * **Trim End only** → downloads from the start to that point"},
 		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a **GoVid_log_YYYY-MM-DD.txt** file in your save destination folder. Errors are also mirrored to a separate **GoVid_errors_YYYY-MM-DD.txt** file."},
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
+		{"Log Buffer Limit", "Found in **Tools → Preferences**. The number of lines kept in the Terminal Output panel; older lines are removed from the top. The panel never shows more than the latest **5000** lines, so choosing **Unlimited** only affects the lines kept for the log file. The log file itself is never trimmed. If you scroll up while a download is running, the panel stays where you left it; scroll back to the bottom to follow new lines again."},
 		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
 		{"Cookies File", "Found in **Tools → Preferences**. Path to a `cookies.txt` file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file."},
@@ -384,7 +396,7 @@ func (manager *UIManager) showPreferences() {
 	form := &widget.Form{
 		Items: []*widget.FormItem{
 			{Text: "Save Preferences", Widget: ui.prefs.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
-			{Text: "Log Buffer Limit", Widget: ui.prefs.logLimit, HintText: "Max lines kept in the log view; older entries are removed from the top"},
+			{Text: "Log Buffer Limit", Widget: ui.prefs.logLimit, HintText: "Max lines kept in the log view (never more than 5000); older entries are removed from the top"},
 			{Text: "Max Download Speed", Widget: ui.prefs.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.prefs.themeMode, HintText: "Restart may be required for some changes"},
 			{Text: "Cookies File", Widget: manager.buildCookiesRow(), HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
@@ -952,37 +964,122 @@ func (manager *UIManager) buildLogPane() *container.Scroll {
 	return ui.download.output
 }
 
-// appendLogLine renders one line in the graphical log view, trimming the
-// oldest lines once the buffer limit is exceeded. It is registered on
-// DownloaderApp as the onLogLine callback so appendOutput never touches
-// widgets directly. A nil col means "default text colour" and is resolved to
-// the current theme's foreground here, on the UI side.
+// logFlushInterval is how long appendLogLine collects lines before they are
+// rendered together. Verbose yt-dlp and FFmpeg output can produce hundreds of
+// lines a second; rendering them in batches keeps the UI thread responsive.
+const logFlushInterval = 100 * time.Millisecond
+
+// maxScreenLogLines caps the lines kept in the log view whatever the Log
+// Buffer Limit preference says, since every refresh lays out every line.
+// "Unlimited" therefore applies only to the lines kept for the log file.
+const maxScreenLogLines = 5000
+
+// followTolerance is how close to the bottom, in pixels, the log view must be
+// for new lines to keep it scrolled to the bottom.
+const followTolerance = 8
+
+// pendingLogLine is a log line waiting for the next flush.
+type pendingLogLine struct {
+	text string
+	col  color.Color
+}
+
+// screenLogLimit returns the number of lines the log view keeps for the
+// given Log Buffer Limit.
+func screenLogLimit(bufferLimit int) int {
+	return min(bufferLimit, maxScreenLogLines)
+}
+
+// appendLogLine queues one line for the graphical log view. It is registered
+// on DownloaderApp as the onLogLine callback so appendOutput never touches
+// widgets directly. It is safe to call from any goroutine: the first queued
+// line arms a timer that renders every line queued by then in a single UI
+// update (see flushLog), so an idle app does no work.
 func (manager *UIManager) appendLogLine(line string, col color.Color) {
-	ui := manager.ui
-	fyne.Do(func() {
+	manager.logMu.Lock()
+	defer manager.logMu.Unlock()
+	manager.pendingLog = append(manager.pendingLog, pendingLogLine{text: line, col: col})
+	if !manager.logFlushArmed {
+		manager.logFlushArmed = true
+		manager.afterFunc(logFlushInterval, manager.flushLog)
+	}
+}
+
+// takePendingLog removes and returns the queued log lines.
+func (manager *UIManager) takePendingLog() []pendingLogLine {
+	manager.logMu.Lock()
+	defer manager.logMu.Unlock()
+	lines := manager.pendingLog
+	manager.pendingLog = nil
+	manager.logFlushArmed = false
+	return lines
+}
+
+// flushLog renders the queued log lines now, in one UI update. The timer
+// armed by appendLogLine calls it; call it directly to show queued lines
+// without waiting, e.g. so a session's summary appears as soon as it ends.
+func (manager *UIManager) flushLog() {
+	lines := manager.takePendingLog()
+	if len(lines) == 0 {
+		return
+	}
+	fyne.Do(func() { manager.renderLogLines(lines) })
+}
+
+// renderLogLines appends lines to the log view, trims it once to its limit,
+// and refreshes it once. The view follows new lines only if it was already
+// at (or within followTolerance of) the bottom, so a user who scrolled up to
+// read something is not pulled back down. A nil colour means "default text
+// colour" and is resolved to the current theme's foreground here, on the UI
+// side. Must be called on the UI thread.
+func (manager *UIManager) renderLogLines(lines []pendingLogLine) {
+	logList := manager.ui.download.logList
+	output := manager.ui.download.output
+	follow := isScrolledToBottom(output)
+
+	for _, line := range lines {
+		col := line.col
 		if col == nil {
 			col = theme.Color(theme.ColorNameForeground)
 		}
-		label := canvas.NewText(line, col)
+		label := canvas.NewText(line.text, col)
 		label.TextSize = theme.TextSize()
+		logList.Objects = append(logList.Objects, label)
+	}
 
-		ui.download.logList.Add(label)
+	if limit := screenLogLimit(manager.onLogBufferLimit()); len(logList.Objects) > limit {
+		logList.Objects = logList.Objects[len(logList.Objects)-limit:]
+	}
 
-		if limit := manager.onLogBufferLimit(); len(ui.download.logList.Objects) > limit {
-			ui.download.logList.Objects = ui.download.logList.Objects[len(ui.download.logList.Objects)-limit:]
-		}
-
-		ui.download.logList.Refresh()
-		ui.download.output.ScrollToBottom()
-	})
+	logList.Refresh()
+	if follow {
+		// Resize the content now, as the scroll's next layout pass would:
+		// ScrollToBottom clamps the offset to the content's current size,
+		// which is stale until then.
+		output.Content.Resize(output.Content.MinSize().Max(output.Size()))
+		output.ScrollToBottom()
+	}
 }
 
-// clearTerminalOutput empties the terminal output window and resets its scroll position.
+// isScrolledToBottom reports whether scroll shows the end of its content,
+// within followTolerance pixels. Content shorter than the view counts as
+// scrolled to the bottom.
+func isScrolledToBottom(scroll *container.Scroll) bool {
+	// MinSize, like Scroll.ScrollToBottom, is current even before the next
+	// layout pass has resized the content.
+	hidden := scroll.Content.MinSize().Height - scroll.Size().Height
+	return scroll.Offset.Y >= hidden-followTolerance
+}
+
+// clearTerminalOutput empties the terminal output window and resets its
+// scroll position. Lines still queued for the view are dropped too, since
+// they were logged before the clear.
 func (manager *UIManager) clearTerminalOutput() {
 	ui := manager.ui
 	if ui == nil || ui.download.logList == nil {
 		return
 	}
+	manager.takePendingLog()
 	fyne.Do(func() {
 		ui.download.logList.Objects = nil
 		ui.download.logList.Refresh()

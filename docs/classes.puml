@@ -151,6 +151,9 @@ package "UI Layer" #F0F8F0 {
         -onStartDownload : func()
         -onOpenFolder : func()
         -onRequestCancel : func() bool
+        -logMu : sync.Mutex
+        -pendingLog : []pendingLogLine
+        -logFlushArmed : bool
         --
         +createUI()
         +createMainMenu()
@@ -165,6 +168,8 @@ package "UI Layer" #F0F8F0 {
         +resetPreferences()
         +rebuildUI()
         +appendLogLine(line, col)
+        +flushLog()
+        -renderLogLines(lines)
         +clearTerminalOutput()
     }
 

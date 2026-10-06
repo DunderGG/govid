@@ -186,9 +186,11 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 	app.logSvc.CloseSessionLog()
 }
 
-// finishSessionUI re-enables the download button at the end of a session,
-// relabelling it "Retry" if any job in the session failed.
+// finishSessionUI shows any log lines still queued, so the session's summary
+// appears at once, and re-enables the download button, relabelling it
+// "Retry" if any job in the session failed.
 func (app *DownloaderApp) finishSessionUI() {
+	app.uiManager.flushLog()
 	fyne.Do(func() {
 		if app.sessionFailed.Load() {
 			app.ui.download.downloadBtn.SetText("Retry")

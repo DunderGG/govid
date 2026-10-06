@@ -60,6 +60,7 @@ func TestBatchModeTogglePreservesOutput(t *testing.T) {
 	// Append some log lines
 	mgr.appendLogLine("Test log line 1", nil)
 	mgr.appendLogLine("Test log line 2", nil)
+	mgr.flushLog()
 
 	if len(mgr.ui.download.logList.Objects) != 2 {
 		t.Fatalf("Expected 2 log objects, got %d", len(mgr.ui.download.logList.Objects))
@@ -108,6 +109,7 @@ func TestClearTerminalOutputMenuItem(t *testing.T) {
 	// Append log lines
 	mgr.appendLogLine("Line 1", nil)
 	mgr.appendLogLine("Line 2", nil)
+	mgr.flushLog()
 
 	if len(mgr.ui.download.logList.Objects) != 2 {
 		t.Fatalf("Expected 2 log objects, got %d", len(mgr.ui.download.logList.Objects))

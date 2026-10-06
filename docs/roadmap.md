@@ -330,9 +330,9 @@ This document outlines planned features, improvements, and known limitations for
 ### Log Rendering Efficiency
 > Reduce UI work when many log lines are produced.
 
-- [ ] Add batched log flush (buffer lines and append on a short interval) instead of per-line UI updates.
-- [ ] Add a hard upper cap for on-screen log lines even when user selects "Unlimited" (file logging remains unlimited).
-- [ ] Avoid forced `ScrollToBottom()` on every append when user has manually scrolled up.
+- [x] Add batched log flush (buffer lines and append on a short interval) instead of per-line UI updates. (`UIManager.appendLogLine` queues lines; `flushLog` renders them every 100 ms in one `fyne.Do`.)
+- [x] Add a hard upper cap for on-screen log lines even when user selects "Unlimited" (file logging remains unlimited). (`maxScreenLogLines` = 5000.)
+- [x] Avoid forced `ScrollToBottom()` on every append when user has manually scrolled up. (The view follows new lines only while it is at the bottom.)
 
 ### Goroutine Lifecycle Hygiene
 > Ensure background tickers/goroutines never outlive their intended state.

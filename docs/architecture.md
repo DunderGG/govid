@@ -125,7 +125,7 @@ Beyond the five `show*` methods, `UIManager` also owns:
 - **`createMainMenu()`** — builds the menu bar.
 - **`savePreferences`, `resetPreferences`, `rebuildUI`** — preference persistence and full UI-rebuild-on-reset, used by `showPreferences`.
 - **`checkDependencies`, `runUpdateInUI`** — thin delegates to the injected `onCheckDependencies`/`onRunUpdate` callbacks for the startup tool check and the "Update yt-dlp" menu action.
-- **`appendLogLine`** — the `fyne.Do` block that appends a log line, trims the buffer (via `onLogBufferLimit`), and scrolls (see §4.7).
+- **`appendLogLine` / `flushLog`** — batched log rendering. `appendLogLine` is safe to call from any goroutine: it queues the line under `logMu` and, for the first queued line, arms a `logFlushInterval` (100 ms) timer. `flushLog` then renders every queued line in a single `fyne.Do`: it adds the lines, trims once to `screenLogLimit` (the Log Buffer Limit from `onLogBufferLimit`, but never more than `maxScreenLogLines` = 5000, even for "Unlimited"), refreshes once, and scrolls to the bottom only if the view was already there (`isScrolledToBottom`), so a user who scrolled up is not pulled back down. `finishSessionUI` calls `flushLog` directly so the session summary appears at once, and `clearTerminalOutput` drops lines still queued (see §4.7).
 
 `ui.go` is what remains outside `UIManager`: thin one-line `DownloaderApp` delegates to the `show*` methods above (`showHistory`, `showPostProcessing`, `showPreferences`, `showConfigHelp`), plus the shared `roundedCard`/`accentBar` container helpers `UIManager` uses when building widgets.
 
