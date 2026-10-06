@@ -18,6 +18,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Cross-Platform GUI**: Modern interface built with the [Fyne toolkit](https://fyne.io/).
 - **Multiple Formats**: Support for MP4, MKV, WebM, MP3, and M4A.
 - **Metadata & Cover Art**: Writes title, artist, and date tags, the thumbnail as cover art, and (optionally) chapters into downloaded files, and keeps them through post-processing.
+- **Subtitles**: Embed subtitles in the video, save them as `.srt` files beside it, or both, in the languages you choose (optionally including auto-generated captions).
 - **Quality Control**: Select your preferred maximum resolution for downloads. GoVid tells you when a video is not available at that resolution, and names the file after the resolution it actually downloaded.
 - **Video Trimming**: Download only a specific segment — specify a start time, an end time, or both (`HH:MM:SS` / `MM:SS` / seconds).
 - **Batch Processing**: Download multiple URLs at once by switching to Batch Mode (one URL per line). Load a `.txt` list of URLs, paste several links at once, or drop a list or an internet shortcut (`.url`) onto the window.
@@ -133,6 +134,9 @@ Example `govid.json`:
 | `embedMetadata` | `true` or `false`: write title, artist, and date tags into downloads (default `true`) |
 | `embedThumbnail` | `true` or `false`: write the thumbnail as cover art (default `true`; skipped for WebM) |
 | `embedChapters` | `true` or `false`: write chapter markers (default `false`) |
+| `subtitles` | `Off`, `Embed`, `Save as .srt`, `Both` (default `Off`) |
+| `subtitleLangs` | Subtitle languages in yt-dlp's `--sub-langs` syntax, e.g. `en.*,de` (default `en.*`) |
+| `autoSubtitles` | `true` or `false`: also take auto-generated captions (default `false`) |
 
 > **Note:** Standard JSON does not support comments. Adding them will cause a loading error. Use the **Load from Config** button in the Preferences window to apply changes.
 

@@ -18,6 +18,7 @@ import (
 	"image/color"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -55,6 +56,13 @@ type DownloadRequest struct {
 	EmbedThumbnail bool // the thumbnail as cover art (converted to JPEG)
 	EmbedChapters  bool // chapter markers
 
+	// Subtitles is one of subtitleModeOptions ("" means Off). SubtitleLangs
+	// uses yt-dlp's --sub-langs syntax ("" means defaultSubtitleLangs), and
+	// AutoSubtitles also takes auto-generated captions.
+	Subtitles     string
+	SubtitleLangs string
+	AutoSubtitles bool
+
 	// InfoJSON is the probe's JSON for URL (see MediaInfo), or nil. When set,
 	// Run has yt-dlp load it instead of extracting the video again.
 	InfoJSON []byte
@@ -73,6 +81,8 @@ type DownloadArgs struct {
 	TrimDisplayStart string // human-readable trim start ("start" if omitted)
 	TrimDisplayEnd   string // human-readable trim end ("end" if omitted)
 	ThumbnailSkipped bool   // EmbedThumbnail was set, but the container cannot hold cover art
+	HasSubtitles     bool   // the args fetch subtitles
+	SubtitlesSkipped bool   // subtitles were asked for, but the format is audio only
 }
 
 // formatSelection returns the yt-dlp -f selector and the output extension
@@ -200,6 +210,8 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 
 	embedFlags, thumbnailSkipped := embedArgs(req, extension)
 	args = append(args, embedFlags...)
+	subtitleFlags, subtitlesSkipped := subtitleArgs(req, extension)
+	args = append(args, subtitleFlags...)
 
 	// yt-dlp downloads every URL it is given as well as a loaded info file,
 	// so the URL must be left out when the info file stands in for it.
@@ -217,7 +229,49 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 		TrimDisplayStart: trimDisplayStart,
 		TrimDisplayEnd:   trimDisplayEnd,
 		ThumbnailSkipped: thumbnailSkipped,
+		HasSubtitles:     len(subtitleFlags) > 0,
+		SubtitlesSkipped: subtitlesSkipped,
 	}
+}
+
+// subtitleArgs returns the yt-dlp flags that fetch subtitles as req asks:
+// written next to the video as .srt, embedded in it, or both. Audio files
+// cannot hold subtitles, so for them nothing is fetched and skipped is true.
+//
+// --write-subs is always passed, because --write-auto-subs alone would take
+// only auto-generated captions. With it, yt-dlp keeps the subtitle files
+// after embedding them, which "Both" wants; "Embed" undoes that with the
+// no-keep-subs compatibility option. WebM can only hold WebVTT subtitles,
+// so subtitles embedded in WebM are kept in that format.
+func subtitleArgs(req DownloadRequest, extension string) (args []string, skipped bool) {
+	if req.Subtitles == "" || req.Subtitles == subtitlesOff {
+		return nil, false
+	}
+	if isAudioOnlyExt(extension) {
+		return nil, true
+	}
+	langs := strings.TrimSpace(req.SubtitleLangs)
+	if langs == "" {
+		langs = defaultSubtitleLangs
+	}
+	embed := req.Subtitles == subtitlesEmbed || req.Subtitles == subtitlesBoth
+	subtitleFormat := "srt"
+	if embed && extension == "webm" {
+		subtitleFormat = "vtt"
+	}
+
+	args = []string{"--write-subs"}
+	if req.AutoSubtitles {
+		args = append(args, "--write-auto-subs")
+	}
+	args = append(args, "--sub-langs", langs, "--convert-subs", subtitleFormat)
+	switch req.Subtitles {
+	case subtitlesEmbed:
+		args = append(args, "--embed-subs", "--compat-options", "no-keep-subs")
+	case subtitlesBoth:
+		args = append(args, "--embed-subs")
+	}
+	return args, false
 }
 
 // embedArgs returns the yt-dlp flags that write metadata, the thumbnail, and
@@ -331,10 +385,11 @@ func (engine *DownloadEngine) Execute(ctx context.Context, args []string, opts D
 // DownloadResult is the outcome of a single Run call: everything the caller
 // needs to report status and record history, with no intermediate UI state.
 type DownloadResult struct {
-	FinalPaths []string
-	Extension  string // e.g. "mp4", "mkv", "mp3"
-	Scan       scanResult
-	Err        error
+	FinalPaths    []string // the downloaded media files
+	SubtitlePaths []string // subtitle files saved next to them
+	Extension     string   // e.g. "mp4", "mkv", "mp3"
+	Scan          scanResult
+	Err           error
 }
 
 // Run composes BuildArgs, Execute, and FinalizeFiles into the full lifecycle
@@ -361,11 +416,24 @@ func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, opts
 	if built.ThumbnailSkipped {
 		cb.OnLog("[SYSTEM] Not embedding the thumbnail: WebM files cannot hold cover art.", colSystem)
 	}
+	if built.SubtitlesSkipped {
+		cb.OnLog("[SYSTEM] Not downloading subtitles: audio files cannot hold them.", colSystem)
+	}
+	if built.HasSubtitles && built.HasTrim {
+		cb.OnLog("[SYSTEM] Subtitles are not trimmed: they cover the whole video.", colSystem)
+	}
 
 	result := engine.runArgs(ctx, req.SavePath, built, opts, cb)
 	if req.infoJSONPath != "" && result.Err != nil && ctx.Err() == nil && result.Scan.hadExpiredLinkErr {
 		cb.OnLog("[SYSTEM] The video's download links were refused (expired?); asking the site for new ones.", colWarning)
 		req.infoJSONPath = ""
+		result = engine.runArgs(ctx, req.SavePath, engine.BuildArgs(req), opts, cb)
+	}
+	// A subtitle that cannot be fetched fails the whole download, so try
+	// once more without subtitles rather than lose the video.
+	if built.HasSubtitles && result.Err != nil && ctx.Err() == nil && result.Scan.hadSubtitleErr {
+		cb.OnLog("[SYSTEM] The subtitles could not be downloaded; downloading the video without them.", colWarning)
+		req.Subtitles = subtitlesOff
 		result = engine.runArgs(ctx, req.SavePath, engine.BuildArgs(req), opts, cb)
 	}
 	return result
@@ -376,9 +444,12 @@ func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, opts
 func (engine *DownloadEngine) runArgs(ctx context.Context, savePath string, built DownloadArgs, opts DownloadOptions, cb ProcessCallbacks) DownloadResult {
 	scan, cmdErr := engine.Execute(ctx, built.Args, opts, cb)
 
-	var finalPaths []string
+	var finalPaths, subtitlePaths []string
 	if cmdErr == nil {
-		finalPaths = engine.FinalizeFiles(savePath, built.DownloadID, cb.OnLog)
+		finalPaths, subtitlePaths = splitSubtitleFiles(engine.FinalizeFiles(savePath, built.DownloadID, cb.OnLog))
+		for _, path := range subtitlePaths {
+			cb.OnLog(fmt.Sprintf("[SYSTEM] Saved subtitles: %s", filepath.Base(path)), colSystem)
+		}
 	} else {
 		// Execute returns only once the process tree is dead, so nothing is
 		// still writing to these files.
@@ -386,11 +457,29 @@ func (engine *DownloadEngine) runArgs(ctx context.Context, savePath string, buil
 	}
 
 	return DownloadResult{
-		FinalPaths: finalPaths,
-		Extension:  built.Extension,
-		Scan:       scan,
-		Err:        cmdErr,
+		FinalPaths:    finalPaths,
+		SubtitlePaths: subtitlePaths,
+		Extension:     built.Extension,
+		Scan:          scan,
+		Err:           cmdErr,
 	}
+}
+
+// subtitleExts are the extensions of the subtitle files yt-dlp writes next
+// to a video.
+var subtitleExts = []string{".srt", ".vtt", ".ass", ".ssa", ".lrc", ".ttml", ".srv1", ".srv2", ".srv3", ".json3"}
+
+// splitSubtitleFiles separates subtitle files (e.g. "Video.en.srt") from the
+// media files among paths, so post-processing and history see only media.
+func splitSubtitleFiles(paths []string) (media, subtitles []string) {
+	for _, path := range paths {
+		if slices.Contains(subtitleExts, strings.ToLower(filepath.Ext(path))) {
+			subtitles = append(subtitles, path)
+		} else {
+			media = append(media, path)
+		}
+	}
+	return media, subtitles
 }
 
 // saveInfoJSON writes a probe's JSON to a temporary file for yt-dlp's

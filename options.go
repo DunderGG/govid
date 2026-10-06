@@ -89,3 +89,14 @@ const (
 
 // upscaleTargetOptions lists the upscale targets in display order.
 var upscaleTargetOptions = []string{upscaleDouble, upscale1080p, upscale1440p, upscale4K}
+
+// Subtitle modes (Preferences "Subtitles").
+const (
+	subtitlesOff   = "Off"
+	subtitlesEmbed = "Embed"
+	subtitlesSRT   = "Save as .srt"
+	subtitlesBoth  = "Both"
+)
+
+// subtitleModeOptions lists the subtitle modes in display order.
+var subtitleModeOptions = []string{subtitlesOff, subtitlesEmbed, subtitlesSRT, subtitlesBoth}

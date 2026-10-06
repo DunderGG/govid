@@ -29,6 +29,7 @@ type scanResult struct {
 	hadTransientErr   bool     // true when a recoverable network/rate-limit error was seen in stderr
 	hadExtractorErr   bool     // true when stderr showed an error typical of a site change that a newer yt-dlp may fix
 	hadExpiredLinkErr bool     // true when stderr showed an HTTP 403 or 410 error, which expired format URLs give
+	hadSubtitleErr    bool     // true when stderr said subtitles could not be downloaded, which fails the whole download
 }
 
 // expiredLinkErrPatterns are substrings of the errors a site gives for a
@@ -45,6 +46,10 @@ var extractorErrPatterns = []string{
 	"Sign in to confirm",
 	"HTTP Error 403",
 }
+
+// subtitleErrPattern starts the error yt-dlp gives when a subtitle file
+// cannot be downloaded (YouTube often answers 429). It fails the download.
+const subtitleErrPattern = "Unable to download video subtitles"
 
 // transientErrPatterns are substrings that indicate a temporary failure worth retrying.
 var transientErrPatterns = []string{
@@ -150,6 +155,9 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 			isError := strings.Contains(line, "ERROR:")
 			result.hadExtractorErr = result.hadExtractorErr || (isError && containsAny(line, extractorErrPatterns))
 			result.hadExpiredLinkErr = result.hadExpiredLinkErr || (isError && containsAny(line, expiredLinkErrPatterns))
+			// yt-dlp reports this as an ERROR, or inside the WARNING it gives when
+			// it falls back from loaded info to the URL.
+			result.hadSubtitleErr = result.hadSubtitleErr || strings.Contains(line, subtitleErrPattern)
 			var logColor color.Color // nil = default foreground, resolved by the UI
 			switch {
 			case strings.Contains(line, "ERROR:"):

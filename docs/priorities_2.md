@@ -102,9 +102,31 @@ Tests: `TestParseURLList` and `TestLoadURLListFillsBatchField` (a 50-line CRLF l
 
 ---
 
-## 4. Subtitle support
+## 4. ✅ Subtitle support
 
 **Roadmap:** Medium Priority → Subtitle Support.
+
+**Status: Done.** The open questions were answered first, by running the bundled yt-dlp (2026.03.17) against a local HTTP server that served a test video, WebVTT subtitles, and a subtitle URL answering 429, through `--load-info-json`:
+
+| Flags | Result |
+| --- | --- |
+| `--embed-subs` | embedded, `.srt` deleted |
+| `--write-subs --embed-subs` | embedded, `.srt` **kept** |
+| `--write-subs --embed-subs --compat-options no-keep-subs` | embedded, `.srt` deleted |
+| `--write-auto-subs --embed-subs` | only the **auto** captions embedded; the manual ones are ignored |
+| a subtitle URL answering 429 | the **whole download fails** (exit 1) |
+
+What was built:
+- **Settings.** Preferences → **Subtitles** (Off / Embed / Save as .srt / Both) with **Include auto-generated** (off), and **Subtitle Languages** (default `en.*`). They are saved in `AppPreferences`, can be set in `govid.json` (`subtitles`, `subtitleLangs`, `autoSubtitles`), and are logged in the session configuration.
+- **Flags** (`subtitleArgs`). Every mode except Off gets `--write-subs [--write-auto-subs] --sub-langs <langs> --convert-subs srt`. `--write-subs` is always passed, because `--write-auto-subs` alone ignores the manual subtitles. Embed adds `--embed-subs --compat-options no-keep-subs`, and Both adds `--embed-subs`. WebM accepts only WebVTT, so subtitles embedded in WebM use `--convert-subs vtt`. MP3/M4A skip subtitles, and the log says so.
+- **Sidecars.** `splitSubtitleFiles` moves the renamed subtitle files into `DownloadResult.SubtitlePaths`. `FinalPaths`, which post-processing and history use, holds only media, and each saved subtitle file is logged.
+- **Languages.** `MediaInfo` reads the keys of `subtitles` and `automatic_captions`. `reportSubtitles` logs them, and `matchSubLangs` (yt-dlp's rules: whole-code regexes, `all`, `-` to remove) says which will download, or warns that none matches.
+- **Failures.** `scanResult.hadSubtitleErr` matches "Unable to download video subtitles". yt-dlp prints it as an `ERROR:` from a URL, or inside the `WARNING:` it gives when it falls back from loaded info to the URL. `Run` then repeats the download once without subtitles and says so.
+- **Trimming.** Subtitles are not cut; the log says so for trimmed downloads, and the guide says they cover the whole video.
+
+Still to do by hand: an MP4 with **Embed** from a real YouTube video showing a selectable track in a player. The local check above confirmed that the track is embedded: ffmpeg read "Hello manual" back from the MP4. Tests: `TestSubtitleArgs`, `TestMatchSubLangs`, `TestSplitSubtitleFiles`, `TestRunSavesSubtitlesBesideTheVideo`, `TestRunRetriesWithoutSubtitlesWhenTheyFail`, `TestRunNotesUntrimmedSubtitlesAndSkipsAudio`, `TestStartDownloadKeepsSubtitlesOutOfHistory`, `TestStartDownloadWarnsWhenNoSubtitleLanguageMatches`, `TestMergeConfigSubtitles`, and `TestSubtitlePreferenceDefaults`.
+
+A side finding for #1: when a `--load-info-json` download fails, yt-dlp sometimes falls back to the URL by itself ("The info failed to download … trying with URL"). It did so for the subtitle error, but **not** for a failed format download, so GoVid's own 403/410 retry is still needed.
 
 **Problem.** There is no way to download subtitles. Post-processing already keeps subtitle streams (since #10 of the first round), so only the download side is missing.
 

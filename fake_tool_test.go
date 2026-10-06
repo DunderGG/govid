@@ -114,6 +114,12 @@ func runFakeTool(mode string, args []string) int {
 	switch mode {
 	case "ytdlp-download", "ytdlp-playlist", "ytdlp-probe-fail":
 		return fakeYtDlpDownload(args)
+	case "ytdlp-subtitles-429":
+		if slices.Contains(args, "--write-subs") {
+			fmt.Fprintln(os.Stderr, "ERROR: Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests")
+			return 1
+		}
+		return fakeYtDlpDownload(args)
 	case "ytdlp-info-expired":
 		if slices.Contains(args, "--load-info-json") {
 			return fakeYtDlpExpiredLinks(args)
@@ -187,6 +193,31 @@ func fakeYtDlpDownload(args []string) int {
 	fmt.Fprintln(os.Stderr, "[debug] Command-line config: fake")
 	// Real yt-dlp prints post-processor messages such as [Merger] to stdout.
 	fmt.Printf("[Merger] Merging formats into %q\n", path)
+	return fakeWriteSubtitles(args, strings.TrimSuffix(path, "."+ext))
+}
+
+// fakeSubtitleLangs are the subtitle languages the fake single video has.
+var fakeSubtitleLangs = []string{"en", "de"}
+
+// fakeWriteSubtitles mimics yt-dlp's subtitle handling, as checked against
+// the real one: with --write-subs, each fakeSubtitleLangs entry that
+// --sub-langs selects is written as <base>.<lang>.<--convert-subs ext>,
+// and is kept after --embed-subs unless "--compat-options no-keep-subs" is
+// given.
+func fakeWriteSubtitles(args []string, base string) int {
+	if !slices.Contains(args, "--write-subs") {
+		return 0
+	}
+	if slices.Contains(args, "--embed-subs") && argAfter(args, "--compat-options") == "no-keep-subs" {
+		return 0
+	}
+	for _, lang := range matchSubLangs(argAfter(args, "--sub-langs"), fakeSubtitleLangs) {
+		path := base + "." + lang + "." + argAfter(args, "--convert-subs")
+		if err := os.WriteFile(path, []byte("1\n00:00:00,000 --> 00:00:01,000\nHello\n"), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: %v\n", err)
+			return 2
+		}
+	}
 	return 0
 }
 
@@ -258,7 +289,7 @@ func fakeYtDlpProbe(mode string, noPlaylist bool) int {
 		return 1
 	}
 	recordFakeExtraction()
-	fmt.Printf(`{"_type": "video", "title": "Fake Video", "duration": 10, "height": %d, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
+	fmt.Printf(`{"_type": "video", "title": "Fake Video", "duration": 10, "height": %d, "subtitles": {"en": [], "de": []}, "automatic_captions": {"en": [], "fr": []}, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
 		fakeVideoHeight, fakeVideoSize-1024*1024, 1024*1024)
 	return 0
 }

@@ -94,9 +94,9 @@ This document outlines planned features, improvements, and known limitations for
 ### Subtitle Support
 > Download and optionally embed subtitles.
 
-- [ ] Add a "Download subtitles" checkbox.
-- [ ] Allow the user to select preferred subtitle language(s).
-- [ ] Support both `.srt` sidecar files and embedded soft-subs in MKV.
+- [x] Add a "Download subtitles" checkbox. (Preferences → **Subtitles**: Off / Embed / Save as .srt / Both, plus "Include auto-generated"; also `subtitles`/`autoSubtitles` in `govid.json` and the session log.)
+- [x] Allow the user to select preferred subtitle language(s). (**Subtitle Languages**, in yt-dlp `--sub-langs` syntax, default `en.*`. The log lists the languages the probe found and warns when none matches.)
+- [x] Support both `.srt` sidecar files and embedded soft-subs in MKV. (In MP4 and WebM too; `subtitleArgs` in `download_engine.go`. Sidecar files are kept out of post-processing and history, and a subtitle download that fails is retried once without subtitles.)
 
 ### Disk Space Pre-check
 > Prevent mid-download failures due to full drives.

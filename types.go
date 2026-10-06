@@ -84,6 +84,9 @@ type PreferenceControls struct {
 	embedMetadata  *widget.Check      // Option to write metadata tags into downloaded files
 	embedThumbnail *widget.Check      // Option to write the thumbnail into downloaded files as cover art
 	embedChapters  *widget.Check      // Option to write chapter markers into downloaded files
+	subtitles      *widget.Select     // Subtitle mode: Off, Embed, Save as .srt, or Both
+	subtitleLangs  *widget.Entry      // Subtitle languages, in yt-dlp --sub-langs syntax
+	autoSubtitles  *widget.Check      // Option to also take auto-generated captions
 }
 
 // NewPreferenceControls constructs the Preferences dialog's widgets.
@@ -97,6 +100,9 @@ func NewPreferenceControls() *PreferenceControls {
 	cookies := widget.NewEntry()
 	cookies.SetPlaceHolder("Path to cookies.txt (optional)")
 
+	subtitleLangs := widget.NewEntry()
+	subtitleLangs.SetPlaceHolder(defaultSubtitleLangs + " (e.g. en.*,de,ja)")
+
 	return &PreferenceControls{
 		maxSpeed:       maxSpeed,
 		themeMode:      themeMode,
@@ -108,6 +114,9 @@ func NewPreferenceControls() *PreferenceControls {
 		embedMetadata:  widget.NewCheck("Metadata", nil),
 		embedThumbnail: widget.NewCheck("Thumbnail", nil),
 		embedChapters:  widget.NewCheck("Chapters", nil),
+		subtitles:      widget.NewSelect(subtitleModeOptions, nil),
+		subtitleLangs:  subtitleLangs,
+		autoSubtitles:  widget.NewCheck("Include auto-generated", nil),
 	}
 }
 

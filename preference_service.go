@@ -38,6 +38,9 @@ const (
 	prefEmbedMetadata     = "embedMetadata"
 	prefEmbedThumbnail    = "embedThumbnail"
 	prefEmbedChapters     = "embedChapters"
+	prefSubtitles         = "subtitles"
+	prefSubtitleLangs     = "subtitleLangs"
+	prefAutoSubtitles     = "autoSubtitles"
 	prefBatchMode         = "batchMode"
 	prefSaveLog           = "saveLog"
 	prefNotify            = "notify"
@@ -78,6 +81,8 @@ const (
 	defaultCheckUpdates      = true
 	defaultEmbedMetadata     = true
 	defaultEmbedThumbnail    = true
+	defaultSubtitles         = subtitlesOff
+	defaultSubtitleLangs     = "en.*"
 	defaultSmoothMotionMode  = smoothModeBalanced
 	defaultSmoothFPS         = 60.0
 	defaultDenoiseMode       = denoiseModeHQDN3D
@@ -100,11 +105,14 @@ type AppPreferences struct {
 	ThemeMode         string
 	CookiesPath       string
 	LogLimit          string
-	ShowDebug         bool // show yt-dlp [debug] lines in the log view (they always go to the log file)
-	CheckUpdates      bool // check for newer yt-dlp and GoVid releases on startup
-	EmbedMetadata     bool // write title, artist, date, … tags into downloaded files
-	EmbedThumbnail    bool // write the thumbnail into downloaded files as cover art
-	EmbedChapters     bool // write chapter markers into downloaded files
+	ShowDebug         bool   // show yt-dlp [debug] lines in the log view (they always go to the log file)
+	CheckUpdates      bool   // check for newer yt-dlp and GoVid releases on startup
+	EmbedMetadata     bool   // write title, artist, date, … tags into downloaded files
+	EmbedThumbnail    bool   // write the thumbnail into downloaded files as cover art
+	EmbedChapters     bool   // write chapter markers into downloaded files
+	Subtitles         string // one of subtitleModeOptions
+	SubtitleLangs     string // yt-dlp --sub-langs list, e.g. "en.*,de"
+	AutoSubtitles     bool   // also take auto-generated captions when a language has no subtitles
 	BatchMode         bool
 	SaveLog           bool
 	Notify            bool
@@ -176,6 +184,9 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		EmbedMetadata:     prefSvc.store.BoolWithFallback(prefEmbedMetadata, defaultEmbedMetadata),
 		EmbedThumbnail:    prefSvc.store.BoolWithFallback(prefEmbedThumbnail, defaultEmbedThumbnail),
 		EmbedChapters:     prefSvc.store.Bool(prefEmbedChapters),
+		Subtitles:         prefSvc.store.StringWithFallback(prefSubtitles, defaultSubtitles),
+		SubtitleLangs:     prefSvc.store.StringWithFallback(prefSubtitleLangs, defaultSubtitleLangs),
+		AutoSubtitles:     prefSvc.store.Bool(prefAutoSubtitles),
 		BatchMode:         prefSvc.store.Bool(prefBatchMode),
 		SaveLog:           prefSvc.store.Bool(prefSaveLog),
 		Notify:            prefSvc.store.Bool(prefNotify),
@@ -263,6 +274,9 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 	prefSvc.store.SetBool(prefEmbedMetadata, p.EmbedMetadata)
 	prefSvc.store.SetBool(prefEmbedThumbnail, p.EmbedThumbnail)
 	prefSvc.store.SetBool(prefEmbedChapters, p.EmbedChapters)
+	prefSvc.store.SetString(prefSubtitles, p.Subtitles)
+	prefSvc.store.SetString(prefSubtitleLangs, p.SubtitleLangs)
+	prefSvc.store.SetBool(prefAutoSubtitles, p.AutoSubtitles)
 	prefSvc.store.SetBool(prefBatchMode, p.BatchMode)
 	prefSvc.store.SetBool(prefSaveLog, p.SaveLog)
 	prefSvc.store.SetBool(prefNotify, p.Notify)
@@ -295,6 +309,7 @@ func (prefSvc *PreferenceService) Reset() {
 		prefSavedPath, prefFormat, prefQuality, prefMaxSpeed, prefThemeMode,
 		prefSavePrefs, prefCookiesPath, prefLogLimit, prefShowDebug, prefCheckUpdates,
 		prefEmbedMetadata, prefEmbedThumbnail, prefEmbedChapters,
+		prefSubtitles, prefSubtitleLangs, prefAutoSubtitles,
 		prefBatchMode, prefSaveLog, prefNotify, prefAutoRetry, prefEnablePostProcess,
 		prefSmoothMotion, prefSmoothMotionMode, prefSmoothFPS,
 		prefSharpen, prefSharpenAmount, prefNormalize, prefVividMode,
@@ -321,6 +336,12 @@ type AppConfig struct {
 	EmbedMetadata  *bool `json:"embedMetadata"`
 	EmbedThumbnail *bool `json:"embedThumbnail"`
 	EmbedChapters  *bool `json:"embedChapters"`
+
+	// Subtitles is one of subtitleModeOptions; SubtitleLangs uses yt-dlp's
+	// --sub-langs syntax.
+	Subtitles     string `json:"subtitles"`
+	SubtitleLangs string `json:"subtitleLangs"`
+	AutoSubtitles *bool  `json:"autoSubtitles"`
 }
 
 // parseAppConfig unmarshals raw JSON bytes into an AppConfig.
@@ -407,6 +428,20 @@ func (svc *PreferenceService) MergeConfig(cfg *AppConfig, base AppPreferences, v
 	}
 	if cfg.EmbedChapters != nil {
 		base.EmbedChapters = *cfg.EmbedChapters
+	}
+
+	if cfg.Subtitles != "" {
+		if isValidOption(cfg.Subtitles, subtitleModeOptions) {
+			base.Subtitles = cfg.Subtitles
+		} else {
+			errs = append(errs, fmt.Sprintf("invalid subtitles: %s", cfg.Subtitles))
+		}
+	}
+	if cfg.SubtitleLangs != "" {
+		base.SubtitleLangs = cfg.SubtitleLangs
+	}
+	if cfg.AutoSubtitles != nil {
+		base.AutoSubtitles = *cfg.AutoSubtitles
 	}
 
 	return base, errs

@@ -376,6 +376,14 @@ func (manager *UIManager) showConfigHelp() {
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
 		{"Log Buffer Limit", "Found in **Tools → Preferences**. The number of lines kept in the Terminal Output panel; older lines are removed from the top. The panel never shows more than the latest **5000** lines, so choosing **Unlimited** only affects the lines kept for the log file. The log file itself is never trimmed. If you scroll up while a download is running, the panel stays where you left it; scroll back to the bottom to follow new lines again."},
 		{"Embed in File", "Found in **Tools → Preferences**. What yt-dlp writes into each downloaded file:\n  * **Metadata** (on by default) – title, artist, upload date, and description tags, so music players show more than a file name\n  * **Thumbnail** (on by default) – the video's thumbnail as cover art, converted to JPEG. WebM files cannot hold cover art, so it is skipped for them\n  * **Chapters** – the video's chapter markers\n\nPost-processing keeps the cover art, chapters, subtitles, and tags of the files it re-encodes."},
+		{"Subtitles", "Found in **Tools → Preferences**. Downloads the video's subtitles:\n" +
+			"  * **" + subtitlesOff + "** (default) – no subtitles\n" +
+			"  * **" + subtitlesEmbed + "** – as a subtitle track inside the video, which players let you turn on and off\n" +
+			"  * **" + subtitlesSRT + "** – as `.srt` files next to the video, named like it with the language added, e.g. `GoVid_Title.en.srt`\n" +
+			"  * **" + subtitlesBoth + "** – both of the above\n\n" +
+			"**Subtitle Languages** takes language codes or patterns separated by commas, as yt-dlp's `--sub-langs` does: `en.*` (the default) matches `en`, `en-US`, `en-GB`, and so on; `all,-live_chat` takes every language except live chat. Before each download, the log lists the languages the video has and warns when none matches; the video then downloads without subtitles.\n\n" +
+			"**Include auto-generated** also takes captions the site generated automatically, for languages that have no subtitles written by people. They are often inaccurate, and YouTube offers them in over 150 languages.\n\n" +
+			"Audio formats cannot hold subtitles, so none are downloaded for them. WebM can only hold WebVTT subtitles, so those embedded in WebM stay in that format. For a trimmed download, subtitles still cover the whole video. If the subtitles cannot be downloaded (YouTube sometimes refuses with \"Too Many Requests\"), GoVid downloads the video again without them and says so."},
 		{"Debug Output", "Found in **Tools → Preferences**. GoVid runs yt-dlp in verbose mode so the log file has everything needed for a bug report, but the **[debug]** lines are hidden from the Terminal Output panel unless this is checked. The panel also shows only the latest download progress line for each file; the log file keeps them all."},
 		{"Updates", "Found in **Tools → Preferences**. When **Check for updates on startup** is checked, GoVid asks GitHub (at most once a day) whether a newer yt-dlp is available and, if so, shows a notice with an **Update now** button. Sites change often, and an outdated yt-dlp is the most common reason downloads stop working. **Tools → Update yt-dlp** shows the installed and latest versions and updates on demand.\n\nGoVid also tells you when a newer GoVid release is available; **What's new** shows its release notes and a link to the download page. **Tools → Check for GoVid updates** checks right away.\n\nIf the update fails because GoVid's folder cannot be written to (for example under `Program Files`), run GoVid as administrator once, or move it to a folder you own."},
 		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
@@ -388,7 +396,10 @@ func (manager *UIManager) showConfigHelp() {
 			"* **format**: " + codeList(formatOptions) + "\n" +
 			"* **quality**: " + codeList(qualityOptions) + "\n" +
 			"* **path**: Any valid absolute folder path\n* **maxSpeed**: Numeric value with unit, e.g., `50K`, `5M`, `1G` (or blank for unlimited)\n" +
-			"* **embedMetadata**, **embedThumbnail**, **embedChapters**: `true` or `false`"},
+			"* **embedMetadata**, **embedThumbnail**, **embedChapters**: `true` or `false`\n" +
+			"* **subtitles**: " + codeList(subtitleModeOptions) + "\n" +
+			"* **subtitleLangs**: yt-dlp `--sub-langs` syntax, e.g. `en.*,de`\n" +
+			"* **autoSubtitles**: `true` or `false`"},
 	}
 
 	content := container.NewVBox()
@@ -449,6 +460,8 @@ func (manager *UIManager) showPreferences() {
 			{Text: "Debug Output", Widget: ui.prefs.showDebug, HintText: "Show yt-dlp's [debug] lines in the log view; the log file always has them"},
 			{Text: "Updates", Widget: ui.prefs.checkUpdates, HintText: "Check GitHub once a day for newer yt-dlp and GoVid releases"},
 			{Text: "Embed in File", Widget: container.NewHBox(ui.prefs.embedMetadata, ui.prefs.embedThumbnail, ui.prefs.embedChapters), HintText: "Write tags (title, artist, date), cover art, and chapter markers into downloads"},
+			{Text: "Subtitles", Widget: container.NewHBox(ui.prefs.subtitles, ui.prefs.autoSubtitles), HintText: "Embed subtitles in videos, save them as .srt files beside them, or both"},
+			{Text: "Subtitle Languages", Widget: ui.prefs.subtitleLangs, HintText: "Comma-separated language codes or patterns, e.g. en.*,de (yt-dlp --sub-langs)"},
 			{Text: "Max Download Speed", Widget: ui.prefs.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.prefs.themeMode, HintText: "Restart may be required for some changes"},
 			{Text: "Cookies File", Widget: manager.buildCookiesRow(), HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
@@ -467,7 +480,7 @@ func (manager *UIManager) showPreferences() {
 		widget.NewSeparator(),
 		container.NewGridWithColumns(2, loadConfigBtn, resetBtn),
 	)))
-	manager.prefsWindow.Resize(fyne.NewSize(520, 480))
+	manager.prefsWindow.Resize(fyne.NewSize(520, 560))
 	manager.prefsWindow.SetOnClosed(onWindowClosed(&manager.prefsWindow))
 	manager.prefsWindow.Show()
 }

@@ -129,6 +129,9 @@ package "UI Layer" #F0F8F0 {
         +embedMetadata : *widget.Check
         +embedThumbnail : *widget.Check
         +embedChapters : *widget.Check
+        +subtitles : *widget.Select
+        +subtitleLangs : *widget.Entry
+        +autoSubtitles : *widget.Check
     }
 
     class PostProcessControls <<ui>> {
@@ -251,6 +254,9 @@ package "Download Engine" #FFF8F0 {
         +EmbedMetadata : bool
         +EmbedThumbnail : bool
         +EmbedChapters : bool
+        +Subtitles : string
+        +SubtitleLangs : string
+        +AutoSubtitles : bool
         +InfoJSON : []byte
     }
 
@@ -262,6 +268,7 @@ package "Download Engine" #FFF8F0 {
 
     class DownloadResult <<data>> {
         +FinalPaths : []string
+        +SubtitlePaths : []string
         +Extension : string
         +Scan : scanResult
         +Err : error
@@ -274,6 +281,9 @@ package "Download Engine" #FFF8F0 {
         +HasTrim : bool
         +TrimDisplayStart : string
         +TrimDisplayEnd : string
+        +ThumbnailSkipped : bool
+        +HasSubtitles : bool
+        +SubtitlesSkipped : bool
     }
 
     class ProcessCallbacks <<bridge>> {
@@ -289,6 +299,8 @@ package "Download Engine" #FFF8F0 {
         +Duration : float64
         +Entries : []PlaylistEntry
         +Height : int
+        +Subtitles : map[string]RawMessage
+        +AutomaticCaptions : map[string]RawMessage
         -raw : []byte
         -probedAt : time.Time
         --
@@ -531,6 +543,9 @@ package "Preference Service" #FFF0F0 {
         +EmbedMetadata : bool
         +EmbedThumbnail : bool
         +EmbedChapters : bool
+        +Subtitles : string
+        +SubtitleLangs : string
+        +AutoSubtitles : bool
         +CookiesPath : string
         +MaxSpeed : string
         +BatchMode : bool
@@ -652,6 +667,9 @@ package "Log Service" #F0F8FF {
         +EmbedMetadata : bool
         +EmbedThumbnail : bool
         +EmbedChapters : bool
+        +Subtitles : string
+        +SubtitleLangs : string
+        +AutoSubtitles : bool
         +SaveLog : bool
         +Notify : bool
         +AutoRetry : bool
@@ -690,6 +708,9 @@ package "Support Types" #F5F5F5 {
         +EmbedMetadata : *bool
         +EmbedThumbnail : *bool
         +EmbedChapters : *bool
+        +Subtitles : string
+        +SubtitleLangs : string
+        +AutoSubtitles : *bool
     }
 
 }

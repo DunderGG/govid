@@ -38,6 +38,11 @@ type MediaInfo struct {
 	// streams, the video stream's); 0 when unknown or audio only.
 	Height int `json:"height"`
 
+	// The subtitle languages the site offers, by language code: written by
+	// people, and generated automatically. Only the codes are used.
+	Subtitles         map[string]json.RawMessage `json:"subtitles"`
+	AutomaticCaptions map[string]json.RawMessage `json:"automatic_captions"`
+
 	// The size of the format(s) the -f selector picked: one set of sizes
 	// for a single format, or one per stream in RequestedFormats when a
 	// video and an audio stream are merged.

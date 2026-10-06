@@ -270,6 +270,7 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 	}
 	req := app.newDownloadRequest(item.url, session.savePath, session.trimStart, session.trimEnd)
 	app.reportQualityFit(item, req)
+	app.reportSubtitles(item, req)
 
 	switch app.checkDiskSpace(queueCtx, session, index, continueLowSpace) {
 	case spaceSkip:
@@ -446,6 +447,10 @@ func (app *DownloaderApp) newDownloadRequest(rawURL, savePath, trimStart, trimEn
 		EmbedMetadata:  app.ui.prefs.embedMetadata.Checked,
 		EmbedThumbnail: app.ui.prefs.embedThumbnail.Checked,
 		EmbedChapters:  app.ui.prefs.embedChapters.Checked,
+
+		Subtitles:     app.ui.prefs.subtitles.Selected,
+		SubtitleLangs: strings.TrimSpace(app.ui.prefs.subtitleLangs.Text),
+		AutoSubtitles: app.ui.prefs.autoSubtitles.Checked,
 	}
 }
 
