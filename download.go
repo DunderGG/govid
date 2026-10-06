@@ -3,8 +3,9 @@
 // Responsibilities:
 //   - Reads and validates the session inputs (URLs, save path, trim range)
 //     from the widgets, and resets the UI for a new session.
-//   - Runs the session: downloads each URL through DownloadEngine (runYtDlp
-//     wires the engine's ProcessCallbacks to the UI), then post-processes the
+//   - Runs the session: checks each URL and expands playlists (playlist.go),
+//     downloads each queued URL through DownloadEngine (runYtDlp wires the
+//     engine's ProcessCallbacks to the UI), then post-processes the
 //     results. Building yt-dlp arguments and executing it live in
 //     download_engine.go; parsing its output lives in logscanner.go.
 //   - Records download history and logs a per-download summary.
@@ -26,7 +27,8 @@ import (
 // downloadSession holds the inputs of one download session. They are read
 // from the widgets once, on the UI thread, when the session starts.
 type downloadSession struct {
-	urls      []string
+	urls      []string    // the URLs as entered
+	items     []queueItem // the download queue: urls after checkURLs expanded any playlists
 	savePath  string
 	trimStart string
 	trimEnd   string
@@ -39,9 +41,9 @@ func (session downloadSession) hasPostProcess() bool {
 	return len(session.vfFilters) > 0 || len(session.afFilters) > 0
 }
 
-// isBatch reports whether the session downloads more than one URL.
+// isBatch reports whether the session's queue holds more than one URL.
 func (session downloadSession) isBatch() bool {
-	return len(session.urls) > 1
+	return len(session.items) > 1
 }
 
 // startDownload validates the inputs of a new download session, resets the UI
@@ -154,7 +156,8 @@ func (app *DownloaderApp) openSessionLog(session downloadSession) {
 	app.logSvc.WriteSessionConfig(cfg, app.appendOutput)
 }
 
-// runSession downloads every URL in the session, post-processes the results,
+// runSession checks every URL in the session (expanding playlists into the
+// videos the user picks), downloads them, post-processes the results,
 // sends the completion notification, and finally restores the idle UI. It
 // runs on its own goroutine and owns queueCtx until it returns.
 func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context.CancelFunc, session downloadSession) {
@@ -168,6 +171,16 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 	defer app.isRunning.Store(false)
 	defer app.finishSessionUI()
 
+	session.items = app.checkURLs(queueCtx, session)
+	switch {
+	case queueCtx.Err() != nil:
+		app.updateStatus("Status: Canceled.")
+		app.setStatusIndicator(StatusCanceled)
+	case len(session.items) == 0:
+		app.updateStatus("Status: Nothing to download.")
+		app.setStatusIndicator(StatusIdle)
+	}
+
 	finalPaths := app.runQueue(queueCtx, session)
 
 	switch {
@@ -176,10 +189,10 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 	case session.hasPostProcess():
 		app.runPostProcessing(queueCtx, stopQueue, finalPaths, session)
 		if queueCtx.Err() == nil {
-			app.notifyCompletion(true, len(finalPaths), len(session.urls))
+			app.notifyCompletion(true, len(finalPaths), len(session.items))
 		}
 	default:
-		app.notifyCompletion(false, len(finalPaths), len(session.urls))
+		app.notifyCompletion(false, len(finalPaths), len(session.items))
 	}
 
 	// Close the log file here, after post-processing, so FFmpeg output is captured.
@@ -200,16 +213,16 @@ func (app *DownloaderApp) finishSessionUI() {
 	})
 }
 
-// runQueue downloads the session's URLs one after another until the queue is
+// runQueue downloads the session's queue one item after another until it is
 // cancelled, and returns the finalized paths of every successful download so
 // post-processing can run over all of them at once.
 func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSession) []string {
 	if session.isBatch() {
-		app.appendOutput(fmt.Sprintf("[SYSTEM] Batch mode: %d URLs queued.", len(session.urls)), colInfo)
+		app.appendOutput(fmt.Sprintf("[SYSTEM] Batch mode: %d URLs queued.", len(session.items)), colInfo)
 	}
 
 	var finalPaths []string
-	for index := range session.urls {
+	for index := range session.items {
 		if queueCtx.Err() != nil {
 			break
 		}
@@ -219,7 +232,7 @@ func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSes
 	return finalPaths
 }
 
-// downloadItem downloads session.urls[index] and returns its finalized paths.
+// downloadItem downloads session.items[index] and returns its finalized paths.
 func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloadSession, index int) []string {
 	// In batch mode, give each URL its own child context so the Cancel
 	// button skips only the active download without killing the queue.
@@ -230,7 +243,7 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 		runCtx, skipItem = context.WithCancel(queueCtx)
 		defer skipItem() // release the per-item context whether it was cancelled or not
 		app.SetCancelFunc(skipItem)
-		app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", index+1, len(session.urls)), colInfo)
+		app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", index+1, len(session.items)), colInfo)
 	}
 	if index > 0 {
 		// Reset progress UI and stats between URLs.
@@ -238,8 +251,8 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 		fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
 	}
 
-	url := session.urls[index]
-	return app.runYtDlp(runCtx, url, session.savePath, session.trimStart, session.trimEnd, index+1, len(session.urls))
+	url := session.items[index].url
+	return app.runYtDlp(runCtx, url, session.savePath, session.trimStart, session.trimEnd, index+1, len(session.items))
 }
 
 // runPostProcessing runs the session's filters over every downloaded file in
@@ -305,28 +318,8 @@ func completionNotification(postProcessed bool, fileCount, urlCount int) *fyne.N
 func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath string, trimStart string, trimEnd string, index, total int) []string {
 	startTime := time.Now()
 
-	// Resolve speed limit: prefer current UI value, fall back to saved preference.
-	limit := strings.TrimSpace(app.ui.prefs.maxSpeed.Text)
-	if limit == "" {
-		limit = app.prefSvc.Load().MaxSpeed
-	}
-
-	engine := NewDownloadEngine(
-		app.depSvc.Resolve("yt-dlp"),
-		app.depSvc.Resolve("ffmpeg"),
-	)
-
-	req := DownloadRequest{
-		URL:         rawURL,
-		SavePath:    savePath,
-		Format:      app.ui.download.format.Selected,
-		Quality:     app.ui.download.quality.Selected,
-		TrimStart:   trimStart,
-		TrimEnd:     trimEnd,
-		MaxSpeed:    limit,
-		CookiesPath: strings.TrimSpace(app.ui.prefs.cookies.Text),
-	}
-	dl := engine.Run(ctx, req, DownloadOptions{
+	req := app.newDownloadRequest(rawURL, savePath, trimStart, trimEnd)
+	dl := app.newDownloadEngine().Run(ctx, req, DownloadOptions{
 		AutoRetry: app.ui.download.autoRetry.Checked,
 		Index:     index,
 		Total:     total,
@@ -342,6 +335,34 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath 
 	}
 	app.reportDownloadResult(ctx, dl, time.Since(startTime))
 	return dl.FinalPaths
+}
+
+// newDownloadEngine returns a DownloadEngine for the resolved yt-dlp and
+// ffmpeg.
+func (app *DownloaderApp) newDownloadEngine() *DownloadEngine {
+	return NewDownloadEngine(app.depSvc.Resolve("yt-dlp"), app.depSvc.Resolve("ffmpeg"))
+}
+
+// newDownloadRequest gathers the widget state a download of rawURL needs
+// into a DownloadRequest. The probe uses the same request, so it describes
+// the formats the download will fetch.
+func (app *DownloaderApp) newDownloadRequest(rawURL, savePath, trimStart, trimEnd string) DownloadRequest {
+	// Resolve speed limit: prefer current UI value, fall back to saved preference.
+	limit := strings.TrimSpace(app.ui.prefs.maxSpeed.Text)
+	if limit == "" {
+		limit = app.prefSvc.Load().MaxSpeed
+	}
+
+	return DownloadRequest{
+		URL:         rawURL,
+		SavePath:    savePath,
+		Format:      app.ui.download.format.Selected,
+		Quality:     app.ui.download.quality.Selected,
+		TrimStart:   trimStart,
+		TrimEnd:     trimEnd,
+		MaxSpeed:    limit,
+		CookiesPath: strings.TrimSpace(app.ui.prefs.cookies.Text),
+	}
 }
 
 // recordHistory appends one history entry per finalized output file, logging

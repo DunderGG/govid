@@ -29,6 +29,7 @@ package "Application Core" #F0F4F8 {
         +depSvc : *DependencyService
         +gpuSvc : *GPUCapabilityService
         +releaseSvc : *ReleaseService
+        +askPlaylist : func(ctx, playlistPrompt) playlistDecision
         +onLogLine : func(string, color.Color)
         +cancelMu : sync.Mutex
         +cancelFn : context.CancelFunc
@@ -46,6 +47,8 @@ package "Application Core" #F0F4F8 {
         +StopSession()
         +Shutdown(quit func())
         +startDownload()
+        -checkURLs(ctx, session) : []queueItem
+        -expandPlaylist(ctx, url, info) : []queueItem
         +runYtDlp(ctx, url, path, ...)
         +openDownloadFolder()
         +updateStatus(msg)
@@ -180,6 +183,7 @@ package "UI Layer" #F0F8F0 {
         +checkDependencies()
         +confirmYtDlpUpdate()
         +runUpdateInUI()
+        +askPlaylist(ctx, prompt) : playlistDecision
         +showNotice(n notice)
         +dismissNotice(id)
         +showAbout()
@@ -211,6 +215,7 @@ package "Download Engine" #FFF8F0 {
         +BuildArgs(req DownloadRequest) : DownloadArgs
         +Execute(ctx, args, opts DownloadOptions, cb) : scanResult
         +Run(ctx, req, opts DownloadOptions, cb) : DownloadResult
+        +Probe(ctx, req DownloadRequest) : (MediaInfo, error)
         +FinalizeFiles(savePath, downloadID, onLog) : []string
         +RemovePartialFiles(savePath, downloadID, onLog)
         -watchOutput(stdout, stderr, cb) : scanResult
@@ -255,6 +260,24 @@ package "Download Engine" #FFF8F0 {
         +OnStatus : func(msg string)
         +OnProgress : func(pct float64, size string)
         +OnPhase : func(phase string)
+    }
+
+    class MediaInfo <<data>> {
+        +Type : string
+        +Title : string
+        +Duration : float64
+        +Entries : []PlaylistEntry
+        --
+        +IsPlaylist() : bool
+    }
+
+    class PlaylistEntry <<data>> {
+        +URL : string
+        +WebpageURL : string
+        +Title : string
+        +Duration : float64
+        --
+        +DownloadURL() : string
     }
 
     class scanResult <<data>> {
@@ -692,6 +715,8 @@ DownloadEngine ..> DownloadArgs    : BuildArgs output
 DownloadEngine ..> DownloadOptions  : Run / Execute options
 DownloadEngine ..> DownloadResult   : Run output
 DownloadEngine ..> ProcessCallbacks : Execute bridge
+DownloadEngine ..> MediaInfo : Probe returns
+MediaInfo *--> PlaylistEntry : entries
 DownloadEngine ..> scanResult      : Execute output
 
 ' PPEngine internal flow

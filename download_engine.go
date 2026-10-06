@@ -62,15 +62,15 @@ type DownloadArgs struct {
 	TrimDisplayEnd   string // human-readable trim end ("end" if omitted)
 }
 
-// BuildArgs derives the full yt-dlp argument list from a DownloadRequest.
-// FFmpegPath comes from the engine rather than the request, since it is
-// configured once at engine construction and shared across all downloads.
-func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
-	formatFlag := "bestvideo+bestaudio/best"
-	extension := "mp4"
+// formatSelection returns the yt-dlp -f selector and the output extension
+// for a format and quality choice, plus the height cap the quality sets
+// ("" for none). The download and the probe share it, so the probe reports
+// the formats the download will fetch.
+func formatSelection(format, quality string) (formatFlag, extension, height string) {
+	formatFlag = "bestvideo+bestaudio/best"
+	extension = "mp4"
 
-	height := ""
-	switch req.Quality {
+	switch quality {
 	case quality1080p:
 		height = "1080"
 	case quality720p:
@@ -81,31 +81,38 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 		height = "360"
 	}
 
-	selection := req.Format
-	if strings.Contains(selection, formatMP3) {
-		formatFlag = "bestaudio/best"
-		extension = "mp3"
-	} else if strings.Contains(selection, formatM4A) {
-		formatFlag = "bestaudio[ext=m4a]/bestaudio/best"
-		extension = "m4a"
-	} else {
-		if height != "" {
-			formatFlag = fmt.Sprintf("bestvideo[height<=%s]+bestaudio/best[height<=%s]/best", height, height)
-		}
-		if strings.Contains(selection, formatWebM) {
-			extension = "webm"
-			if height != "" {
-				formatFlag = fmt.Sprintf(
-					"bestvideo[vcodec^=vp9][height<=%s]+bestaudio[acodec=opus]/bestvideo[vcodec^=av01][height<=%s]+bestaudio[acodec=opus]/bestvideo[height<=%s]+bestaudio/best",
-					height, height, height,
-				)
-			} else {
-				formatFlag = "bestvideo[vcodec^=vp9]+bestaudio[acodec=opus]/bestvideo[vcodec^=av01]+bestaudio[acodec=opus]/bestvideo+bestaudio/best"
-			}
-		} else if strings.Contains(selection, formatMKV) {
-			extension = "mkv"
-		}
+	switch {
+	case strings.Contains(format, formatMP3):
+		return "bestaudio/best", "mp3", height
+	case strings.Contains(format, formatM4A):
+		return "bestaudio[ext=m4a]/bestaudio/best", "m4a", height
 	}
+
+	if height != "" {
+		formatFlag = fmt.Sprintf("bestvideo[height<=%s]+bestaudio/best[height<=%s]/best", height, height)
+	}
+	switch {
+	case strings.Contains(format, formatWebM):
+		extension = "webm"
+		if height != "" {
+			formatFlag = fmt.Sprintf(
+				"bestvideo[vcodec^=vp9][height<=%s]+bestaudio[acodec=opus]/bestvideo[vcodec^=av01][height<=%s]+bestaudio[acodec=opus]/bestvideo[height<=%s]+bestaudio/best",
+				height, height, height,
+			)
+		} else {
+			formatFlag = "bestvideo[vcodec^=vp9]+bestaudio[acodec=opus]/bestvideo[vcodec^=av01]+bestaudio[acodec=opus]/bestvideo+bestaudio/best"
+		}
+	case strings.Contains(format, formatMKV):
+		extension = "mkv"
+	}
+	return formatFlag, extension, height
+}
+
+// BuildArgs derives the full yt-dlp argument list from a DownloadRequest.
+// FFmpegPath comes from the engine rather than the request, since it is
+// configured once at engine construction and shared across all downloads.
+func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
+	formatFlag, extension, height := formatSelection(req.Format, req.Quality)
 
 	qualitySuffix := ""
 	if height != "" {

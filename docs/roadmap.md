@@ -17,10 +17,10 @@ This document outlines planned features, improvements, and known limitations for
 ### Playlist Support
 > Handle YouTube and Vimeo playlists gracefully.
 
-- [ ] Detect when a pasted URL is a playlist and prompt the user to confirm downloading all items.
-- [ ] Add a "Download playlist index X to Y" range option.
-- [ ] Show total playlist size and estimated time before starting.
-- [ ] Use `--yes-playlist` / `--no-playlist` flags in yt-dlp automatically based on user choice.
+- [x] Detect when a pasted URL is a playlist and prompt the user to confirm downloading all items. (`checkURLs` probes each URL with `yt-dlp -J --flat-playlist`; a playlist opens a prompt with Download / Only this video / Cancel.)
+- [x] Add a "Download playlist index X to Y" range option. (The prompt takes ranges such as `1-10`, `5-`, or `3,5,8`.)
+- [ ] Show total playlist size and estimated time before starting. (Partly done: the prompt shows the video count and total length. The size is shown as "unknown", because sizing every video would need a full probe of each one.)
+- [x] Use `--yes-playlist` / `--no-playlist` flags in yt-dlp automatically based on user choice. (Done differently: the chosen videos are queued as separate URLs, each downloaded with `--no-playlist`, so each gets its own progress row, cancel, retry, and history entry.)
 
 ### In-App yt-dlp Updater
 > Let users update yt-dlp from inside the app.

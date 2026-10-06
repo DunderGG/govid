@@ -188,9 +188,18 @@ While testing, GitHub returned 403 (rate limit) to this machine, which is exactl
 
 ---
 
-## 7. Playlist support
+## 7. ✅ Playlist support
 
 **Roadmap:** High Priority → Playlist Support.
+
+**Status: Done.**
+- `DownloadEngine.Probe` ([probe.go](../probe.go)) runs `yt-dlp -J --flat-playlist --no-warnings` with the download's `-f` selector and cookies. `formatSelection` was factored out of `BuildArgs` so the two share it.
+- Before the queue runs, `checkURLs` ([playlist.go](../playlist.go)) probes every URL under the session context; Cancel stops it and the status shows "Checking URL…".
+- A playlist opens `UIManager.askPlaylist` ([playlist_dialog.go](../playlist_dialog.go)). It shows the title, the video count, the total length (with how many entries lack one), "Total size: unknown", and a validated range field (`1-10`, `5-`, `3,5,8`). The buttons are **Download / Only this video / Cancel**; "Only this video" is offered, and highlighted, for `watch?v=…&list=…` and `youtu.be/…` links.
+- The chosen entries become separate `queueItem`s that run through the existing queue with `--no-playlist`.
+- A URL that cannot be probed is downloaded as before.
+
+The fake yt-dlp answers `-J` without counting it as a run. Tests: `playlist_test.go` covers the 20-video playlist with range `5-8` (four downloads and four history entries), only-this-video, skipping, probe failure, range parsing, and the dialog itself. Note that every download now costs one extra yt-dlp extraction for the probe; #8 uses the same probe's size information.
 
 **Problem.** Playlist URLs are not handled in a way users would expect.
 

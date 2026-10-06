@@ -80,7 +80,21 @@ App -> App : go progressSmoother(queueCtx)\n  — time.NewTicker(33 ms)\n  — s
 App -> App : go batchWorker(queueCtx)
 App -> App : buildPostProcessFilters()\n  → vfFilters, afFilters
 
-group loop [for each URL in queue]
+group checkURLs(queueCtx, session) [for each URL entered]
+    App -> UI  : updateStatus("Checking URL…")
+    App -> YT  : engine.Probe(ctx, req)\n  — yt-dlp -J --flat-playlist -f <selector> (no --no-playlist)
+    YT  --> App : MediaInfo{Type, Title, Entries}
+    alt playlist
+        App -> UI  : askPlaylist(ctx, prompt)\n  — title, video count, total length, range field\n  — Download / Only this video / Cancel
+        U   -> UI  : choose range (e.g. 5-8)
+        UI  --> App : playlistDecision{positions}
+        App -> App : each chosen entry's URL → its own queueItem
+    else single video or probe failed
+        App -> App : queueItem{url}
+    end
+end
+
+group loop [for each item in session.items]
     alt batch mode (len > 1)
         App -> App : context.WithCancel(queueCtx)\n  → runCtx / skipItem  (per-URL cancel)
         note right : Cancel skips only the active URL;\nqueueCtx and later URLs remain available.

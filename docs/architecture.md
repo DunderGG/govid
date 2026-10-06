@@ -37,6 +37,7 @@ govid/
 │
 ├── ── Services / Engines ──────────────────────────────────────────
 ├── download_engine.go      DownloadEngine — yt-dlp arg builder and retry executor
+├── probe.go                DownloadEngine.Probe — yt-dlp -J --flat-playlist; MediaInfo / PlaylistEntry
 ├── pp_engine.go            PPEngine — concurrent FFmpeg post-processing worker pool
 ├── preference_service.go   PreferenceService — preference keys, defaults, Load/Save/Reset, LoadFromFile, MergeConfig;
 │                           savePreferences, parseAppConfig, isValidOption co-located
@@ -51,6 +52,8 @@ govid/
 │
 ├── ── Orchestration ───────────────────────────────────────────────
 ├── download.go             DownloaderApp.startDownload / runYtDlp — UI orchestration for a download session
+├── playlist.go             checkURLs — probes each URL and expands playlists into queue items; range parsing
+├── playlist_dialog.go      UIManager.askPlaylist — the "Playlist detected" prompt
 ├── postprocess.go          PostProcessSettings, buildPostProcessFilters / applyFFmpegFilters — value struct + thin UI wrapper; shared format/scan helpers
 ├── logscanner.go           DownloadEngine.watchOutput / parseProgress — yt-dlp stdout/stderr parsing goroutines
 │
@@ -94,6 +97,7 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `depSvc *DependencyService` | Binary path resolution, dependency checks, updater (see §4.9) |
 | `gpuSvc *GPUCapabilityService` | GPU backend capability detection and cache (see §4.11) |
 | `releaseSvc *ReleaseService` | Latest-release lookups for update checks (see §4.12) |
+| `askPlaylist func(ctx, playlistPrompt) playlistDecision` | Asks which videos of a playlist to download; set to `UIManager.askPlaylist`, stubbed in tests |
 | `stats *DownloadStats` | Real-time download metrics for progress smoothing |
 | `statusThrottle *latestValueThrottle[string]` | Rate-limits status label updates to one per 150 ms and skips repeats; `updateStatus` goes through it (`throttle.go`) |
 | `cancelMu sync.Mutex` | Guards access to the active cancellation callbacks (`cancelFn`, `stopFn`) |
@@ -142,7 +146,8 @@ Beyond the five `show*` methods, `UIManager` also owns:
 
 A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and provides four methods:
 
-- **`BuildArgs(DownloadRequest) DownloadArgs`** — pure function; assembles the yt-dlp command-line arguments from a request value struct. No I/O.
+- **`BuildArgs(DownloadRequest) DownloadArgs`** — pure function; assembles the yt-dlp command-line arguments from a request value struct. No I/O. The format selector comes from `formatSelection(format, quality)`, which `Probe` shares.
+- **`Probe(ctx, DownloadRequest) (MediaInfo, error)`** — runs `yt-dlp -J --flat-playlist --no-warnings` with the download's `-f` selector and cookies, and without `--no-playlist` (`probe.go`). It returns `MediaInfo{Type, Title, Duration, Entries}`; `IsPlaylist()` is true for `_type == "playlist"`, and each `PlaylistEntry.DownloadURL()` is the video's URL. `--flat-playlist` lists a playlist's entries without extracting them, but a single video is still extracted in full.
 - **`Execute(ctx, args []string, opts DownloadOptions, ProcessCallbacks) (scanResult, error)`** — starts the process, streams stdout/stderr through its own private `watchOutput` method (defined in `logscanner.go`), and retries on transient errors with 1 s / 5 s / 30 s back-off when `opts.AutoRetry` is set.
 - **`FinalizeFiles(savePath, downloadID string, onLog func(string, color.Color)) []string`** — globs the temp files written under `downloadID`, strips the token, and renames each to its final conflict-free name via the private `uniquePath` helper. Reports rename events through `onLog` rather than touching the UI directly.
 - **`RemovePartialFiles(savePath, downloadID string, onLog func(string, color.Color))`** — deletes every file written under `downloadID` after a failed or cancelled download (yt-dlp runs with `--no-part`, so these are incomplete media files), retrying briefly while Windows still holds a lock, and logs each removal.
@@ -291,7 +296,8 @@ Looks up the latest release of a GitHub repository through `GET /repos/<owner>/<
 ```
 User clicks Download
   └─ startDownload()          validate URLs; open log file; spawn the sequential download worker
-       └─ runYtDlp()           per URL
+       ├─ checkURLs()          engine.Probe per URL; a playlist → askPlaylist prompt → its chosen videos become queue items
+       └─ runYtDlp()           per queue item
             ├─ engine.BuildArgs(DownloadRequest)   → []string args
             ├─ engine.Execute(ctx, args, opts, cb)   → scanResult
             │    ├─ cmd.StdoutPipe / StderrPipe
@@ -392,11 +398,17 @@ func classify(err error) Category {
 | Status dot pulse | `setStatusIndicator("active")` | `stopPulse` channel close |
 | Post-process worker pool | `PPEngine.ApplyFilters()`; GPU jobs additionally wait on `gpuSem` (capacity 2) | same context |
 
-The download queue itself is sequential: in batch mode each URL gets a child
-`runCtx` of the queue-level `queueCtx`. Cancelling the child skips only the
-active URL; in single-URL mode `runCtx` is the queue context, so cancellation
-stops the session. Post-processing runs afterward over the collected successful
-paths and can process multiple files concurrently.
+The download queue itself is sequential. Before it starts, `checkURLs` probes
+each URL under `queueCtx` (so Cancel stops the probes) and builds
+`downloadSession.items`. A playlist's chosen videos become separate items, so a
+single playlist URL turns the session into a batch. The playlist prompt
+(`UIManager.askPlaylist`) blocks the session goroutine until the user answers,
+and is hidden if `queueCtx` is cancelled first. When the queue holds more than
+one item, each item gets a child `runCtx` of the queue-level `queueCtx`.
+Cancelling the child skips only the active item; with a single item, `runCtx`
+is the queue context, so cancellation stops the session. Post-processing runs
+afterward over the collected successful paths and can process multiple files
+concurrently.
 
 **Process trees:** yt-dlp, ffmpeg, and ffprobe are started through
 `newToolCommand` (`process.go`), which sets `cmd.Cancel` to kill the whole

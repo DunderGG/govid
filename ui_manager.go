@@ -348,6 +348,7 @@ func (manager *UIManager) showConfigHelp() {
 
 	items := []helpItem{
 		{"Video URL", "Paste any URL supported by yt-dlp, such as a **YouTube**, **Vimeo**, or **Twitter/X** link."},
+		{"Playlists", "Before downloading, GoVid checks each URL. When one is a playlist, it shows the playlist's title, number of videos, and total length, and asks which videos to download:\n  * Leave the range blank and click **Download** to get them all\n  * Enter a range such as `1-10`, `5-`, or `3,5,8` to get only those\n  * For a link to one video inside a playlist (`watch?v=…&list=…`), **Only this video** is the default\n\nEach chosen video becomes its own item in the queue, with its own progress, Cancel, and history entry."},
 		{"Save Destination", "The folder where the downloaded file will be saved. GoVid remembers this between sessions."},
 		{"Output Format", "The container format for the downloaded file:\n" +
 			"  * **" + formatMP4 + "** – widely compatible, recommended for most uses\n" +

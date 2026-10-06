@@ -67,6 +67,12 @@ func TestMain(m *testing.M) {
 
 // runFakeTool implements the fake tool modes and returns the exit code.
 func runFakeTool(mode string, args []string) int {
+	// yt-dlp probes (-J) are answered first and not counted, so tests that
+	// count downloads are not affected by the probe before each one.
+	if slices.Contains(args, "-J") {
+		return fakeYtDlpProbe(mode)
+	}
+
 	// Each invocation appends a line to the state file (when one is set), so
 	// tests can count attempts and modes can behave differently on retries.
 	previousRuns := 0
@@ -81,7 +87,7 @@ func runFakeTool(mode string, args []string) int {
 	}
 
 	switch mode {
-	case "ytdlp-download":
+	case "ytdlp-download", "ytdlp-playlist", "ytdlp-probe-fail":
 		return fakeYtDlpDownload(args)
 	case "ytdlp-transient":
 		return fakeYtDlpTransient()
@@ -158,6 +164,36 @@ func fakeYtDlpDownload(args []string) int {
 func fakeYtDlpTransient() int {
 	fmt.Fprintln(os.Stderr, "ERROR: [youtube] fake: Unable to download webpage: HTTP Error 429: Too Many Requests")
 	return 1
+}
+
+// fakePlaylistSize is the number of videos the "ytdlp-playlist" mode's
+// playlist holds.
+const fakePlaylistSize = 20
+
+// fakeVideoSize is the size, in bytes, the probe reports for a single video:
+// 10 MiB, matching the progress lines of fakeYtDlpDownload.
+const fakeVideoSize = 10 * 1024 * 1024
+
+// fakeYtDlpProbe mimics "yt-dlp -J --flat-playlist": the "ytdlp-playlist"
+// mode reports a playlist of fakePlaylistSize videos at
+// https://example.com/v/<n>, "ytdlp-probe-fail" fails, and every other mode
+// reports a single 10 MiB video.
+func fakeYtDlpProbe(mode string) int {
+	switch mode {
+	case "ytdlp-playlist":
+		var entries []string
+		for n := 1; n <= fakePlaylistSize; n++ {
+			entries = append(entries, fmt.Sprintf(`{"_type": "url", "url": "https://example.com/v/%d", "title": "Video %d", "duration": 90}`, n, n))
+		}
+		fmt.Printf(`{"_type": "playlist", "title": "Fake Playlist", "entries": [%s]}`+"\n", strings.Join(entries, ", "))
+		return 0
+	case "ytdlp-probe-fail":
+		fmt.Fprintln(os.Stderr, "ERROR: [generic] fake: Unable to download webpage")
+		return 1
+	}
+	fmt.Printf(`{"_type": "video", "title": "Fake Video", "duration": 10, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
+		fakeVideoSize-1024*1024, 1024*1024)
+	return 0
 }
 
 // fakeOutputPath returns the file a yt-dlp run with args would write, named

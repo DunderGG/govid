@@ -389,22 +389,31 @@ func TestNoticeActionRunsAndDismisses(t *testing.T) {
 	}
 }
 
+// walkObjects calls visit for obj and everything inside it, including the
+// parts widgets such as dialogs are rendered from.
+func walkObjects(obj fyne.CanvasObject, visit func(fyne.CanvasObject)) {
+	visit(obj)
+	switch o := obj.(type) {
+	case *fyne.Container:
+		for _, child := range o.Objects {
+			walkObjects(child, visit)
+		}
+	case fyne.Widget:
+		for _, child := range test.WidgetRenderer(o).Objects() {
+			walkObjects(child, visit)
+		}
+	}
+}
+
 // findButton returns the button labelled text inside root.
 func findButton(t *testing.T, root fyne.CanvasObject, text string) *widget.Button {
 	t.Helper()
 	var found *widget.Button
-	var walk func(obj fyne.CanvasObject)
-	walk = func(obj fyne.CanvasObject) {
+	walkObjects(root, func(obj fyne.CanvasObject) {
 		if btn, ok := obj.(*widget.Button); ok && btn.Text == text {
 			found = btn
 		}
-		if c, ok := obj.(*fyne.Container); ok {
-			for _, child := range c.Objects {
-				walk(child)
-			}
-		}
-	}
-	walk(root)
+	})
 	if found == nil {
 		t.Fatalf("no %q button found", text)
 	}

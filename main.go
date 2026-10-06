@@ -83,6 +83,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	// appendOutput delegates the widget-mutation half of logging to UIManager,
 	// which owns the log widgets' lifecycle.
 	dlApp.onLogLine = dlApp.uiManager.appendLogLine
+	dlApp.askPlaylist = dlApp.uiManager.askPlaylist
 
 	// Wire the main window's action callbacks (download, open folder, cancel).
 	dlApp.uiManager.onStartDownload = dlApp.startDownload

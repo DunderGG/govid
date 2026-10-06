@@ -237,23 +237,27 @@ func (s *DownloadStats) sizeSnapshot() (lastSize string, downloadedRaw float64, 
 // DownloaderApp acts as a coordinator, holding pointers to the specialized
 // sub-structs and handling application lifecycle.
 type DownloaderApp struct {
-	window     fyne.Window                        // The primary application window
-	ui         *UIWidgets                         // The graphical interface components
-	stats      *DownloadStats                     // Statistics tracked during a session
-	logSvc     *LogService                        // Session log, error log, and buffer-limit management
-	cancelMu   sync.Mutex                         // Guards cancelFn and stopFn updates and reads
-	cancelFn   context.CancelFunc                 // Function used to signal yt-dlp to stop; in batch mode it skips only the current item
-	stopFn     context.CancelFunc                 // Stops the whole session, including the rest of a batch queue
-	sessions   sync.WaitGroup                     // Counts running sessions so Shutdown can wait for them to finish
-	stopPulse  chan struct{}                      // Closed to stop the status dot pulse goroutine
-	pulseDone  chan struct{}                      // Closed by the pulse goroutine when it exits
-	uiManager  *UIManager                         // Owns the main window layout and all secondary windows
-	prefSvc    *PreferenceService                 // Centralised preference loading and persistence
-	historySvc *HistoryService                    // Download history persistence
-	depSvc     *DependencyService                 // Binary path resolution, dependency checks, and yt-dlp updater
-	gpuSvc     *GPUCapabilityService              // GPU backend capability detection and cache
-	releaseSvc *ReleaseService                    // Latest-release lookups on GitHub for update checks
-	onLogLine  func(line string, col color.Color) // Renders a log line in the UI; set to uiManager.appendLogLine
+	window     fyne.Window           // The primary application window
+	ui         *UIWidgets            // The graphical interface components
+	stats      *DownloadStats        // Statistics tracked during a session
+	logSvc     *LogService           // Session log, error log, and buffer-limit management
+	cancelMu   sync.Mutex            // Guards cancelFn and stopFn updates and reads
+	cancelFn   context.CancelFunc    // Function used to signal yt-dlp to stop; in batch mode it skips only the current item
+	stopFn     context.CancelFunc    // Stops the whole session, including the rest of a batch queue
+	sessions   sync.WaitGroup        // Counts running sessions so Shutdown can wait for them to finish
+	stopPulse  chan struct{}         // Closed to stop the status dot pulse goroutine
+	pulseDone  chan struct{}         // Closed by the pulse goroutine when it exits
+	uiManager  *UIManager            // Owns the main window layout and all secondary windows
+	prefSvc    *PreferenceService    // Centralised preference loading and persistence
+	historySvc *HistoryService       // Download history persistence
+	depSvc     *DependencyService    // Binary path resolution, dependency checks, and yt-dlp updater
+	gpuSvc     *GPUCapabilityService // GPU backend capability detection and cache
+	releaseSvc *ReleaseService       // Latest-release lookups on GitHub for update checks
+
+	// askPlaylist shows the playlist prompt and waits for the answer; set to
+	// uiManager.askPlaylist, replaced in tests.
+	askPlaylist func(ctx context.Context, prompt playlistPrompt) playlistDecision
+	onLogLine   func(line string, col color.Color) // Renders a log line in the UI; set to uiManager.appendLogLine
 
 	// statusThrottle rate-limits and de-duplicates status label updates;
 	// see updateStatus.

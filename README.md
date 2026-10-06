@@ -20,6 +20,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Quality Control**: Select your preferred maximum resolution for downloads.
 - **Video Trimming**: Download only a specific segment — specify a start time, an end time, or both (`HH:MM:SS` / `MM:SS` / seconds).
 - **Batch Processing**: Download multiple URLs at once by switching to Batch Mode (one URL per line).
+- **Playlists**: Paste a playlist URL to pick all of it, a range (e.g. `5-8`), or just the linked video; each video is queued separately.
 - **Real-time Progress**: Live progress tracking with per-download progress bars and a scrollable activity log.
 - **Optional Post-Processing**: Seamless integration with FFmpeg for frame interpolation (60FPS), sharpening, and audio normalization.
 - **GPU-Accelerated Encoding**: Optional hardware-accelerated final encode (NVIDIA NVENC, Intel QSV, AMD AMF, or VAAPI) with automatic CPU fallback if the selected backend is unavailable.
@@ -89,7 +90,7 @@ Ensure you have [Go 1.26+](https://go.dev/dl/) installed.
 ## 📖 Usage
 
 1. **Launch**: Open GoVid.
-2. **URL or Batch Mode**: Paste a video URL. Enable **Batch Mode** to paste multiple URLs (one per line).
+2. **URL or Batch Mode**: Paste a video or playlist URL. Enable **Batch Mode** to paste multiple URLs (one per line). For a playlist, GoVid asks which videos to download.
 3. **Format and Quality**: Choose the output format (MP4, MKV, WebM, MP3, or M4A) and maximum resolution.
 4. **Trim (Optional)**: Enter a start time, end time, or both (for example `00:01:30` and `00:05:00`) to download only part of the video.
 5. **Post-Processing (Advanced)**: Open **Tools → Post-Processing** to enable:
