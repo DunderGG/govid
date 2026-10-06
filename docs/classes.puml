@@ -210,6 +210,12 @@ package "UI Layer" #F0F8F0 {
         -applyAndSavePreferences(p AppPreferences)
         -showImportSettings()
         -showExportSettings()
+        -applyPreset(name)
+        -refreshPresetState()
+        -savePresetAs(name, groups) : error
+        -showSavePreset()
+        -showManagePresets()
+        -importPresets(path)
         +flushQueue()
         -refreshQueue()
         -readdHistoryURL(url)
@@ -308,6 +314,11 @@ package "Download Engine" #FFF8F0 {
         +OnStatus : func(msg string)
         +OnProgress : func(pct float64, size string)
         +OnPhase : func(phase string)
+    }
+
+    class Preset <<data>> {
+        +Name : string
+        +Settings : AppConfig
     }
 
     class QueueModel <<state>> {
@@ -584,6 +595,10 @@ package "Preference Service" #FFF0F0 {
         +MergeConfig(cfg, base) : (AppPreferences, []string)
         +ExportConfig(p AppPreferences) : AppConfig
         +WriteConfigFile(path, cfg AppConfig) : error
+        +LoadPresets() : []Preset
+        +SavePresets(presets []Preset)
+        +ReadPresetFile(path) : ([]Preset, []string, error)
+        +WritePresetFile(path, presets) : error
     }
 
     class AppPreferences <<data>> {
@@ -846,6 +861,8 @@ DownloadEngine ..> DownloadResult   : Run output
 DownloadEngine ..> ProcessCallbacks : Execute bridge
 DownloadEngine ..> MediaInfo : Probe returns
 DownloaderApp --> QueueModel : queue
+Preset *--> AppConfig : settings
+PreferenceService ..> Preset : stores
 UIManager ..> QueueModel : Queue panel
 MediaInfo *--> PlaylistEntry : entries
 DownloadEngine ..> scanResult      : Execute output

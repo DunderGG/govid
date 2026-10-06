@@ -16,6 +16,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"slices"
@@ -174,13 +175,12 @@ func (svc *PreferenceService) LoadFromFile(path string) (*AppConfig, error) {
 	return parseAppConfig(data)
 }
 
-// MergeConfig applies every key cfg sets onto base and returns the result,
-// with a message for each value that was skipped because configRules
-// rejects it. The others still apply, so all problems are reported at once.
-func (svc *PreferenceService) MergeConfig(cfg *AppConfig, base AppPreferences) (AppPreferences, []string) {
+// ValidateConfig returns cfg without the keys configRules rejects, and
+// without "" for a choice (which leaves a setting unchanged), plus a message
+// for each rejected value, so all problems are reported at once.
+func ValidateConfig(cfg AppConfig) (AppConfig, []string) {
 	var errs []string
-	config := reflect.ValueOf(cfg).Elem()
-	merged := reflect.ValueOf(&base).Elem()
+	config := reflect.ValueOf(&cfg).Elem()
 	for i := range config.NumField() {
 		field := config.Type().Field(i)
 		value := config.Field(i)
@@ -190,18 +190,80 @@ func (svc *PreferenceService) MergeConfig(cfg *AppConfig, base AppPreferences) (
 		keep, err := configRules[field.Name].validate(value.Elem())
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("invalid %s: %v", configKey(field), err))
-			continue
 		}
-		if !keep {
-			merged.FieldByName(field.Name).Set(value.Elem())
+		if err != nil || keep {
+			value.SetZero()
 		}
 	}
-	return base, errs
+	return cfg, errs
+}
+
+// MergeConfig applies every valid key cfg sets onto base and returns the
+// result, with a message for each value that was skipped (see
+// ValidateConfig). The others still apply.
+func (svc *PreferenceService) MergeConfig(cfg *AppConfig, base AppPreferences) (AppPreferences, []string) {
+	valid, errs := ValidateConfig(*cfg)
+	return applyConfig(valid, base), errs
+}
+
+// applyConfig copies every key cfg sets onto the preference of the same
+// name, without validating it.
+func applyConfig(cfg AppConfig, base AppPreferences) AppPreferences {
+	config := reflect.ValueOf(cfg)
+	merged := reflect.ValueOf(&base).Elem()
+	for i := range config.NumField() {
+		if value := config.Field(i); !value.IsNil() {
+			merged.FieldByName(config.Type().Field(i).Name).Set(value.Elem())
+		}
+	}
+	return base
+}
+
+// configMatches reports whether p already has every value cfg sets.
+// Numbers are compared to within a millionth, because the sliders step in
+// floats.
+func configMatches(cfg AppConfig, p AppPreferences) bool {
+	config := reflect.ValueOf(cfg)
+	prefs := reflect.ValueOf(p)
+	for i := range config.NumField() {
+		value := config.Field(i)
+		if value.IsNil() {
+			continue
+		}
+		current := prefs.FieldByName(config.Type().Field(i).Name)
+		if value.Elem().Kind() == reflect.Float64 {
+			if math.Abs(value.Elem().Float()-current.Float()) > 1e-6 {
+				return false
+			}
+			continue
+		}
+		if !value.Elem().Equal(current) {
+			return false
+		}
+	}
+	return true
+}
+
+// configFields returns cfg with only the named fields kept, e.g. to save a
+// preset of some of the current settings.
+func configFields(cfg AppConfig, names []string) AppConfig {
+	config := reflect.ValueOf(&cfg).Elem()
+	for i := range config.NumField() {
+		if !slices.Contains(names, config.Type().Field(i).Name) {
+			config.Field(i).SetZero()
+		}
+	}
+	return cfg
 }
 
 // ExportConfig returns p as a complete AppConfig, with every key set, for
 // Tools → Export settings.
 func (svc *PreferenceService) ExportConfig(p AppPreferences) AppConfig {
+	return configFromPreferences(p)
+}
+
+// configFromPreferences returns p as an AppConfig with every key set.
+func configFromPreferences(p AppPreferences) AppConfig {
 	var cfg AppConfig
 	config := reflect.ValueOf(&cfg).Elem()
 	prefs := reflect.ValueOf(p)

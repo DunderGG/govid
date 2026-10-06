@@ -239,9 +239,19 @@ Tests: `TestEveryPreferenceHasAConfigKey` (same names, pointer types, unique JSO
 
 ---
 
-## 8. Presets
+## 8. ✅ Presets
 
 **Roadmap:** Medium Priority → Presets / Profiles.
+
+**Status: Done** (new files [presets.go](../presets.go) and [preset_ui.go](../preset_ui.go)).
+- **Model.** A `Preset` is a name plus a partial `AppConfig` (#7). Applying one validates and applies its keys onto the *current* widget values. `MergeConfig` was split into `ValidateConfig` + `applyConfig` for this, so settings the preset does not hold are untouched. The result then goes through the same apply-and-save path as an import; the window is rebuilt only if the theme changed.
+- **Storage.** The presets are a JSON list under the `presets` key. They are saved even when "Save preferences" is off, because they only change on purpose, and Restore Defaults keeps them. Until any are stored, `LoadPresets` returns the starters, and deleting them all stores `[]`, so the starters do not come back.
+- **UI.** A **Preset** dropdown in the input card, beside Format and Quality, with a ⋮ menu: **Save current as preset…** (a name plus checkboxes for groups of settings: format and quality, save folder, speed limit, embedding, subtitles, the main window's toggles, post-processing; using an existing name replaces that preset), **Manage presets…** (Rename / Delete), **Import presets…**, and **Export presets…**. App-wide settings (theme, log limit, update checks, history) are not offered in a preset.
+- **Starters.** *Audio (MP3, metadata + cover)*, *1080p MP4*, and *Archive (MKV, Best, subtitles, chapters)*. The archive preset embeds subtitles in the default languages (#4).
+- **Import/export.** One JSON file, `{"presets": [...]}`. `ReadPresetFile` runs `ValidateConfig` on each preset, so a value that does not work on the importing machine, such as a missing save folder, is dropped from its preset and reported. Imported presets replace presets of the same name.
+- **"(modified)".** `refreshPresetState` runs on every `savePreferences` and on Format/Quality changes. It shows "(modified)" when `configMatches` finds that a setting the preset holds no longer has the preset's value. Changing a setting the preset does not hold does not count.
+
+Tests: `TestApplyPresetSetsOnlyItsSettings` (every other setting is compared before and after, plus the "(modified)" rules), `TestExportedPresetsImportOnAnotherMachine` (export, delete the folder one preset names, import into a fresh store), `TestSavePresetStoresTheChosenGroups`, `TestPresetDialogsSaveAndDelete`, `TestPresetsStartWithStartersAndPersist`, `TestPresetListEdits`, `TestPresetGroupsNameConfigFields`, and `TestStarterPresetsAreValid`.
 
 **Problem.** Users who switch between setups (audio-only, 1080p MP4, archive) have to change several settings by hand each time.
 

@@ -82,6 +82,12 @@ type UIManager struct {
 	queueThrottle *latestValueThrottle[int64] // coalesces redraws; the value is queueVersion
 	queueVersion  atomic.Int64
 
+	// Presets; see preset_ui.go. Only touched on the UI thread.
+	presets       []Preset
+	appliedPreset *Preset // the preset last applied or saved, for "(modified)"; nil for none
+	presetSelect  *widget.Select
+	presetState   *widget.Label
+
 	// Callbacks bridging DownloaderApp actions and services into the main
 	// window and secondary windows; all set by newDownloaderApp after
 	// construction.
@@ -103,6 +109,10 @@ type UIManager struct {
 	onLoadConfigFile     func(path string) (*AppConfig, error)                                // PreferenceService.LoadFromFile
 	onMergeConfig        func(cfg *AppConfig, base AppPreferences) (AppPreferences, []string) // PreferenceService.MergeConfig
 	onExportConfig       func(path string, p AppPreferences) error                            // PreferenceService.ExportConfig + WriteConfigFile
+	onLoadPresets        func() []Preset                                                      // PreferenceService.LoadPresets
+	onSavePresets        func([]Preset)                                                       // PreferenceService.SavePresets
+	onReadPresets        func(path string) ([]Preset, []string, error)                        // PreferenceService.ReadPresetFile
+	onWritePresets       func(path string, presets []Preset) error                            // PreferenceService.WritePresetFile
 	onSetLogBufferLimit  func(limit int)                                                      // LogService.SetBufferLimit
 	onLogBufferLimit     func() int                                                           // LogService.BufferLimit
 	onSetShowDebug       func(show bool)                                                      // DownloaderApp.showDebug.Store
@@ -310,6 +320,12 @@ func (manager *UIManager) showConfigHelp() {
 			"  * A video that **failed** or was **skipped** can be retried; it goes back to the end of the queue\n\n" +
 			"Videos the queue did not get to, because it was stopped, are marked Skipped."},
 		{"Save Destination", "The folder where the downloaded file will be saved. GoVid remembers this between sessions.\n\nBefore each download, GoVid checks that the folder's drive has room for it (with a 10% margin, and twice that with post-processing, which writes a second copy). If it does not, you can continue anyway or cancel; in a batch you can also skip that video. This includes each video picked from a playlist, which GoVid checks just before downloading it. When the site does not say how big a video is, the check is skipped."},
+		{"Presets", "A preset is a named set of settings, such as an audio-only setup or a 1080p MP4 setup. Choosing one in the **Preset** dropdown sets the settings it holds and leaves every other setting as it is. GoVid starts with three: **Audio (MP3, metadata + cover)**, **1080p MP4**, and **Archive (MKV, Best, subtitles, chapters)**.\n\n" +
+			"**(modified)** appears beside the dropdown once one of the preset's settings has been changed since it was chosen.\n\n" +
+			"The **⋮** button beside the dropdown offers:\n" +
+			"  * **Save current as preset…** – stores the current values of the groups you tick (format and quality, save folder, speed limit, embedding, subtitles, the main window's toggles, post-processing) under a name. Using an existing name replaces that preset\n" +
+			"  * **Manage presets…** – rename or delete presets\n" +
+			"  * **Import presets…** / **Export presets…** – move presets between computers in one file. Imported presets replace presets of the same name; a value that does not work on this computer, such as a save folder that does not exist, is left out and listed"},
 		{"Output Format", "The container format for the downloaded file:\n" +
 			"  * **" + formatMP4 + "** – widely compatible, recommended for most uses\n" +
 			"  * **" + formatMKV + "** – flexible container, ideal for high-quality archiving\n" +
@@ -626,6 +642,7 @@ func (manager *UIManager) savePreferences(savePath string) {
 		return
 	}
 	manager.onSavePreferences(snapshotPreferences(manager.ui, savePath))
+	manager.refreshPresetState()
 }
 
 // restoreDefaults clears every stored preference and returns the whole UI to
@@ -1052,6 +1069,10 @@ func (manager *UIManager) wireToggleHandlers() {
 	ui.download.path.OnChanged = func(text string) {
 		manager.savePreferences(text)
 	}
+	// Format and quality are saved when a download starts, but a change
+	// still marks the applied preset as modified.
+	ui.download.format.OnChanged = func(string) { manager.refreshPresetState() }
+	ui.download.quality.OnChanged = func(string) { manager.refreshPresetState() }
 }
 
 // wireActionButtons configures the download and cancel buttons' icons, text,
@@ -1117,7 +1138,11 @@ func (manager *UIManager) buildInputCard(themeMode string) fyne.CanvasObject {
 			container.NewBorder(nil, nil, nil, container.NewHBox(pasteBtn, clearBtn), ui.download.entry),
 			widget.NewLabelWithStyle("Save Destination:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			container.NewBorder(nil, nil, nil, browseBtn, ui.download.path),
-			container.NewGridWithColumns(2,
+			container.NewGridWithColumns(3,
+				container.NewVBox(
+					widget.NewLabelWithStyle("Preset:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+					manager.buildPresetRow(),
+				),
 				container.NewVBox(
 					widget.NewLabelWithStyle("Output Format:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 					ui.download.format,

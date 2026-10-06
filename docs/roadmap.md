@@ -59,9 +59,9 @@ This document outlines planned features, improvements, and known limitations for
 ### Presets / Profiles
 > Save common download setups for quick reuse.
 
-- [ ] Let users save named presets for common workflows like audio-only, 1080p MP4, and playlist downloads.
-- [ ] Allow presets to store format, quality, output path, subtitles, metadata, and speed-limit settings.
-- [ ] Add preset import/export so users can move their settings between machines.
+- [x] Let users save named presets for common workflows like audio-only, 1080p MP4, and playlist downloads. (A Preset dropdown in the input card, with "Save current as preset…" and "Manage presets…" (rename, delete). Three starters: Audio (MP3, metadata + cover), 1080p MP4, and Archive (MKV, Best, subtitles, chapters). "(modified)" shows once a setting of the applied preset changes.)
+- [x] Allow presets to store format, quality, output path, subtitles, metadata, and speed-limit settings. (A preset is a name plus a partial `AppConfig` from the config file; saving one offers groups of settings to include, also the main window's toggles and post-processing. Applying it is `MergeConfig` onto the current settings.)
+- [x] Add preset import/export so users can move their settings between machines. (One JSON file of presets, validated like `govid.json`: a value that is invalid on this machine is dropped from its preset and reported.)
 
 ### yt-dlp Auto-Update
 > Keep the bundled downloader current without manual steps.
