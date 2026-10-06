@@ -268,9 +268,17 @@ Tests: `TestApplyPresetSetsOnlyItsSettings` (every other setting is compared bef
 
 ---
 
-## 9. Checksums and a safer release script
+## 9. ✅ Checksums and a safer release script
 
 **Roadmap:** Follow-up to Windows Distribution, and the prerequisite for Self-Updating GoVid's "update in place" item.
+
+**Status: Done**, in the local `package.ps1`. It is still kept out of git, so this item's commit holds only the documentation.
+- **Checksum.** After zipping, the script writes `SHA256SUMS` next to the ZIP: `<hash>  <file name>`, lower-case hex, two spaces, LF, no BOM, so `sha256sum -c SHA256SUMS` can check it as well as GoVid can.
+- **Missing tools.** Before building, the script stops with an error if `external/yt-dlp.exe` or `external/ffmpeg.exe` is missing. It also deletes any ZIP or `SHA256SUMS` from an earlier run first, and again if a later step fails, so a failed run never leaves a release-looking file behind.
+- **Versions.** It prints the bundled `yt-dlp --version` and the first line of `ffmpeg -version`, and writes them, with the GoVid version and commit, to `VERSIONS.txt` inside the ZIP. That file was chosen over comment lines in `SHA256SUMS`, which some checkers reject. The tool output is captured whole before its first line is taken, because `Select-Object -First 1` stops the pipeline and made `$LASTEXITCODE` unreliable.
+- **Checklist.** The script ends by printing the hash and a three-step checklist: push the tag, create the release, and upload both the ZIP and `SHA256SUMS`.
+
+Verified by running it in a scratch clone tagged `2099.01.01`: it produced `GoVid_2099.01.01_Ready.zip` and `SHA256SUMS`, `sha256sum -c` reported OK, and the ZIP held `GoVid.exe`, `bin\yt-dlp.exe`, `bin\ffmpeg.exe`, and `VERSIONS.txt`. With `ffmpeg.exe` removed, it failed with "Missing from external/: ffmpeg.exe" and left no ZIP. One finding for #10: Windows PowerShell's `Compress-Archive` stores entry names with backslashes (`bin\ffmpeg.exe`), so the updater has to accept either separator.
 
 **Problem.** Self-update (#10) can't verify a downloaded release, because releases don't publish a checksum. The release script can also produce a broken zip without stopping.
 

@@ -177,6 +177,7 @@ This document outlines planned features, improvements, and known limitations for
 - [x] Create `package.ps1` to automate building a release ZIP with bundled dependencies.
 - [x] Bundle yt-dlp and ffmpeg in a `bin/` subfolder so no PATH setup is needed.
 - [x] Add startup dependency check with a user-friendly dialog if tools are missing.
+- [x] Publish a SHA-256 checksum with each release, and refuse to package without the bundled tools. (`package.ps1` writes `SHA256SUMS` next to the ZIP, records the bundled yt-dlp and FFmpeg versions in `VERSIONS.txt` inside it, stops if `external/yt-dlp.exe` or `external/ffmpeg.exe` is missing, and ends with a checklist: upload the ZIP and `SHA256SUMS`. Self-update relies on both.)
 
 ### Proper Version String
 > Embed a build version for display and update-checking purposes.

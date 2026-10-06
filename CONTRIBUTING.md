@@ -75,7 +75,7 @@ external/
 └── yt-dlp.exe
 ```
 
-The packaging tooling builds GoVid, places these dependencies under `bin/` in the package, and creates a versioned release archive. The private packaging script is not part of the repository; use the normal build commands above when validating a contribution.
+The packaging tooling builds GoVid, places these dependencies under `bin/` in the package, and creates a versioned release archive, `GoVid_<tag>_Ready.zip`. It stops without creating an archive when either executable is missing. The archive contains a `VERSIONS.txt` that names the GoVid commit and the yt-dlp and FFmpeg builds it bundles. Next to the archive, the tooling writes `SHA256SUMS` in the standard `<hash>  <file name>` format (`sha256sum -c SHA256SUMS` checks it). Upload both files to the GitHub release: GoVid's in-app update downloads the archive and refuses it unless its hash matches `SHA256SUMS`. The private packaging script is not part of the repository; use the normal build commands above when validating a contribution.
 
 The `external/` executables are local packaging inputs. They are ignored by the repository's `*.exe` rule and should not be force-added to Git.
 
