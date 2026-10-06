@@ -213,10 +213,10 @@ func (app *DownloaderApp) finishSessionUI() {
 	})
 }
 
-// runQueue downloads the session's queue one item after another, checking
-// for free disk space before each (see checkDiskSpace), until it is
-// cancelled, and returns the finalized paths of every successful download so
-// post-processing can run over all of them at once.
+// runQueue downloads the session's queue one item after another until it is
+// cancelled or the user stops it for lack of disk space, and returns the
+// finalized paths of every successful download so post-processing can run
+// over all of them at once.
 func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSession) []string {
 	if session.isBatch() {
 		app.appendOutput(fmt.Sprintf("[SYSTEM] Batch mode: %d URLs queued.", len(session.items)), colInfo)
@@ -228,24 +228,20 @@ func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSes
 		if queueCtx.Err() != nil {
 			break
 		}
-		switch app.checkDiskSpace(queueCtx, session, index, &continueLowSpace) {
-		case spaceSkip:
-			app.appendOutput(fmt.Sprintf("[SYSTEM] Skipped %s: not enough disk space.", session.items[index].url), colWarning)
-			continue
-		case spaceStop:
-			app.appendOutput("[SYSTEM] Queue stopped: not enough disk space.", colWarning)
-			app.updateStatus("Status: Stopped (not enough disk space).")
-			app.setStatusIndicator(StatusCanceled)
-			return finalPaths
-		}
-		paths := app.downloadItem(queueCtx, session, index)
+		paths, stop := app.downloadItem(queueCtx, session, index, &continueLowSpace)
 		finalPaths = append(finalPaths, paths...)
+		if stop {
+			break
+		}
 	}
 	return finalPaths
 }
 
-// downloadItem downloads session.items[index] and returns its finalized paths.
-func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloadSession, index int) []string {
+// downloadItem downloads session.items[index] and returns its finalized
+// paths. It first probes the item if it needs it (see checkItem) and checks
+// for free disk space (see checkDiskSpace); stop is true when the user
+// chose to stop the queue for lack of space.
+func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloadSession, index int, continueLowSpace *bool) (paths []string, stop bool) {
 	// In batch mode, give each URL its own child context so the Cancel
 	// button skips only the active download without killing the queue.
 	// In single-URL mode, runCtx == queueCtx and Cancel stops all.
@@ -263,8 +259,31 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 		fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
 	}
 
-	url := session.items[index].url
-	return app.runYtDlp(runCtx, url, session.savePath, session.trimStart, session.trimEnd, index+1, len(session.items))
+	item := app.checkItem(runCtx, session, index)
+	if runCtx.Err() != nil {
+		app.updateStatus("Status: Canceled.")
+		app.setStatusIndicator(StatusCanceled)
+		return nil, false
+	}
+
+	switch app.checkDiskSpace(queueCtx, session, index, continueLowSpace) {
+	case spaceSkip:
+		app.appendOutput(fmt.Sprintf("[SYSTEM] Skipped %s: not enough disk space.", item.url), colWarning)
+		return nil, false
+	case spaceStop:
+		app.appendOutput("[SYSTEM] Queue stopped: not enough disk space.", colWarning)
+		app.updateStatus("Status: Stopped (not enough disk space).")
+		app.setStatusIndicator(StatusCanceled)
+		return nil, true
+	}
+
+	req := app.newDownloadRequest(item.url, session.savePath, session.trimStart, session.trimEnd)
+	if item.info != nil {
+		req.InfoJSON = item.info.raw
+		// The JSON can be large and is not needed again once used.
+		defer func() { item.info.raw = nil }()
+	}
+	return app.runYtDlp(runCtx, req, index+1, len(session.items)), false
 }
 
 // runPostProcessing runs the session's filters over every downloaded file in
@@ -320,17 +339,15 @@ func completionNotification(postProcessed bool, fileCount, urlCount int) *fyne.N
 	}
 }
 
-// runYtDlp gathers UI state into a DownloadRequest, delegates the full
-// download lifecycle to engine.Run, and then handles app-specific side
-// effects: history recording, the completion/failure report in the log,
-// and system notifications. It returns the list of finalized output file
-// paths on success, or nil on failure or cancellation. Post-processing is
-// the caller's responsibility. index and total indicate the position within
-// a batch (both 1 for single downloads).
-func (app *DownloaderApp) runYtDlp(ctx context.Context, rawURL string, savePath string, trimStart string, trimEnd string, index, total int) []string {
+// runYtDlp delegates the full download lifecycle of req to engine.Run, and
+// then handles app-specific side effects: history recording, the
+// completion/failure report in the log, and system notifications. It returns
+// the list of finalized output file paths on success, or nil on failure or
+// cancellation. Post-processing is the caller's responsibility. index and
+// total indicate the position within a batch (both 1 for single downloads).
+func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, index, total int) []string {
 	startTime := time.Now()
 
-	req := app.newDownloadRequest(rawURL, savePath, trimStart, trimEnd)
 	dl := app.newDownloadEngine().Run(ctx, req, DownloadOptions{
 		AutoRetry: app.ui.download.autoRetry.Checked,
 		Index:     index,

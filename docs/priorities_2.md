@@ -13,9 +13,17 @@ Source references point to the matching section of [roadmap.md](roadmap.md). Tic
 
 ---
 
-## 1. Download from the probe's answer instead of extracting twice
+## 1. ✅ Download from the probe's answer instead of extracting twice
 
 **Roadmap:** Follow-up to Playlist Support and Disk Space Pre-check. Not listed on its own; the cost was noted when #7 of the first round was done.
+
+**Status: Done.**
+- **Loading the probe's JSON.** For a single video, `Probe` now keeps the JSON it read (`MediaInfo.raw`) and when it read it (`probedAt`). `downloadItem` passes it as `DownloadRequest.InfoJSON`. `DownloadEngine.Run` writes it to a temporary `govid-*.info.json` and `BuildArgs` passes `--load-info-json <file>` *instead of* the URL, because yt-dlp would download a URL given alongside it as well. The file goes in the temp folder rather than the save folder, so `FinalizeFiles` cannot mistake it for a download, and it is removed when `Run` returns. The JSON is dropped from memory once used.
+- **Playlist entries.** `checkItem` probes an item with no fresh answer right before it downloads, under the item's own context, so Cancel/Skip stops the probe too. It uses the new `ProbeVideo` (`--no-playlist`), so a "Only this video" link is probed as that video, not as its playlist. `checkDiskSpace` now runs after it, so playlist entries get a size check.
+- **Fallback.** `scanResult.hadExpiredLinkErr` is set by an `ERROR:` line with HTTP 403 or 410. A run from loaded info that fails this way is repeated once from the URL, after its partial files are removed. An answer older than `probeMaxAge` (30 minutes) is probed again when its turn comes.
+- **One deviation:** a URL whose first probe *failed* is not probed again before downloading (`queueItem.probeFailed`). A second probe would most likely fail the same way, and it would add requests, which this item is meant to reduce. The download still reports the problem.
+
+Tests: `TestStartDownloadExtractsSingleVideoOnce` and `TestStartDownloadExtractsEachPlaylistEntryOnce` (the fake yt-dlp now counts extractions, and refuses a URL given together with `--load-info-json`), `TestRunRetriesFromURLWhenLoadedLinksExpire`, `TestRunDoesNotRetryOtherFailuresFromURL`, `TestRunLoadsInfoJSONAndRemovesIt`, `TestBuildArgsLoadsInfoJSONInsteadOfURL`, `TestStartDownloadPlaylistEntryChecksDiskSpace`, and `TestQueueItemNeedsProbe`.
 
 **Problem.** Every single-video download now makes yt-dlp extract the video twice. Videos picked from a playlist get no size check and no title.
 

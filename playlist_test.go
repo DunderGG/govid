@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
@@ -110,7 +111,7 @@ func TestPlaylistEntryDownloadURL(t *testing.T) {
 }
 
 func TestProbeArgs(t *testing.T) {
-	args := probeArgs(DownloadRequest{URL: "https://example.com/v", Format: formatMP4, Quality: quality720p})
+	args := probeArgs(DownloadRequest{URL: "https://example.com/v", Format: formatMP4, Quality: quality720p}, false)
 	for _, flag := range []string{"-J", "--flat-playlist"} {
 		if !slices.Contains(args, flag) {
 			t.Errorf("probe args %q missing %s", args, flag)
@@ -268,6 +269,83 @@ func TestStartDownloadProbeFailureStillDownloads(t *testing.T) {
 	}
 	if files := h.savedFiles(t); !slices.Equal(files, []string{"GoVid_Fake Video.mp4"}) {
 		t.Errorf("saved files = %q, want the video downloaded anyway", files)
+	}
+}
+
+// ── One extraction per video ─────────────────────────────────────────────────
+
+func TestStartDownloadExtractsSingleVideoOnce(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	extractions := useFakeExtractions(t)
+	h.app.ui.download.entry.SetText("https://example.com/v")
+
+	h.startAndWait(t)
+
+	if files := h.savedFiles(t); !slices.Equal(files, []string{"GoVid_Fake Video.mp4"}) {
+		t.Fatalf("saved files = %q; log:\n%s", files, h.joinedLogs())
+	}
+	if n := extractions(); n != 1 {
+		t.Errorf("extractions = %d, want 1 (the download loads the probe's answer)", n)
+	}
+}
+
+func TestStartDownloadExtractsEachPlaylistEntryOnce(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-playlist")
+	extractions := useFakeExtractions(t)
+	h.app.ui.download.entry.SetText("https://www.youtube.com/playlist?list=PL1")
+	answerPlaylist(h, func(playlistPrompt) playlistDecision {
+		return playlistDecision{positions: []int{2, 3, 4}}
+	})
+
+	h.startAndWait(t)
+
+	if files := h.savedFiles(t); len(files) != 3 {
+		t.Fatalf("saved files = %q, want 3; log:\n%s", files, h.joinedLogs())
+	}
+	if n := extractions(); n != 3 {
+		t.Errorf("extractions = %d, want 3 (one probe per entry, none by the downloads)", n)
+	}
+}
+
+func TestStartDownloadPlaylistEntryChecksDiskSpace(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-playlist")
+	h.app.ui.download.entry.SetText("https://www.youtube.com/playlist?list=PL1")
+	answerPlaylist(h, func(playlistPrompt) playlistDecision {
+		return playlistDecision{positions: []int{1, 2}}
+	})
+	prompts := lowSpace(h, fakeVideoSize/2, spaceSkip)
+
+	h.startAndWait(t)
+
+	shown := prompts()
+	if len(shown) != 2 || shown[0].url != "https://example.com/v/1" || shown[1].url != "https://example.com/v/2" {
+		t.Errorf("prompts = %+v, want one per playlist entry", shown)
+	}
+	if h.runs() != 0 {
+		t.Errorf("yt-dlp downloads = %d, want 0 after skipping both", h.runs())
+	}
+}
+
+func TestQueueItemNeedsProbe(t *testing.T) {
+	now := time.Now()
+	fresh := &MediaInfo{raw: []byte(`{}`), probedAt: now.Add(-time.Minute)}
+	stale := &MediaInfo{raw: []byte(`{}`), probedAt: now.Add(-probeMaxAge - time.Minute)}
+	used := &MediaInfo{probedAt: now} // its JSON was dropped after a download
+	tests := []struct {
+		name string
+		item queueItem
+		want bool
+	}{
+		{"playlist entry", queueItem{url: "u"}, true},
+		{"probe failed", queueItem{url: "u", probeFailed: true}, false},
+		{"fresh answer", queueItem{url: "u", info: fresh}, false},
+		{"stale answer", queueItem{url: "u", info: stale}, true},
+		{"answer already used", queueItem{url: "u", info: used}, true},
+	}
+	for _, tt := range tests {
+		if got := tt.item.needsProbe(now); got != tt.want {
+			t.Errorf("%s: needsProbe() = %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }
 

@@ -6,6 +6,9 @@
 //     askPlaylist, and the videos they choose replace it in the queue as
 //     separate items, so each gets its own progress row, cancel, retry,
 //     history entry, and duplicate-name handling.
+//   - checkItem: probes a queued video that has no fresh probe answer (a
+//     playlist entry, or one whose answer is too old) right before it is
+//     downloaded.
 //   - parsePlaylistSelection, playlistDuration, namesSingleVideo: the pure
 //     helpers behind the playlist prompt (see playlist_dialog.go).
 package main
@@ -24,6 +27,19 @@ import (
 type queueItem struct {
 	url  string
 	info *MediaInfo // what the probe reported about this single video; nil when unknown
+	// probeFailed is set when the URL could not be probed. Its download then
+	// goes ahead from the URL, without probing it again first.
+	probeFailed bool
+}
+
+// needsProbe reports whether the item must be probed (again) before it is
+// downloaded at now: a playlist entry has not been probed yet, and an answer
+// older than probeMaxAge holds format URLs that may have expired.
+func (item queueItem) needsProbe(now time.Time) bool {
+	if item.info == nil {
+		return !item.probeFailed
+	}
+	return !item.info.isFresh(now)
 }
 
 // playlistPrompt is what the playlist prompt shows.
@@ -44,7 +60,9 @@ type playlistDecision struct {
 // checkURLs probes each of the session's URLs and returns the download
 // queue: single videos as they are, and each playlist replaced by the videos
 // the user chose. A URL that cannot be probed is queued as it is, so the
-// download reports the problem. It returns nil when ctx is cancelled.
+// download reports the problem. Playlist entries are probed later, just
+// before each is downloaded (see checkItem). It returns nil when ctx is
+// cancelled.
 func (app *DownloaderApp) checkURLs(ctx context.Context, session downloadSession) []queueItem {
 	engine := app.newDownloadEngine()
 	var items []queueItem
@@ -61,7 +79,7 @@ func (app *DownloaderApp) checkURLs(ctx context.Context, session downloadSession
 			return nil
 		case err != nil:
 			app.appendOutput(fmt.Sprintf("[SYSTEM] Could not check %s (%v); downloading it as a single video.", rawURL, err), colWarning)
-			items = append(items, queueItem{url: rawURL})
+			items = append(items, queueItem{url: rawURL, probeFailed: true})
 		case info.IsPlaylist():
 			items = append(items, app.expandPlaylist(ctx, rawURL, info)...)
 		default:
@@ -106,6 +124,44 @@ func (app *DownloaderApp) expandPlaylist(ctx context.Context, rawURL string, inf
 		app.appendOutput(fmt.Sprintf("[SYSTEM] Playlist %q: %d chosen videos have no URL and were skipped.", title, missing), colWarning)
 	}
 	return items
+}
+
+// checkItem returns session.items[index], first probing it when needsProbe
+// says so and recording the answer in the queue. The download then has its
+// size, title, and the info JSON it loads instead of extracting the video
+// again. A probe that fails is logged, and the item is downloaded from its
+// URL without a size check. ctx is the item's own context, so Cancel stops
+// the probe too; the item is returned unchanged when ctx is cancelled.
+func (app *DownloaderApp) checkItem(ctx context.Context, session downloadSession, index int) queueItem {
+	item := session.items[index]
+	if !item.needsProbe(time.Now()) {
+		return item
+	}
+	if item.info != nil {
+		app.appendOutput(fmt.Sprintf("[SYSTEM] The info for %s is over %v old; checking it again.", item.url, probeMaxAge), colSystem)
+	}
+	if session.isBatch() {
+		app.updateStatus(fmt.Sprintf("Status: Checking URL %d of %d…", index+1, len(session.items)))
+	} else {
+		app.updateStatus("Status: Checking URL…")
+	}
+
+	req := app.newDownloadRequest(item.url, session.savePath, session.trimStart, session.trimEnd)
+	info, err := app.newDownloadEngine().ProbeVideo(ctx, req)
+	switch {
+	case ctx.Err() != nil:
+		return item
+	case err != nil:
+		app.appendOutput(fmt.Sprintf("[SYSTEM] Could not check %s (%v); downloading it without a size check.", item.url, err), colWarning)
+		item.info, item.probeFailed = nil, true
+	case info.IsPlaylist():
+		// --no-playlist should rule this out; download the URL as it is.
+		item.info, item.probeFailed = nil, true
+	default:
+		item.info = &info
+	}
+	session.items[index] = item
+	return item
 }
 
 // playlistTitle returns the playlist's title, or a placeholder.

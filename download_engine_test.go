@@ -541,6 +541,92 @@ func TestRunSuccessFinalizesFiles(t *testing.T) {
 	}
 }
 
+func TestBuildArgsLoadsInfoJSONInsteadOfURL(t *testing.T) {
+	built := NewDownloadEngine("yt-dlp", "").BuildArgs(DownloadRequest{
+		URL: "https://example.com/v", SavePath: "s", Format: "MP4", infoJSONPath: "info.json",
+	})
+
+	if got := argAfter(built.Args, "--load-info-json"); got != "info.json" {
+		t.Errorf("--load-info-json = %q, want info.json", got)
+	}
+	if slices.Contains(built.Args, "https://example.com/v") {
+		t.Errorf("args %q also pass the URL, which yt-dlp would download a second time", built.Args)
+	}
+	if got := argAfter(built.Args, "-f"); got == "" {
+		t.Error("args lack -f; yt-dlp selects formats again from the loaded info")
+	}
+}
+
+// fakeInfoJSON is a probe answer for the fake yt-dlp's single video.
+var fakeInfoJSON = []byte(`{"_type": "video", "title": "Fake Video"}`)
+
+func TestRunLoadsInfoJSONAndRemovesIt(t *testing.T) {
+	_ = test.NewApp()
+	useFakeTool(t, "ytdlp-download")
+	extractions := useFakeExtractions(t)
+	tempDir := t.TempDir()
+	t.Setenv("TMP", tempDir) // os.TempDir on Windows
+	t.Setenv("TMPDIR", tempDir)
+	rec := &engineRecorder{}
+
+	result := NewDownloadEngine(fakeToolPath(t), "").Run(context.Background(), DownloadRequest{
+		URL: "https://example.com/v", SavePath: t.TempDir(), Format: "MP4", InfoJSON: fakeInfoJSON,
+	}, DownloadOptions{Index: 1, Total: 1}, rec.callbacks())
+
+	if result.Err != nil {
+		t.Fatalf("Run() error = %v, log:\n%s", result.Err, rec.joinedLogs())
+	}
+	if n := extractions(); n != 0 {
+		t.Errorf("extractions = %d, want 0 when the info is loaded", n)
+	}
+	if leftovers, _ := filepath.Glob(filepath.Join(tempDir, "govid-*.info.json")); len(leftovers) != 0 {
+		t.Errorf("info files left behind: %q", leftovers)
+	}
+}
+
+func TestRunRetriesFromURLWhenLoadedLinksExpire(t *testing.T) {
+	_ = test.NewApp()
+	useFakeTool(t, "ytdlp-info-expired")
+	runs := useFakeToolState(t)
+	extractions := useFakeExtractions(t)
+	saveDir := t.TempDir()
+	rec := &engineRecorder{}
+
+	result := NewDownloadEngine(fakeToolPath(t), "").Run(context.Background(), DownloadRequest{
+		URL: "https://example.com/v", SavePath: saveDir, Format: "MP4", InfoJSON: fakeInfoJSON,
+	}, DownloadOptions{Index: 1, Total: 1}, rec.callbacks())
+
+	if result.Err != nil {
+		t.Fatalf("Run() error = %v, want the retry from the URL to succeed; log:\n%s", result.Err, rec.joinedLogs())
+	}
+	if runs() != 2 || extractions() != 1 {
+		t.Errorf("yt-dlp runs = %d with %d extractions, want 2 runs, the second from the URL", runs(), extractions())
+	}
+	logs := rec.joinedLogs()
+	for _, want := range []string{"HTTP Error 403", "asking the site for new ones", "Removed partial file"} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("log missing %q:\n%s", want, logs)
+		}
+	}
+	if want := filepath.Join(saveDir, "GoVid_Fake Video.mp4"); !slices.Equal(result.FinalPaths, []string{want}) {
+		t.Errorf("FinalPaths = %q, want %q", result.FinalPaths, want)
+	}
+}
+
+func TestRunDoesNotRetryOtherFailuresFromURL(t *testing.T) {
+	_ = test.NewApp()
+	useFakeTool(t, "fail")
+	runs := useFakeToolState(t)
+
+	result := NewDownloadEngine(fakeToolPath(t), "").Run(context.Background(), DownloadRequest{
+		URL: "https://example.com/v", SavePath: t.TempDir(), Format: "MP4", InfoJSON: fakeInfoJSON,
+	}, DownloadOptions{Index: 1, Total: 1}, (&engineRecorder{}).callbacks())
+
+	if result.Err == nil || runs() != 1 {
+		t.Errorf("Run() error = %v after %d runs, want one failed run", result.Err, runs())
+	}
+}
+
 func TestRunFailureSkipsFinalize(t *testing.T) {
 	_ = test.NewApp()
 	useFakeTool(t, "fail")

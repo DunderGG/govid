@@ -27,6 +27,24 @@ const fakeToolEnv = "GOVID_FAKE_TOOL"
 // run, so tests can count invocations across retries.
 const fakeToolStateEnv = "GOVID_FAKE_TOOL_STATE"
 
+// fakeExtractionsEnv optionally names a file the fake yt-dlp appends to
+// each time it extracts a single video: a probe that answers with one, or a
+// download from a URL rather than from --load-info-json. Real yt-dlp sends
+// several requests to the site for each extraction.
+const fakeExtractionsEnv = "GOVID_FAKE_TOOL_EXTRACTIONS"
+
+// recordFakeExtraction appends a line to the fakeExtractionsEnv file, if set.
+func recordFakeExtraction() {
+	path := os.Getenv(fakeExtractionsEnv)
+	if path == "" {
+		return
+	}
+	if file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintln(file, "extract")
+		file.Close()
+	}
+}
+
 // fakeColorEnv holds the "transfer,primaries,space" colour tags reported by
 // the "ffprobe-color" and "ffmpeg-summary" modes.
 const fakeColorEnv = "GOVID_FAKE_COLOR"
@@ -70,7 +88,14 @@ func runFakeTool(mode string, args []string) int {
 	// yt-dlp probes (-J) are answered first and not counted, so tests that
 	// count downloads are not affected by the probe before each one.
 	if slices.Contains(args, "-J") {
-		return fakeYtDlpProbe(mode)
+		return fakeYtDlpProbe(mode, slices.Contains(args, "--no-playlist"))
+	}
+	if infoPath := argAfter(args, "--load-info-json"); infoPath != "" {
+		if code := checkFakeInfoJSON(infoPath, args); code != 0 {
+			return code
+		}
+	} else if argAfter(args, "-o") != "" {
+		recordFakeExtraction() // a download from a URL
 	}
 
 	// Each invocation appends a line to the state file (when one is set), so
@@ -88,6 +113,11 @@ func runFakeTool(mode string, args []string) int {
 
 	switch mode {
 	case "ytdlp-download", "ytdlp-playlist", "ytdlp-probe-fail":
+		return fakeYtDlpDownload(args)
+	case "ytdlp-info-expired":
+		if slices.Contains(args, "--load-info-json") {
+			return fakeYtDlpExpiredLinks(args)
+		}
 		return fakeYtDlpDownload(args)
 	case "ytdlp-transient":
 		return fakeYtDlpTransient()
@@ -174,23 +204,56 @@ const fakePlaylistSize = 20
 // 10 MiB, matching the progress lines of fakeYtDlpDownload.
 const fakeVideoSize = 10 * 1024 * 1024
 
+// fakeYtDlpExpiredLinks mimics a download from saved info whose format URLs
+// have expired: it writes a partial file and fails with HTTP 403.
+func fakeYtDlpExpiredLinks(args []string) int {
+	if path, _ := fakeOutputPath(args); path != "" {
+		os.WriteFile(path, []byte("partial"), 0644)
+	}
+	fmt.Fprintln(os.Stderr, "ERROR: unable to download video data: HTTP Error 403: Forbidden")
+	return 1
+}
+
+// checkFakeInfoJSON checks the arguments of a download from saved info, as
+// real yt-dlp would treat them: the file must hold a video's JSON, and no
+// URL may be given as well, since yt-dlp would download that too.
+func checkFakeInfoJSON(path string, args []string) int {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: %v\n", err)
+		return 2
+	}
+	if !strings.Contains(string(data), `"title"`) {
+		fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: %s holds no video info\n", path)
+		return 2
+	}
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "http") {
+			fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: URL %q given with --load-info-json\n", arg)
+			return 2
+		}
+	}
+	return 0
+}
+
 // fakeYtDlpProbe mimics "yt-dlp -J --flat-playlist": the "ytdlp-playlist"
 // mode reports a playlist of fakePlaylistSize videos at
-// https://example.com/v/<n>, "ytdlp-probe-fail" fails, and every other mode
-// reports a single 10 MiB video.
-func fakeYtDlpProbe(mode string) int {
-	switch mode {
-	case "ytdlp-playlist":
+// https://example.com/v/<n> (unless noPlaylist is set), "ytdlp-probe-fail"
+// fails, and every other mode reports a single 10 MiB video.
+func fakeYtDlpProbe(mode string, noPlaylist bool) int {
+	switch {
+	case mode == "ytdlp-playlist" && !noPlaylist:
 		var entries []string
 		for n := 1; n <= fakePlaylistSize; n++ {
 			entries = append(entries, fmt.Sprintf(`{"_type": "url", "url": "https://example.com/v/%d", "title": "Video %d", "duration": 90}`, n, n))
 		}
 		fmt.Printf(`{"_type": "playlist", "title": "Fake Playlist", "entries": [%s]}`+"\n", strings.Join(entries, ", "))
 		return 0
-	case "ytdlp-probe-fail":
+	case mode == "ytdlp-probe-fail":
 		fmt.Fprintln(os.Stderr, "ERROR: [generic] fake: Unable to download webpage")
 		return 1
 	}
+	recordFakeExtraction()
 	fmt.Printf(`{"_type": "video", "title": "Fake Video", "duration": 10, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
 		fakeVideoSize-1024*1024, 1024*1024)
 	return 0
@@ -278,6 +341,22 @@ func useFakeToolState(t *testing.T) func() int {
 	t.Setenv(fakeToolStateEnv, statePath)
 	return func() int {
 		data, err := os.ReadFile(statePath)
+		if err != nil {
+			return 0
+		}
+		return strings.Count(string(data), "\n")
+	}
+}
+
+// useFakeExtractions points the fake yt-dlp at a fresh extraction log and
+// returns a function reporting how many single-video extractions it has made
+// since (see fakeExtractionsEnv).
+func useFakeExtractions(t *testing.T) func() int {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "fake_tool_extractions.txt")
+	t.Setenv(fakeExtractionsEnv, path)
+	return func() int {
+		data, err := os.ReadFile(path)
 		if err != nil {
 			return 0
 		}

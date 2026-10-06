@@ -51,8 +51,10 @@ package "Application Core" #F0F4F8 {
         +startDownload()
         -checkURLs(ctx, session) : []queueItem
         -expandPlaylist(ctx, url, info) : []queueItem
+        -checkItem(ctx, session, index) : queueItem
+        -downloadItem(queueCtx, session, index, continueAll) : ([]string, bool)
         -checkDiskSpace(ctx, session, index, continueAll) : diskSpaceDecision
-        +runYtDlp(ctx, url, path, ...)
+        +runYtDlp(ctx, req DownloadRequest, index, total) : []string
         +openDownloadFolder()
         +updateStatus(msg)
         +showDownloadPhase(phase)
@@ -226,6 +228,7 @@ package "Download Engine" #FFF8F0 {
         +Execute(ctx, args, opts DownloadOptions, cb) : scanResult
         +Run(ctx, req, opts DownloadOptions, cb) : DownloadResult
         +Probe(ctx, req DownloadRequest) : (MediaInfo, error)
+        +ProbeVideo(ctx, req DownloadRequest) : (MediaInfo, error)
         +FinalizeFiles(savePath, downloadID, onLog) : []string
         +RemovePartialFiles(savePath, downloadID, onLog)
         -watchOutput(stdout, stderr, cb) : scanResult
@@ -244,6 +247,7 @@ package "Download Engine" #FFF8F0 {
         +EmbedMetadata : bool
         +EmbedThumbnail : bool
         +EmbedChapters : bool
+        +InfoJSON : []byte
     }
 
     class DownloadOptions <<data>> {
@@ -280,8 +284,11 @@ package "Download Engine" #FFF8F0 {
         +Title : string
         +Duration : float64
         +Entries : []PlaylistEntry
+        -raw : []byte
+        -probedAt : time.Time
         --
         +IsPlaylist() : bool
+        -isFresh(now) : bool
         +EstimatedSize() : (uint64, bool)
     }
 

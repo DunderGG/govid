@@ -24,10 +24,18 @@ import (
 
 // scanResult holds metadata collected while reading a yt-dlp process's output.
 type scanResult struct {
-	sourceExts      []string // file extensions seen in "[download] Destination:" lines
-	wasConverted    bool     // true when [Merger] or [VideoConvertor] appeared in the output
-	hadTransientErr bool     // true when a recoverable network/rate-limit error was seen in stderr
-	hadExtractorErr bool     // true when stderr showed an error typical of a site change that a newer yt-dlp may fix
+	sourceExts        []string // file extensions seen in "[download] Destination:" lines
+	wasConverted      bool     // true when [Merger] or [VideoConvertor] appeared in the output
+	hadTransientErr   bool     // true when a recoverable network/rate-limit error was seen in stderr
+	hadExtractorErr   bool     // true when stderr showed an error typical of a site change that a newer yt-dlp may fix
+	hadExpiredLinkErr bool     // true when stderr showed an HTTP 403 or 410 error, which expired format URLs give
+}
+
+// expiredLinkErrPatterns are substrings of the errors a site gives for a
+// format URL that has expired or was issued to another IP address.
+var expiredLinkErrPatterns = []string{
+	"HTTP Error 403",
+	"HTTP Error 410",
 }
 
 // extractorErrPatterns are substrings of yt-dlp errors that usually mean the
@@ -141,6 +149,7 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 			// Detect errors a newer yt-dlp may fix, so the caller can say so.
 			isError := strings.Contains(line, "ERROR:")
 			result.hadExtractorErr = result.hadExtractorErr || (isError && containsAny(line, extractorErrPatterns))
+			result.hadExpiredLinkErr = result.hadExpiredLinkErr || (isError && containsAny(line, expiredLinkErrPatterns))
 			var logColor color.Color // nil = default foreground, resolved by the UI
 			switch {
 			case strings.Contains(line, "ERROR:"):

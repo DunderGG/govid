@@ -93,12 +93,24 @@ group checkURLs(queueCtx, session) [for each URL entered]
         U   -> UI  : choose range (e.g. 5-8)
         UI  --> App : playlistDecision{positions}
         App -> App : each chosen entry's URL → its own queueItem
-    else single video or probe failed
-        App -> App : queueItem{url}
+    else single video
+        App -> App : queueItem{url, info (with its raw JSON)}
+    else probe failed
+        App -> App : queueItem{url, probeFailed}
     end
 end
 
 group loop [for each item in session.items]
+    alt batch mode (len > 1)
+        App -> App : context.WithCancel(queueCtx)\n  → runCtx / skipItem  (per-URL cancel)
+        note right : Cancel skips only the active URL;\nqueueCtx and later URLs remain available.
+    else single URL
+        note right : runCtx == queueCtx; Cancel stops the whole session.
+    end
+    opt checkItem: no fresh probe answer (playlist entry, or older than 30 min)
+        App -> YT  : engine.ProbeVideo(runCtx, req)\n  — yt-dlp -J --flat-playlist --no-playlist -f <selector>
+        YT  --> App : MediaInfo (raw JSON, size, title)
+    end
     App -> OS  : freeBytes(save folder)
     alt probe size × 1.1 (× 2 with post-processing) > free space
         App -> UI  : askDiskSpace("Needs ~X, Y free. Continue anyway?")\n  — single: Continue anyway / Cancel\n  — batch: Skip / Continue / Stop
@@ -106,16 +118,11 @@ group loop [for each item in session.items]
     else size unknown
         App -> UI  : appendOutput("Download size unknown; skipping the disk space check.")
     end
-    alt batch mode (len > 1)
-        App -> App : context.WithCancel(queueCtx)\n  → runCtx / skipItem  (per-URL cancel)
-        note right : Cancel skips only the active URL;\nqueueCtx and later URLs remain available.
-    else single URL
-        note right : runCtx == queueCtx; Cancel stops the whole session.
-    end
 
-    App -> App : runYtDlp(runCtx, url, …)
+    App -> App : runYtDlp(runCtx, req{InfoJSON: item.info.raw}, …)
 
     group engine.Run(ctx, req, opts, cb)  — BuildArgs + Execute + FinalizeFiles / RemovePartialFiles
+        App -> OS  : saveInfoJSON → temp govid-*.info.json (removed when Run returns)
         group Build yt-dlp arguments
             App -> App : select format flag (bestvideo+bestaudio / audio-only / WebM VP9…)
             App -> App : apply quality height filter if set
@@ -123,6 +130,7 @@ group loop [for each item in session.items]
             App -> App : append ""--ffmpeg-location"", ""--limit-rate"", ""--cookies"" if set
             App -> App : append ""--download-sections"" / ""--force-keyframes-at-cuts"" if trimming
             App -> App : append ""--merge-output-format"", ""--remux-video"", ""--recode-video""
+            App -> App : append ""--load-info-json <file>"" instead of the URL when InfoJSON is set
         end
 
         group Retry loop [attempt 1..3]
@@ -176,6 +184,10 @@ group loop [for each item in session.items]
             OS  --> App : []finalPaths
         else failed or cancelled
             App -> OS  : engine.RemovePartialFiles(savePath, downloadID)\n  — Glob(*downloadID*) → os.Remove (retried while locked)
+        end
+        opt the loaded info failed with HTTP 403 / 410 (hadExpiredLinkErr)
+            App -> UI  : appendOutput("download links were refused (expired?); asking the site for new ones")
+            App -> YT  : run once more from the URL (BuildArgs without --load-info-json)
         end
     end
     App <-- App : DownloadResult{FinalPaths, Extension, Scan, Err}

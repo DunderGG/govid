@@ -4,8 +4,12 @@
 //   - DownloadEngine.Probe: runs "yt-dlp -J --flat-playlist" for one URL and
 //     parses the JSON into a MediaInfo. --flat-playlist keeps playlists fast
 //     (their entries are listed, not extracted), while a single video is
-//     still extracted in full.
+//     still extracted in full. ProbeVideo does the same with --no-playlist,
+//     for a URL known to name one video.
 //   - MediaInfo / PlaylistEntry: the parts of yt-dlp's info JSON GoVid uses.
+//     A single video's MediaInfo also keeps the JSON itself, which the
+//     download hands back to yt-dlp (--load-info-json) so the video is not
+//     extracted a second time.
 package main
 
 import (
@@ -15,7 +19,13 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
+
+// probeMaxAge is how old a probe's answer may be when its video's turn in
+// the queue comes. The format URLs in it expire (on YouTube after about six
+// hours), so an older answer is replaced by a fresh probe.
+const probeMaxAge = 30 * time.Minute
 
 // MediaInfo is what yt-dlp reports about a URL before downloading it.
 type MediaInfo struct {
@@ -29,6 +39,11 @@ type MediaInfo struct {
 	// video and an audio stream are merged.
 	formatSize
 	RequestedFormats []formatSize `json:"requested_formats"`
+
+	// raw is the JSON yt-dlp printed for a single video, and probedAt is
+	// when. The download loads raw instead of extracting the video again.
+	raw      []byte
+	probedAt time.Time
 }
 
 // formatSize is the size yt-dlp reports for one format: exact when the site
@@ -54,6 +69,12 @@ func (size formatSize) bytes() (float64, bool) {
 // IsPlaylist reports whether the URL points at a playlist.
 func (info MediaInfo) IsPlaylist() bool {
 	return info.Type == "playlist"
+}
+
+// isFresh reports whether, at now, the probe's answer is recent enough for
+// the download to use the format URLs in it (see probeMaxAge).
+func (info MediaInfo) isFresh(now time.Time) bool {
+	return len(info.raw) > 0 && now.Sub(info.probedAt) < probeMaxAge
 }
 
 // EstimatedSize returns the size of the download in bytes, and whether it is
@@ -99,7 +120,19 @@ func (entry PlaylistEntry) DownloadURL() string {
 // It passes the same format selection and cookies as the download, so a
 // single video's info describes the formats the download would fetch.
 func (engine *DownloadEngine) Probe(ctx context.Context, req DownloadRequest) (MediaInfo, error) {
-	cmd := newToolCommand(ctx, engine.YtDlpPath, probeArgs(req)...)
+	return engine.probe(ctx, probeArgs(req, false))
+}
+
+// ProbeVideo is Probe for a URL that names one video, such as a playlist
+// entry, or a watch?v=…&list=… link the user chose "Only this video" for. Like
+// the download, it passes --no-playlist.
+func (engine *DownloadEngine) ProbeVideo(ctx context.Context, req DownloadRequest) (MediaInfo, error) {
+	return engine.probe(ctx, probeArgs(req, true))
+}
+
+// probe runs yt-dlp with args and parses its answer.
+func (engine *DownloadEngine) probe(ctx context.Context, args []string) (MediaInfo, error) {
+	cmd := newToolCommand(ctx, engine.YtDlpPath, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -114,15 +147,22 @@ func (engine *DownloadEngine) Probe(ctx context.Context, req DownloadRequest) (M
 	if err := json.Unmarshal(out, &info); err != nil {
 		return MediaInfo{}, fmt.Errorf("reading yt-dlp's answer: %w", err)
 	}
+	if !info.IsPlaylist() {
+		info.raw = out
+		info.probedAt = time.Now()
+	}
 	return info, nil
 }
 
-// probeArgs builds the yt-dlp arguments Probe runs with. Unlike the
-// download, it does not pass --no-playlist, so a playlist is reported as
+// probeArgs builds the yt-dlp arguments a probe runs with. Without
+// singleVideo it does not pass --no-playlist, so a playlist is reported as
 // one.
-func probeArgs(req DownloadRequest) []string {
+func probeArgs(req DownloadRequest, singleVideo bool) []string {
 	formatFlag, _, _ := formatSelection(req.Format, req.Quality)
 	args := []string{"-J", "--flat-playlist", "--no-warnings", "-f", formatFlag}
+	if singleVideo {
+		args = append(args, "--no-playlist")
+	}
 	if req.CookiesPath != "" {
 		if _, err := os.Stat(req.CookiesPath); err == nil {
 			args = append(args, "--cookies", req.CookiesPath)

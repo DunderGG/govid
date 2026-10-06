@@ -54,6 +54,13 @@ type DownloadRequest struct {
 	EmbedMetadata  bool // title, artist, upload date, … tags
 	EmbedThumbnail bool // the thumbnail as cover art (converted to JPEG)
 	EmbedChapters  bool // chapter markers
+
+	// InfoJSON is the probe's JSON for URL (see MediaInfo), or nil. When set,
+	// Run has yt-dlp load it instead of extracting the video again.
+	InfoJSON []byte
+	// infoJSONPath is the file Run saved InfoJSON to; BuildArgs passes it to
+	// yt-dlp in place of URL.
+	infoJSONPath string
 }
 
 // DownloadArgs is the resolved output of buildYtDlpArgs. It carries the
@@ -184,7 +191,13 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 	embedFlags, thumbnailSkipped := embedArgs(req, extension)
 	args = append(args, embedFlags...)
 
-	args = append(args, req.URL)
+	// yt-dlp downloads every URL it is given as well as a loaded info file,
+	// so the URL must be left out when the info file stands in for it.
+	if req.infoJSONPath != "" {
+		args = append(args, "--load-info-json", req.infoJSONPath)
+	} else {
+		args = append(args, req.URL)
+	}
 
 	return DownloadArgs{
 		Args:             args,
@@ -319,7 +332,15 @@ type DownloadResult struct {
 // (on success) rename the output files to their final, conflict-free names.
 // It reads no UI state — all inputs come from req and opts — and reports
 // every event through cb.
+//
+// When req.InfoJSON is set, yt-dlp loads it instead of extracting the video
+// again. Its format URLs may have expired, or be tied to another IP address,
+// so a run that fails with HTTP 403 or 410 is repeated once from the URL.
 func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, opts DownloadOptions, cb ProcessCallbacks) DownloadResult {
+	infoPath, removeInfo := saveInfoJSON(req.InfoJSON, cb.OnLog)
+	defer removeInfo()
+	req.infoJSONPath = infoPath
+
 	built := engine.BuildArgs(req)
 	if built.HasTrim {
 		cb.OnLog(
@@ -331,15 +352,27 @@ func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, opts
 		cb.OnLog("[SYSTEM] Not embedding the thumbnail: WebM files cannot hold cover art.", colSystem)
 	}
 
+	result := engine.runArgs(ctx, req.SavePath, built, opts, cb)
+	if req.infoJSONPath != "" && result.Err != nil && ctx.Err() == nil && result.Scan.hadExpiredLinkErr {
+		cb.OnLog("[SYSTEM] The video's download links were refused (expired?); asking the site for new ones.", colWarning)
+		req.infoJSONPath = ""
+		result = engine.runArgs(ctx, req.SavePath, engine.BuildArgs(req), opts, cb)
+	}
+	return result
+}
+
+// runArgs runs yt-dlp with built's arguments, then finalizes the files it
+// wrote, or removes them if it failed or was cancelled.
+func (engine *DownloadEngine) runArgs(ctx context.Context, savePath string, built DownloadArgs, opts DownloadOptions, cb ProcessCallbacks) DownloadResult {
 	scan, cmdErr := engine.Execute(ctx, built.Args, opts, cb)
 
 	var finalPaths []string
 	if cmdErr == nil {
-		finalPaths = engine.FinalizeFiles(req.SavePath, built.DownloadID, cb.OnLog)
+		finalPaths = engine.FinalizeFiles(savePath, built.DownloadID, cb.OnLog)
 	} else {
 		// Execute returns only once the process tree is dead, so nothing is
 		// still writing to these files.
-		engine.RemovePartialFiles(req.SavePath, built.DownloadID, cb.OnLog)
+		engine.RemovePartialFiles(savePath, built.DownloadID, cb.OnLog)
 	}
 
 	return DownloadResult{
@@ -348,6 +381,31 @@ func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, opts
 		Scan:       scan,
 		Err:        cmdErr,
 	}
+}
+
+// saveInfoJSON writes a probe's JSON to a temporary file for yt-dlp's
+// --load-info-json, and returns its path and a function that removes it.
+// The file goes to the temp folder, not the save folder, where FinalizeFiles
+// would take it for a download. With no JSON, or when it cannot be written
+// (which is logged), the path is "" and yt-dlp extracts the video itself.
+func saveInfoJSON(infoJSON []byte, onLog func(line string, col color.Color)) (path string, remove func()) {
+	if len(infoJSON) == 0 {
+		return "", func() {}
+	}
+	file, err := os.CreateTemp("", "govid-*.info.json")
+	if err != nil {
+		onLog(fmt.Sprintf("[SYSTEM] Could not save the video's info (%v); yt-dlp will look it up again.", err), colWarning)
+		return "", func() {}
+	}
+	remove = func() { os.Remove(file.Name()) }
+	_, writeErr := file.Write(infoJSON)
+	closeErr := file.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		remove()
+		onLog(fmt.Sprintf("[SYSTEM] Could not save the video's info (%v); yt-dlp will look it up again.", err), colWarning)
+		return "", func() {}
+	}
+	return file.Name(), remove
 }
 
 // FinalizeFiles finds all files written by yt-dlp under the given downloadID

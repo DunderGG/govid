@@ -37,7 +37,7 @@ govid/
 │
 ├── ── Services / Engines ──────────────────────────────────────────
 ├── download_engine.go      DownloadEngine — yt-dlp arg builder and retry executor
-├── probe.go                DownloadEngine.Probe — yt-dlp -J --flat-playlist; MediaInfo / PlaylistEntry
+├── probe.go                DownloadEngine.Probe / ProbeVideo — yt-dlp -J --flat-playlist; MediaInfo / PlaylistEntry
 ├── pp_engine.go            PPEngine — concurrent FFmpeg post-processing worker pool
 ├── preference_service.go   PreferenceService — preference keys, defaults, Load/Save/Reset, LoadFromFile, MergeConfig;
 │                           savePreferences, parseAppConfig, isValidOption co-located
@@ -53,7 +53,7 @@ govid/
 │
 ├── ── Orchestration ───────────────────────────────────────────────
 ├── download.go             DownloaderApp.startDownload / runYtDlp — UI orchestration for a download session
-├── playlist.go             checkURLs — probes each URL and expands playlists into queue items; range parsing
+├── playlist.go             checkURLs / checkItem — probes each URL, expands playlists into queue items, probes entries before download; range parsing
 ├── playlist_dialog.go      UIManager.askPlaylist — the "Playlist detected" prompt
 ├── disk_space.go           checkDiskSpace — free-space check before each queued item; the "Low disk space" prompt
 ├── postprocess.go          PostProcessSettings, buildPostProcessFilters / applyFFmpegFilters — value struct + thin UI wrapper; shared format/scan helpers
@@ -151,11 +151,11 @@ Beyond the five `show*` methods, `UIManager` also owns:
 A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and provides four methods:
 
 - **`BuildArgs(DownloadRequest) DownloadArgs`** — pure function; assembles the yt-dlp command-line arguments from a request value struct. No I/O. The format selector comes from `formatSelection(format, quality)`, which `Probe` shares. `embedArgs` adds `--embed-metadata`, `--embed-thumbnail --convert-thumbnails jpg` (except for WebM, which sets `DownloadArgs.ThumbnailSkipped` so `Run` can log why), and `--embed-chapters` from the request's `EmbedMetadata`/`EmbedThumbnail`/`EmbedChapters`.
-- **`Probe(ctx, DownloadRequest) (MediaInfo, error)`** — runs `yt-dlp -J --flat-playlist --no-warnings` with the download's `-f` selector and cookies, and without `--no-playlist` (`probe.go`). It returns `MediaInfo{Type, Title, Duration, Entries}`; `IsPlaylist()` is true for `_type == "playlist"`, and each `PlaylistEntry.DownloadURL()` is the video's URL. `--flat-playlist` lists a playlist's entries without extracting them, but a single video is still extracted in full. For a single video, `EstimatedSize()` adds up the `filesize` (or `filesize_approx`) of the requested formats, for the disk space check.
+- **`Probe(ctx, DownloadRequest) (MediaInfo, error)`** — runs `yt-dlp -J --flat-playlist --no-warnings` with the download's `-f` selector and cookies, and without `--no-playlist` (`probe.go`). It returns `MediaInfo{Type, Title, Duration, Entries}`; `IsPlaylist()` is true for `_type == "playlist"`, and each `PlaylistEntry.DownloadURL()` is the video's URL. `--flat-playlist` lists a playlist's entries without extracting them, but a single video is still extracted in full. For a single video, `EstimatedSize()` adds up the `filesize` (or `filesize_approx`) of the requested formats, for the disk space check, and the `MediaInfo` keeps the JSON itself (`raw`) and when it was read (`probedAt`). `ProbeVideo` is the same probe with `--no-playlist`, for playlist entries and "Only this video" links. `isFresh(now)` is false once the answer is older than `probeMaxAge` (30 min), because the format URLs in it expire.
 - **`Execute(ctx, args []string, opts DownloadOptions, ProcessCallbacks) (scanResult, error)`** — starts the process, streams stdout/stderr through its own private `watchOutput` method (defined in `logscanner.go`), and retries on transient errors with 1 s / 5 s / 30 s back-off when `opts.AutoRetry` is set.
 - **`FinalizeFiles(savePath, downloadID string, onLog func(string, color.Color)) []string`** — globs the temp files written under `downloadID`, strips the token, and renames each to its final conflict-free name via the private `uniquePath` helper. Reports rename events through `onLog` rather than touching the UI directly.
 - **`RemovePartialFiles(savePath, downloadID string, onLog func(string, color.Color))`** — deletes every file written under `downloadID` after a failed or cancelled download (yt-dlp runs with `--no-part`, so these are incomplete media files), retrying briefly while Windows still holds a lock, and logs each removal.
-- **`Run(ctx, req DownloadRequest, opts DownloadOptions, ProcessCallbacks) DownloadResult`** — composes the methods above into the full lifecycle of a single URL download: `FinalizeFiles` on success, `RemovePartialFiles` on failure or cancellation. Reads no UI state; `DownloaderApp.runYtDlp` builds the `DownloadRequest` and `DownloadOptions` from widget values, calls `Run`, then handles history recording and the UI completion report from the returned `DownloadResult{FinalPaths, Extension, Scan, Err}`.
+- **`Run(ctx, req DownloadRequest, opts DownloadOptions, ProcessCallbacks) DownloadResult`** — composes the methods above into the full lifecycle of a single URL download: `FinalizeFiles` on success, `RemovePartialFiles` on failure or cancellation. When `req.InfoJSON` holds the probe's JSON, `saveInfoJSON` writes it to a temporary `govid-*.info.json` (in the temp folder, so `FinalizeFiles` cannot pick it up), `BuildArgs` passes `--load-info-json <file>` instead of the URL, and the file is removed when `Run` returns. yt-dlp runs format selection again on the loaded info, so `-f`, cookies, `--download-sections`, and the embed flags all still apply, and the video is extracted once per download instead of twice. If that run fails with HTTP 403 or 410 (`scanResult.hadExpiredLinkErr`: the format URLs expired or were issued to another IP address), `Run` repeats it once from the URL. Reads no UI state; `DownloaderApp.runYtDlp` builds the `DownloadRequest` and `DownloadOptions` from widget values, calls `Run`, then handles history recording and the UI completion report from the returned `DownloadResult{FinalPaths, Extension, Scan, Err}`.
 
 `DownloadOptions{AutoRetry bool; Index, Total int}` bundles the retry policy and this URL's 1-based position within a batch (both 1 for single downloads) — the three runtime options shared by `Execute` and `Run`.
 
@@ -303,14 +303,16 @@ Looks up the latest release of a GitHub repository through `GET /repos/<owner>/<
 User clicks Download
   └─ startDownload()          validate URLs; open log file; spawn the sequential download worker
        ├─ checkURLs()          engine.Probe per URL; a playlist → askPlaylist prompt → its chosen videos become queue items
-       ├─ checkDiskSpace()     per queue item: probe size estimate × 1.1 (× 2 with post-processing) vs freeBytes(save folder)
-       └─ runYtDlp()           per queue item
-            ├─ engine.BuildArgs(DownloadRequest)   → []string args
-            ├─ engine.Execute(ctx, args, opts, cb)   → scanResult
-            │    ├─ cmd.StdoutPipe / StderrPipe
-            │    └─ engine.watchOutput() goroutines (parse % / size / phase) → cb.OnProgress, cb.OnPhase
-              ├─ engine.FinalizeFiles()               glob → rename  (RemovePartialFiles on failure/cancel)
-              └─ historySvc.AppendAll(DownloadRecord) JSON append
+       └─ downloadItem()       per queue item
+            ├─ checkItem()          engine.ProbeVideo when the item has no fresh probe answer (playlist entries; answers over 30 min old)
+            ├─ checkDiskSpace()     probe size estimate × 1.1 (× 2 with post-processing) vs freeBytes(save folder)
+            └─ runYtDlp()
+                 ├─ engine.BuildArgs(DownloadRequest)   → []string args (--load-info-json <probe JSON> instead of the URL)
+                 ├─ engine.Execute(ctx, args, opts, cb)   → scanResult
+                 │    ├─ cmd.StdoutPipe / StderrPipe
+                 │    └─ engine.watchOutput() goroutines (parse % / size / phase) → cb.OnProgress, cb.OnPhase
+                 ├─ engine.FinalizeFiles()               glob → rename  (RemovePartialFiles on failure/cancel)
+                 └─ historySvc.AppendAll(DownloadRecord) JSON append
   └─ applyFFmpegFilters()     if post-processing enabled
        └─ PPEngine.ApplyFilters(ctx, files, vf, af, cb)
               ├─ resolveAutoCrop() / resolveToneMap() per file (sentinels → crop / tone-map filters)
@@ -414,14 +416,19 @@ and is hidden if `queueCtx` is cancelled first. When the queue holds more than
 one item, each item gets a child `runCtx` of the queue-level `queueCtx`.
 Cancelling the child skips only the active item; with a single item, `runCtx`
 is the queue context, so cancellation stops the session. Before each item,
-`checkDiskSpace` compares the probe's size estimate (scaled down for a trim
+`checkItem` probes it under `runCtx` (so Cancel skips the probe too) when it
+has no fresh probe answer: playlist entries, which `--flat-playlist` only
+listed, and items whose answer is older than `probeMaxAge`, which can happen
+in long batches. An item whose first probe failed is not probed again. The
+download then loads the probe's JSON (`DownloadRequest.InfoJSON`), so each
+video is extracted once. Then `checkDiskSpace` compares the probe's size estimate (scaled down for a trim
 range, plus a 10% margin, doubled when post-processing will write a second
 copy) with `freeBytes` of the save folder. It checks every item, not just the
 first, because earlier items of a batch use up space. When the space is too
 small it asks through `askDiskSpace`: Continue anyway / Cancel for a single
 item, or Skip / Continue (for the rest of the session) / Stop in a batch. An
-unknown size, for example for playlist entries, skips the check and logs that
-it did. Post-processing runs afterward over the collected successful paths and
+unknown size, for example when the probe failed or the site lists no sizes,
+skips the check and logs that it did. Post-processing runs afterward over the collected successful paths and
 can process multiple files concurrently.
 
 **Process trees:** yt-dlp, ffmpeg, and ffprobe are started through
