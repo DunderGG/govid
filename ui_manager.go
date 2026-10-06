@@ -354,7 +354,11 @@ func (manager *UIManager) showConfigHelp() {
 	}
 
 	items := []helpItem{
-		{"Video URL", "Paste any URL supported by yt-dlp, such as a **YouTube**, **Vimeo**, or **Twitter/X** link."},
+		{"Video URL", "Paste any URL supported by yt-dlp, such as a **YouTube**, **Vimeo**, or **Twitter/X** link.\n\nOther ways to add URLs (each switches on **Batch Mode** when the field then holds more than one, and skips URLs already in it):\n" +
+			"  * **Load from file…** – reads a `.txt` file with one URL per line. Blank lines and lines starting with `#` are skipped, as are lines that are not links; the log says how many and which\n" +
+			"  * **Paste button** (next to the field) – adds the links on the clipboard, one per line. It refuses the clipboard if anything in it is not a link\n" +
+			"  * **Drop onto the window** – a `.txt` list, or an internet shortcut (`.url`). A link dragged straight from a browser is not received on Windows; drag it to the desktop first, then drop the shortcut that makes\n\n" +
+			"In Batch Mode, lines starting with `#` are comments and are not downloaded."},
 		{"Playlists", "Before downloading, GoVid checks each URL. When one is a playlist, it shows the playlist's title, number of videos, and total length, and asks which videos to download:\n  * Leave the range blank and click **Download** to get them all\n  * Enter a range such as `1-10`, `5-`, or `3,5,8` to get only those\n  * For a link to one video inside a playlist (`watch?v=…&list=…`), **Only this video** is the default\n\nEach chosen video becomes its own item in the queue, with its own progress, Cancel, and history entry."},
 		{"Save Destination", "The folder where the downloaded file will be saved. GoVid remembers this between sessions.\n\nBefore each download, GoVid checks that the folder's drive has room for it (with a 10% margin, and twice that with post-processing, which writes a second copy). If it does not, you can continue anyway or cancel; in a batch you can also skip that video. This includes each video picked from a playlist, which GoVid checks just before downloading it. When the site does not say how big a video is, the check is skipped."},
 		{"Output Format", "The container format for the downloaded file:\n" +
@@ -824,6 +828,9 @@ func (manager *UIManager) createUI() {
 
 	content := container.NewBorder(topContent, footer, nil, nil, logPane)
 	manager.mainWindow.SetContent(container.NewPadded(content))
+	manager.mainWindow.SetOnDropped(func(_ fyne.Position, items []fyne.URI) {
+		manager.handleDrop(items)
+	})
 }
 
 // notice is a message shown in a bar above the main window's input card
@@ -1014,16 +1021,21 @@ func (manager *UIManager) buildInputCard(themeMode string) fyne.CanvasObject {
 	ui.download.trimStart.Validator = validateTimestamp
 	ui.download.trimEnd.Validator = validateTimestamp
 
+	loadFileBtn := widget.NewButtonWithIcon("Load from file…", theme.FileTextIcon(), manager.showLoadURLFile)
+	pasteBtn := widget.NewButtonWithIcon("", theme.ContentPasteIcon(), manager.pasteURLs)
+	clearBtn := widget.NewButtonWithIcon("", theme.ContentClearIcon(), func() {
+		ui.download.entry.SetText("")
+	})
+
 	inputCard := roundedCard("Specify the source and destination",
 		container.NewVBox(
 			container.NewHBox(
 				widget.NewLabelWithStyle("Video URL:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 				layout.NewSpacer(),
+				loadFileBtn,
 				ui.download.batchMode,
 			),
-			container.NewBorder(nil, nil, nil, widget.NewButtonWithIcon("", theme.ContentClearIcon(), func() {
-				ui.download.entry.SetText("")
-			}), ui.download.entry),
+			container.NewBorder(nil, nil, nil, container.NewHBox(pasteBtn, clearBtn), ui.download.entry),
 			widget.NewLabelWithStyle("Save Destination:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 			container.NewBorder(nil, nil, nil, browseBtn, ui.download.path),
 			container.NewGridWithColumns(2,

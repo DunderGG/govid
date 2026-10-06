@@ -198,6 +198,10 @@ package "UI Layer" #F0F8F0 {
         +askDiskSpace(ctx, prompt) : diskSpaceDecision
         +showNotice(n notice)
         +dismissNotice(id)
+        -showLoadURLFile()
+        -loadURLList(name, r io.Reader)
+        -pasteURLs()
+        -handleDrop(items []fyne.URI)
         +showAbout()
         +showHistory()
         +showConfigHelp()

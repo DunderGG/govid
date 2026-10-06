@@ -103,7 +103,8 @@ func (app *DownloaderApp) readSession() (downloadSession, error) {
 }
 
 // collectURLs extracts the URLs to download from the URL entry's text. In
-// batch mode every non-blank line is a URL; otherwise the whole trimmed text
+// batch mode every non-blank line is a URL, except comment lines starting
+// with # (as in a list loaded from a file); otherwise the whole trimmed text
 // is a single URL. It returns an error when no URL was entered.
 func collectURLs(text string, batch bool) ([]string, error) {
 	if !batch {
@@ -116,7 +117,7 @@ func collectURLs(text string, batch bool) ([]string, error) {
 
 	var urls []string
 	for _, line := range strings.Split(text, "\n") {
-		if url := strings.TrimSpace(line); url != "" {
+		if url := strings.TrimSpace(line); url != "" && !isURLComment(url) {
 			urls = append(urls, url)
 		}
 	}

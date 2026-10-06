@@ -10,7 +10,7 @@ This document outlines planned features, improvements, and known limitations for
 > Allow users to download multiple videos in a single session.
 
 - [X] Add a multi-line URL input field (one URL per line).
-- [ ] Support loading a `.txt` file of URLs via a "Load from file" button.
+- [x] Support loading a `.txt` file of URLs via a "Load from file" button. (`UIManager.showLoadURLFile` in `url_input.go`: blank lines, `#` comments, lines that are not http(s) URLs, and URLs already in the field are skipped and counted in the log; batch mode is switched on.)
 - [X] Show per-download progress rows in the log, and an overall queue counter.
 - [X] Ensure cancellation applies only to the active download, not the whole queue.
 
@@ -143,7 +143,7 @@ This document outlines planned features, improvements, and known limitations for
 ### Drag-and-Drop Support
 > Streamline adding URLs to the application.
 
-- [ ] Allow dragging URLs from a web browser directly into the URL input/batch area.
+- [x] ~~Allow dragging URLs from a web browser directly into the URL input/batch area.~~ Closed as not possible on Windows: Fyne's GLFW layer accepts only dropped files there (`WM_DROPFILES`), and browsers offer a dragged link as text. Done instead: dropping a `.txt` list or an internet shortcut (`.url`, `.desktop`) onto the window adds its URLs (`UIManager.handleDrop`), so dragging a link to the desktop first and dropping the shortcut works. On X11, GLFW passes a dropped link through as a path, which is accepted too (untested).
 
 ### Resizable & Responsive Layout
 > Improve behavior when the window is resized.
@@ -406,9 +406,9 @@ See the [refactoring roadmap](refactor_roadmap.md) for component-level status an
 ### Clipboard Paste Button
 > Streamline the URL entry workflow.
 
-- [ ] Add a small clipboard icon next to the URL field (or auto-detect URL on focus).
-- [ ] When clicked, paste the current clipboard text into the URL entry automatically.
-- [ ] Validate that the pasted text looks like a URL before accepting it.
+- [x] Add a small clipboard icon next to the URL field (or auto-detect URL on focus). (A paste button next to the field; no auto-detect on focus.)
+- [x] When clicked, paste the current clipboard text into the URL entry automatically. (Several lines switch on batch mode; URLs already in the field are skipped.)
+- [x] Validate that the pasted text looks like a URL before accepting it. (Every non-blank line must be an http(s) URL, or nothing is pasted.)
 
 ### FFmpeg On-Demand
 > Keep the initial download size small.

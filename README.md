@@ -20,7 +20,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Metadata & Cover Art**: Writes title, artist, and date tags, the thumbnail as cover art, and (optionally) chapters into downloaded files, and keeps them through post-processing.
 - **Quality Control**: Select your preferred maximum resolution for downloads. GoVid tells you when a video is not available at that resolution, and names the file after the resolution it actually downloaded.
 - **Video Trimming**: Download only a specific segment — specify a start time, an end time, or both (`HH:MM:SS` / `MM:SS` / seconds).
-- **Batch Processing**: Download multiple URLs at once by switching to Batch Mode (one URL per line).
+- **Batch Processing**: Download multiple URLs at once by switching to Batch Mode (one URL per line). Load a `.txt` list of URLs, paste several links at once, or drop a list or an internet shortcut (`.url`) onto the window.
 - **Playlists**: Paste a playlist URL to pick all of it, a range (e.g. `5-8`), or just the linked video; each video is queued separately.
 - **Real-time Progress**: Live progress tracking with per-download progress bars and a scrollable activity log.
 - **Optional Post-Processing**: Seamless integration with FFmpeg for frame interpolation (60FPS), sharpening, and audio normalization.
@@ -92,7 +92,7 @@ Ensure you have [Go 1.26+](https://go.dev/dl/) installed.
 ## 📖 Usage
 
 1. **Launch**: Open GoVid.
-2. **URL or Batch Mode**: Paste a video or playlist URL. Enable **Batch Mode** to paste multiple URLs (one per line). For a playlist, GoVid asks which videos to download.
+2. **URL or Batch Mode**: Paste a video or playlist URL. Enable **Batch Mode** to paste multiple URLs (one per line). For a playlist, GoVid asks which videos to download. **Load from file…** reads a `.txt` list (blank lines and lines starting with `#` are skipped), the paste button next to the field adds the links on the clipboard, and you can drop a `.txt` list or `.url` shortcut onto the window. To drop a link from a browser, drag it to the desktop first and drop the shortcut it makes.
 3. **Format and Quality**: Choose the output format (MP4, MKV, WebM, MP3, or M4A) and maximum resolution.
 4. **Trim (Optional)**: Enter a start time, end time, or both (for example `00:01:30` and `00:05:00`) to download only part of the video.
 5. **Post-Processing (Advanced)**: Open **Tools → Post-Processing** to enable:

@@ -75,9 +75,17 @@ Tests: `TestFormatSelectionHeight`, `TestBuildArgsQualityLabelInTemplate`, `Test
 
 ---
 
-## 3. Faster ways to add URLs: load from file, paste, drop
+## 3. ✅ Faster ways to add URLs: load from file, paste, drop
 
 **Roadmap:** High Priority → Batch Downloading ("Load from file" button). Also Low Priority → Clipboard Paste Button, and UI & UX → Drag-and-Drop Support.
+
+**Status: Done** (new file [url_input.go](../url_input.go)).
+- **Load from file.** A **Load from file…** button beside the Batch Mode toggle opens a `.txt` picker. `parseURLList` skips blank lines, `#` comments, lines that are not http(s) URLs (`looksLikeURL`), and repeats. `addURLs` appends the rest without duplicating what is already in the field and switches on batch mode. The log names what was skipped, e.g. "added 38 URLs (1 already in the list); skipped 5 comment lines, 2 lines that are not URLs (lines 13, 33), 1 repeated URL." `collectURLs` has no URL check of its own (the probe reports bad URLs), so the shared rules are blank lines and `#` comments: batch mode now skips comment lines too.
+- **Paste.** A clipboard button next to the field adds the clipboard's lines only if every non-blank line is an http(s) URL; otherwise it shows a short message and changes nothing.
+- **Drop.** `SetOnDropped` on the main window: a `.txt` is loaded as a list, and a `.url` (or Linux `.desktop`) shortcut adds its `URL=` line. Other files are logged and ignored.
+- **Browser links (spike).** Answered by reading the GLFW source Fyne 2.7.3 builds: on Windows it only calls `DragAcceptFiles` and handles `WM_DROPFILES`, which carries file lists (CF_HDROP). Browsers offer a dragged link as text plus a virtual `.url` file, not CF_HDROP, so nothing reaches the app. The guide and README say to drag the link to the desktop first and drop the shortcut, and the roadmap item is closed as not possible. On X11, GLFW does accept `text/uri-list` and only strips `file://` prefixes, so an `https://` link would arrive as a "path". `handleDrop` accepts that too, but it is untested.
+
+Tests: `TestParseURLList` and `TestLoadURLListFillsBatchField` (a 50-line CRLF list with blanks, comments, a repeat, and two non-URLs), `TestPasteURLs` (including refusals), `TestDropAddsListsAndShortcuts`, `TestShortcutURL`, `TestMergeURLs`, `TestLooksLikeURL`, and `TestCollectURLsSkipsCommentLines`.
 
 **Problem.** The only way to add URLs is to type or paste them into the field. "Load from file" is the last open High Priority batch item.
 
