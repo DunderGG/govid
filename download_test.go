@@ -387,6 +387,42 @@ func TestRunYtDlpCancel(t *testing.T) {
 	if entries := h.history(t); len(entries) != 0 {
 		t.Errorf("history = %+v, want no entries for a canceled download", entries)
 	}
+	if files := h.savedFiles(t); len(files) != 0 {
+		t.Errorf("saved files = %q, want the partial file removed", files)
+	}
+}
+
+func TestShutdownStopsWholeBatchAndQuits(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-hang")
+	h.app.ui.download.batchMode.SetChecked(true)
+	h.app.ui.download.entry.SetText("https://example.com/a\nhttps://example.com/b")
+
+	quit := make(chan struct{})
+	var once sync.Once
+	h.setHook(func(line string) {
+		if strings.Contains(line, "1.0%") {
+			once.Do(func() {
+				h.app.Shutdown(func() { close(quit) })
+			})
+		}
+	})
+
+	h.app.startDownload()
+	select {
+	case <-quit:
+	case <-time.After(30 * time.Second):
+		t.Fatalf("Shutdown never called quit; log:\n%s", h.joinedLogs())
+	}
+
+	if h.app.isRunning.Load() {
+		t.Error("session still running when quit was called")
+	}
+	if h.runs() != 1 {
+		t.Errorf("yt-dlp started %d times, want 1 (the rest of the queue abandoned)", h.runs())
+	}
+	if files := h.savedFiles(t); len(files) != 0 {
+		t.Errorf("saved files = %q, want the partial file removed before quitting", files)
+	}
 }
 
 // ── startDownload sessions ───────────────────────────────────────────────────

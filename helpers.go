@@ -14,6 +14,7 @@ import (
 	"math"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -51,6 +52,63 @@ func (app *DownloaderApp) RequestCancel() bool {
 	}
 	cancel()
 	return true
+}
+
+// setStopFunc replaces the function that stops the whole running session.
+func (app *DownloaderApp) setStopFunc(stop context.CancelFunc) {
+	app.cancelMu.Lock()
+	defer app.cancelMu.Unlock()
+	app.stopFn = stop
+}
+
+// StopSession stops the running session, if any: unlike RequestCancel, which
+// skips only the current item of a batch, it also abandons the rest of the
+// queue and any post-processing.
+func (app *DownloaderApp) StopSession() {
+	app.cancelMu.Lock()
+	stop := app.stopFn
+	app.cancelMu.Unlock()
+
+	if stop != nil {
+		stop()
+	}
+}
+
+// shutdownTimeout bounds how long Shutdown waits for a running session to
+// stop before quitting anyway.
+const shutdownTimeout = 5 * time.Second
+
+// Shutdown stops any running session and, off the UI thread, waits up to
+// shutdownTimeout for it to kill its processes and remove its partial files.
+// It then closes the session log and calls quit on the UI thread.
+func (app *DownloaderApp) Shutdown(quit func()) {
+	app.StopSession()
+	app.updateStatus("Status: Stopping…")
+	app.setStatusIndicator(StatusCanceled)
+
+	go func() {
+		if !waitTimeout(&app.sessions, shutdownTimeout) {
+			app.logSvc.WriteToFile(fmt.Sprintf("[SYSTEM] Session did not stop within %v; quitting anyway.", shutdownTimeout))
+		}
+		app.logSvc.CloseSessionLog()
+		fyne.Do(quit)
+	}()
+}
+
+// waitTimeout waits for wg until timeout elapses, and reports whether wg
+// finished in time.
+func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
 
 // ── File I/O ─────────────────────────────────────────────────────────────────

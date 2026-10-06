@@ -12,9 +12,11 @@ Source references point to the matching section of [roadmap.md](roadmap.md). Tic
 
 ---
 
-## 1. Clean cancellation and safe shutdown
+## 1. ✅ Clean cancellation and safe shutdown
 
 **Roadmap:** UI Performance & Stability → Goroutine Lifecycle Hygiene ("safe shutdown path"). The zombie-process risk is also listed in `notes.txt`.
+
+**Status: Done.** yt-dlp, ffmpeg, and ffprobe are started through `newToolCommand` ([process.go](../process.go)), whose `cmd.Cancel` kills the whole process tree and whose `cmd.WaitDelay` is 3 s. On Windows this uses the `taskkill /T /F` fallback rather than a Job Object, because the Job Object would have to be attached after `Start`, which `Output`/`CombinedOutput` callers cannot do. `DownloadEngine.Run` calls the new `RemovePartialFiles` on failure or cancel. Quitting calls `DownloaderApp.Shutdown`, which stops the whole session (not just the current batch item), waits up to 5 s, closes the session log, and then quits. Tests: `TestExecuteCancelKillsChildProcesses`, `TestRunCancelRemovesPartialFiles`, and `TestShutdownStopsWholeBatchAndQuits`.
 
 **Problem.** Cancelling a download, or quitting while one is running, can leave processes and files behind.
 

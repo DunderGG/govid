@@ -32,7 +32,7 @@ It provides a graphical interface, real-time progress feedback, optional FFmpeg 
 
 ```
 govid/
-├── main.go                 Entry point; constructs DownloaderApp, wires close-intercept, calls ShowAndRun
+├── main.go                 Entry point; constructs DownloaderApp, wires close-intercept (→ Shutdown), calls ShowAndRun
 ├── types.go                Shared app and widget types (DownloaderApp, UIWidgets and its control groups, DownloadStats)
 │
 ├── ── Services / Engines ──────────────────────────────────────────
@@ -61,8 +61,9 @@ govid/
 ├── theme.go                darkTheme and lightTheme (implement fyne.Theme)
 ├── icons.go                SVG icon registry; themedIcon() helper
 ├── embedded_icon.go        Bundled app icon (resourceAppiconPng)
-├── sys_windows.go          Windows-only: SysProcAttr to hide console windows spawned by FFmpeg/yt-dlp
-├── sys_others.go           Non-Windows stub for the same function
+├── process.go              newToolCommand — starts yt-dlp/FFmpeg so cancelling kills the whole process tree
+├── sys_windows.go          Windows-only: hide console windows; kill process trees with taskkill /T
+├── sys_others.go           Non-Windows: no-op hideWindow; kill process trees via a process group
 │
 ├── ── Config / Build ──────────────────────────────────────────────
 ├── govid.json              Optional override config (loaded via "Load from Config" in Preferences)
@@ -90,8 +91,10 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `depSvc *DependencyService` | Binary path resolution, dependency checks, updater (see §4.9) |
 | `gpuSvc *GPUCapabilityService` | GPU backend capability detection and cache (see §4.11) |
 | `stats *DownloadStats` | Real-time download metrics for progress smoothing |
-| `cancelMu sync.Mutex` | Guards access to the active cancellation callback |
-| `cancelFn context.CancelFunc` | Cancels the active download context |
+| `cancelMu sync.Mutex` | Guards access to the active cancellation callbacks (`cancelFn`, `stopFn`) |
+| `cancelFn context.CancelFunc` | Cancels the active download context; in batch mode it skips only the current URL (`RequestCancel`) |
+| `stopFn context.CancelFunc` | Stops the whole session, including the rest of a batch queue and post-processing (`StopSession`) |
+| `sessions sync.WaitGroup` | Counts running sessions so `Shutdown` can wait for them to clean up before quitting |
 | `stopPulse` | Channel closed to stop the status-dot animation goroutine |
 | `onLogLine func(string, color.Color)` | Renders log lines through `UIManager.appendLogLine` |
 | `sessionFailed atomic.Bool` | Set when any download or post-processing job in the session fails; turns the download button into "Retry" |
@@ -136,7 +139,8 @@ A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and pr
 - **`BuildArgs(DownloadRequest) DownloadArgs`** — pure function; assembles the yt-dlp command-line arguments from a request value struct. No I/O.
 - **`Execute(ctx, args []string, opts DownloadOptions, ProcessCallbacks) (scanResult, error)`** — starts the process, streams stdout/stderr through its own private `watchOutput` method (defined in `logscanner.go`), and retries on transient errors with 1 s / 5 s / 30 s back-off when `opts.AutoRetry` is set.
 - **`FinalizeFiles(savePath, downloadID string, onLog func(string, color.Color)) []string`** — globs the temp files written under `downloadID`, strips the token, and renames each to its final conflict-free name via the private `uniquePath` helper. Reports rename events through `onLog` rather than touching the UI directly.
-- **`Run(ctx, req DownloadRequest, opts DownloadOptions, ProcessCallbacks) DownloadResult`** — composes the three methods above into the full lifecycle of a single URL download. Reads no UI state; `DownloaderApp.runYtDlp` builds the `DownloadRequest` and `DownloadOptions` from widget values, calls `Run`, then handles history recording and the UI completion report from the returned `DownloadResult{FinalPaths, Extension, Scan, Err}`.
+- **`RemovePartialFiles(savePath, downloadID string, onLog func(string, color.Color))`** — deletes every file written under `downloadID` after a failed or cancelled download (yt-dlp runs with `--no-part`, so these are incomplete media files), retrying briefly while Windows still holds a lock, and logs each removal.
+- **`Run(ctx, req DownloadRequest, opts DownloadOptions, ProcessCallbacks) DownloadResult`** — composes the methods above into the full lifecycle of a single URL download: `FinalizeFiles` on success, `RemovePartialFiles` on failure or cancellation. Reads no UI state; `DownloaderApp.runYtDlp` builds the `DownloadRequest` and `DownloadOptions` from widget values, calls `Run`, then handles history recording and the UI completion report from the returned `DownloadResult{FinalPaths, Extension, Scan, Err}`.
 
 `DownloadOptions{AutoRetry bool; Index, Total int}` bundles the retry policy and this URL's 1-based position within a batch (both 1 for single downloads) — the three runtime options shared by `Execute` and `Run`.
 
@@ -270,7 +274,7 @@ User clicks Download
             ├─ engine.Execute(ctx, args, opts, cb)   → scanResult
             │    ├─ cmd.StdoutPipe / StderrPipe
             │    └─ engine.watchOutput() goroutines (parse % / size) → cb.OnProgress
-              ├─ engine.FinalizeFiles()               glob → rename
+              ├─ engine.FinalizeFiles()               glob → rename  (RemovePartialFiles on failure/cancel)
               └─ historySvc.AppendAll(DownloadRecord) JSON append
   └─ applyFFmpegFilters()     if post-processing enabled
        └─ PPEngine.ApplyFilters(ctx, files, vf, af, cb)
@@ -371,6 +375,19 @@ The download queue itself is sequential: in batch mode each URL gets a child
 active URL; in single-URL mode `runCtx` is the queue context, so cancellation
 stops the session. Post-processing runs afterward over the collected successful
 paths and can process multiple files concurrently.
+
+**Process trees:** yt-dlp, ffmpeg, and ffprobe are started through
+`newToolCommand` (`process.go`), which sets `cmd.Cancel` to kill the whole
+process tree (`taskkill /T` on Windows, the process group on Unix) and
+`cmd.WaitDelay` so `Wait` cannot hang on pipes a surviving grandchild holds.
+This matters because yt-dlp runs its own ffmpeg for merging and trimming.
+
+**Shutdown:** closing the window during a session asks for confirmation, then
+calls `DownloaderApp.Shutdown(quit)`. It calls `StopSession` (which cancels
+`queueCtx`, unlike the Cancel button that only skips the current batch item),
+shows "Stopping…", waits off the UI thread for the `sessions` wait group (up to
+`shutdownTimeout`, 5 s) so partial files are removed, closes the session log,
+and finally calls `quit` inside `fyne.Do`.
 
 **UI thread rule:** every widget mutation must run inside `fyne.Do(func() { … })` when called from a non-main goroutine. Fyne panics on direct cross-thread access.
 

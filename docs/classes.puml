@@ -30,6 +30,8 @@ package "Application Core" #F0F4F8 {
         +onLogLine : func(string, color.Color)
         +cancelMu : sync.Mutex
         +cancelFn : context.CancelFunc
+        +stopFn : context.CancelFunc
+        +sessions : sync.WaitGroup
         +stopPulse : chan struct{}
         +uiManager : *UIManager
         +prefSvc : *PreferenceService
@@ -38,6 +40,8 @@ package "Application Core" #F0F4F8 {
         --
         +SetCancelFunc(cancel context.CancelFunc)
         +RequestCancel() : bool
+        +StopSession()
+        +Shutdown(quit func())
         +startDownload()
         +runYtDlp(ctx, url, path, ...)
         +openDownloadFolder()
@@ -180,6 +184,7 @@ package "Download Engine" #FFF8F0 {
         +Execute(ctx, args, opts DownloadOptions, cb) : scanResult
         +Run(ctx, req, opts DownloadOptions, cb) : DownloadResult
         +FinalizeFiles(savePath, downloadID, onLog) : []string
+        +RemovePartialFiles(savePath, downloadID, onLog)
         -watchOutput(stdout, stderr, cb) : scanResult
         -parseProgress(line, cb)
     }

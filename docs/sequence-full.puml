@@ -84,7 +84,7 @@ group loop [for each URL in queue]
 
     App -> App : runYtDlp(runCtx, url, …)
 
-    group engine.Run(ctx, req, opts, cb)  — BuildArgs + Execute + FinalizeFiles
+    group engine.Run(ctx, req, opts, cb)  — BuildArgs + Execute + FinalizeFiles / RemovePartialFiles
         group Build yt-dlp arguments
             App -> App : select format flag (bestvideo+bestaudio / audio-only / WebM VP9…)
             App -> App : apply quality height filter if set
@@ -95,7 +95,8 @@ group loop [for each URL in queue]
         end
 
         group Retry loop [attempt 1..3]
-            App -> OS  : exec.CommandContext(runCtx, yt-dlp, args…)
+            App -> OS  : newToolCommand(runCtx, yt-dlp, args…)
+  — cmd.Cancel kills the whole process tree
             OS  -> YT  : spawn process
             App -> YT  : StdoutPipe() + StderrPipe()
             App -> YT  : cmd.Start()
@@ -140,6 +141,8 @@ group loop [for each URL in queue]
         alt cmdErr == nil
             App -> OS  : engine.FinalizeFiles(savePath, downloadID)\n  — Glob(*downloadID*)\n  — strip token, uniquePath\n  — os.Rename(tmp → final)
             OS  --> App : []finalPaths
+        else failed or cancelled
+            App -> OS  : engine.RemovePartialFiles(savePath, downloadID)\n  — Glob(*downloadID*) → os.Remove (retried while locked)
         end
     end
     App <-- App : DownloadResult{FinalPaths, Extension, Scan, Err}

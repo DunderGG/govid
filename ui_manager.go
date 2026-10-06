@@ -322,7 +322,7 @@ func (manager *UIManager) showConfigHelp() {
 		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
 		{"Cookies File", "Found in **Tools → Preferences**. Path to a `cookies.txt` file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file."},
 		{"Post-Processing", "Found in **Tools → Post-Processing**. Enhance your downloads using FFmpeg. Most filters trigger a full re-encode.\n\n⚠️ **WebM files** use VP9 encoding which is significantly slower than H.264 — use MKV for faster post-processing."},
-		{"Cancel", "Stops the active download immediately. In batch mode, it skips the current URL and moves on to the next one."},
+		{"Cancel", "Stops the active download immediately and deletes its partly downloaded files. In batch mode, it skips the current URL and moves on to the next one."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
 		{"JSON Configuration", "For advanced users, GoVid supports loading settings from a `govid.json` file located in the application folder.\n\n**Supported Values:**\n" +
 			"* **format**: " + codeList(formatOptions) + "\n" +

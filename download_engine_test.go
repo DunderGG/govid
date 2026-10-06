@@ -391,6 +391,104 @@ func TestExecuteCancelWhileRunning(t *testing.T) {
 	}
 }
 
+// fileSize returns the size of the file at path, or 0 if it does not exist.
+func fileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+func TestExecuteCancelKillsChildProcesses(t *testing.T) {
+	_ = test.NewApp()
+	useFakeTool(t, "ytdlp-spawn-child")
+	tickPath := filepath.Join(t.TempDir(), "ticks")
+	t.Setenv(fakeToolTickEnv, tickPath)
+	built, _ := fakeDownloadArgs(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := NewDownloadEngine(fakeToolPath(t), "").Execute(ctx, built.Args, DownloadOptions{Index: 1, Total: 1}, (&engineRecorder{}).callbacks())
+		done <- err
+	}()
+
+	// Wait until the child process is running.
+	deadline := time.Now().Add(30 * time.Second)
+	for fileSize(tickPath) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("child process never started ticking")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(15 * time.Second):
+		t.Fatal("Execute did not return after cancel; a child process is holding its output pipe")
+	}
+
+	// The child ticks every 20 ms while alive, so its file must stop growing.
+	before := fileSize(tickPath)
+	time.Sleep(500 * time.Millisecond)
+	if after := fileSize(tickPath); after != before {
+		t.Errorf("child process still running after cancel (tick file grew from %d to %d bytes)", before, after)
+	}
+}
+
+func TestRunCancelRemovesPartialFiles(t *testing.T) {
+	_ = test.NewApp()
+	useFakeTool(t, "ytdlp-hang")
+	saveDir := t.TempDir()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	rec := &engineRecorder{onLog: func(line string) {
+		if strings.Contains(line, "%") {
+			cancel()
+		}
+	}}
+
+	result := NewDownloadEngine(fakeToolPath(t), "").Run(ctx, DownloadRequest{
+		URL: "https://example.com/v", SavePath: saveDir, Format: "MP4",
+	}, DownloadOptions{Index: 1, Total: 1}, rec.callbacks())
+
+	if result.Err == nil {
+		t.Fatal("Run() error = nil, want the cancelled process's error")
+	}
+	entries, err := os.ReadDir(saveDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("save folder still holds %d file(s), want the partial file removed", len(entries))
+	}
+	if !strings.Contains(rec.joinedLogs(), "[SYSTEM] Removed partial file: GoVid_Fake Video_GOVID") {
+		t.Errorf("log missing the removal message:\n%s", rec.joinedLogs())
+	}
+}
+
+func TestRemovePartialFilesKeepsOtherFiles(t *testing.T) {
+	dir := t.TempDir()
+	const id = "GOVID42"
+	touch(t, filepath.Join(dir, "GoVid_A_"+id+".mp4"))
+	touch(t, filepath.Join(dir, "GoVid_A_"+id+".f248.webm"))
+	touch(t, filepath.Join(dir, "GoVid_B.mp4"))
+
+	NewDownloadEngine("", "").RemovePartialFiles(dir, id, func(string, color.Color) {})
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "GoVid_B.mp4" {
+		t.Errorf("remaining files = %v, want only GoVid_B.mp4", entries)
+	}
+}
+
 func TestExecuteLaunchFailure(t *testing.T) {
 	built, _ := fakeDownloadArgs(t)
 	rec := &engineRecorder{}

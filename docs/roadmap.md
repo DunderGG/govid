@@ -339,7 +339,7 @@ This document outlines planned features, improvements, and known limitations for
 
 - [ ] Add lightweight lifecycle diagnostics (start/stop markers + goroutine count) around pulse, smoother, and post-process progress loops.
 - [ ] Audit all ticker-based loops to guarantee a single owner and deterministic stop path.
-- [ ] Add a safe shutdown path that cancels active contexts and confirms worker completion before quit.
+- [x] Add a safe shutdown path that cancels active contexts and confirms worker completion before quit. (`DownloaderApp.Shutdown` stops the whole session, waits up to 5 s for it off the UI thread, closes the session log, then quits. Cancelling now kills the whole yt-dlp/ffmpeg process tree via `newToolCommand` in `process.go`, and a failed or cancelled download's partial `GOVID` files are removed.)
 
 ### UI Thread Safety Audit
 > Eliminate remaining direct widget mutations outside `fyne.Do`.

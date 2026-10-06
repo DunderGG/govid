@@ -62,9 +62,11 @@ func (app *DownloaderApp) startDownload() {
 	// can skip one item without stopping the queue (see downloadItem).
 	queueCtx, stopQueue := context.WithCancel(context.Background())
 	app.SetCancelFunc(stopQueue)
+	app.setStopFunc(stopQueue)
 
 	// The smoother owns the progress bar until the session ends.
 	go app.runProgressSmoother(queueCtx)
+	app.sessions.Add(1)
 	go app.runSession(queueCtx, stopQueue, session)
 }
 
@@ -157,8 +159,11 @@ func (app *DownloaderApp) openSessionLog(session downloadSession) {
 // runs on its own goroutine and owns queueCtx until it returns.
 func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context.CancelFunc, session downloadSession) {
 	// Always stop the smoother and re-enable the download button when the
-	// session finishes, regardless of how it ends.
+	// session finishes, regardless of how it ends. sessions.Done runs last so
+	// Shutdown sees the session as finished only once everything is closed.
+	defer app.sessions.Done()
 	defer stopQueue()
+	defer app.setStopFunc(nil)
 	defer app.SetCancelFunc(nil)
 	defer app.isRunning.Store(false)
 	defer app.finishSessionUI()

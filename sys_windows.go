@@ -3,7 +3,9 @@
 package main
 
 import (
+	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
 )
 
@@ -15,6 +17,28 @@ func hideWindow(cmd *exec.Cmd) {
 	cmd.SysProcAttr.HideWindow = true
 	// CREATE_NO_WINDOW = 0x08000000
 	cmd.SysProcAttr.CreationFlags = 0x08000000
+}
+
+// configureProcessTree makes cancelling cmd's context kill cmd and every
+// process it started, and stops Wait from hanging on pipes a surviving
+// descendant still holds open. Call it before cmd is started.
+func configureProcessTree(cmd *exec.Cmd) {
+	cmd.Cancel = func() error {
+		return killProcessTree(cmd.Process)
+	}
+	cmd.WaitDelay = processWaitDelay
+}
+
+// killProcessTree kills process and all of its descendants with taskkill /T.
+func killProcessTree(process *os.Process) error {
+	kill := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(process.Pid))
+	hideWindow(kill)
+	if err := kill.Run(); err != nil {
+		// taskkill fails when the process has already exited or cannot be
+		// found; killing the direct child still lets Wait return.
+		return process.Kill()
+	}
+	return nil
 }
 
 // openFolderCommand returns an exec.Cmd that opens path in Windows Explorer.

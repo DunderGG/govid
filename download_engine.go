@@ -3,7 +3,8 @@
 // Responsibilities:
 //   - DownloadEngine: typed component holding tool paths, with methods for
 //     building yt-dlp arguments, executing downloads with retry logic, and
-//     finalizing output filenames once a download completes.
+//     finalizing output filenames once a download completes (or removing
+//     the partial files of one that failed or was cancelled).
 //   - DownloadRequest: typed value object holding per-download inputs.
 //   - DownloadArgs: typed value object holding the resolved argument list
 //     and derived metadata (extension, downloadID, trim display strings).
@@ -12,10 +13,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image/color"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -228,8 +229,7 @@ func (engine *DownloadEngine) Execute(ctx context.Context, args []string, opts D
 			}
 		}
 
-		cmd := exec.CommandContext(ctx, engine.YtDlpPath, args...)
-		hideWindow(cmd)
+		cmd := newToolCommand(ctx, engine.YtDlpPath, args...)
 
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
@@ -290,6 +290,10 @@ func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, opts
 	var finalPaths []string
 	if cmdErr == nil {
 		finalPaths = engine.FinalizeFiles(req.SavePath, built.DownloadID, cb.OnLog)
+	} else {
+		// Execute returns only once the process tree is dead, so nothing is
+		// still writing to these files.
+		engine.RemovePartialFiles(req.SavePath, built.DownloadID, cb.OnLog)
 	}
 
 	return DownloadResult{
@@ -330,6 +334,47 @@ func (engine *DownloadEngine) FinalizeFiles(savePath, downloadID string, onLog f
 		finalPaths = append(finalPaths, finalPath)
 	}
 	return finalPaths
+}
+
+// partialRemoveAttempts and partialRemoveRetryDelay bound how long
+// RemovePartialFiles keeps retrying a file that is still locked. On Windows a
+// killed process can keep its files locked for a moment after it exits.
+const (
+	partialRemoveAttempts   = 10
+	partialRemoveRetryDelay = 200 * time.Millisecond
+)
+
+// RemovePartialFiles deletes every file yt-dlp wrote under the downloadID
+// token, for a download that failed or was cancelled. Because yt-dlp runs
+// with --no-part, these are incomplete media files under their final-looking
+// names. Each removal, and each file that could not be removed, is logged.
+func (engine *DownloadEngine) RemovePartialFiles(savePath, downloadID string, onLog func(line string, col color.Color)) {
+	matches, err := filepath.Glob(filepath.Join(savePath, "*"+downloadID+"*"))
+	if err != nil {
+		return
+	}
+	for _, path := range matches {
+		if err := removeWithRetry(path); err != nil {
+			onLog(fmt.Sprintf("[SYSTEM] Could not remove partial file: %v", err), colWarning)
+			continue
+		}
+		onLog(fmt.Sprintf("[SYSTEM] Removed partial file: %s", filepath.Base(path)), colSystem)
+	}
+}
+
+// removeWithRetry removes path, retrying for a short while if it fails.
+func removeWithRetry(path string) error {
+	var err error
+	for attempt := 0; attempt < partialRemoveAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(partialRemoveRetryDelay)
+		}
+		err = os.Remove(path)
+		if err == nil || errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+	}
+	return err
 }
 
 // uniquePath returns path unchanged when no file exists at that location.

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -62,12 +63,16 @@ func runFakeTool(mode string, args []string) int {
 		}
 		return fakeYtDlpDownload(args)
 	case "ytdlp-hang":
-		return fakeYtDlpHang()
+		return fakeYtDlpHang(args)
 	case "ytdlp-hang-once":
 		if previousRuns == 0 {
-			return fakeYtDlpHang()
+			return fakeYtDlpHang(args)
 		}
 		return fakeYtDlpDownload(args)
+	case "ytdlp-spawn-child":
+		return fakeYtDlpSpawnChild()
+	case "tick":
+		return fakeTick()
 	case "version":
 		if !slices.Contains(args, "--version") {
 			fmt.Fprintf(os.Stderr, "fake tool: expected --version, got %q\n", args)
@@ -95,17 +100,11 @@ func runFakeTool(mode string, args []string) int {
 // named from the -P directory and -o template, and prints the usual
 // destination, progress, and merge lines.
 func fakeYtDlpDownload(args []string) int {
-	dir, template := argAfter(args, "-P"), argAfter(args, "-o")
-	if dir == "" || template == "" {
+	path, ext := fakeOutputPath(args)
+	if path == "" {
 		fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: missing -P or -o in %q\n", args)
 		return 2
 	}
-	ext := argAfter(args, "--merge-output-format")
-	if ext == "" {
-		ext = argAfter(args, "--audio-format")
-	}
-	name := strings.NewReplacer("%(title)s", "Fake Video", "%(ext)s", ext).Replace(template)
-	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, []byte("fake media"), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: %v\n", err)
 		return 2
@@ -125,11 +124,69 @@ func fakeYtDlpTransient() int {
 	return 1
 }
 
-// fakeYtDlpHang mimics a stalled download: it reports some progress and then
-// blocks until the test cancels it (the process is killed on cancel).
-func fakeYtDlpHang() int {
+// fakeOutputPath returns the file a yt-dlp run with args would write, named
+// from the -P directory and -o template, and its extension. path is "" when
+// args lack -P or -o.
+func fakeOutputPath(args []string) (path, ext string) {
+	dir, template := argAfter(args, "-P"), argAfter(args, "-o")
+	if dir == "" || template == "" {
+		return "", ""
+	}
+	ext = argAfter(args, "--merge-output-format")
+	if ext == "" {
+		ext = argAfter(args, "--audio-format")
+	}
+	name := strings.NewReplacer("%(title)s", "Fake Video", "%(ext)s", ext).Replace(template)
+	return filepath.Join(dir, name), ext
+}
+
+// fakeYtDlpHang mimics a stalled download: it writes a partial output file
+// (when args name one), reports some progress, and then blocks until the
+// test cancels it (the process is killed on cancel).
+func fakeYtDlpHang(args []string) int {
+	if path, _ := fakeOutputPath(args); path != "" {
+		if err := os.WriteFile(path, []byte("partial"), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: %v\n", err)
+			return 2
+		}
+	}
 	fmt.Println("[download]   1.0% of   10.00MiB at    1.00MiB/s ETA 00:10")
 	time.Sleep(time.Minute)
+	return 0
+}
+
+// fakeToolTickEnv names the file the "tick" mode appends to while it runs.
+const fakeToolTickEnv = "GOVID_FAKE_TOOL_TICK"
+
+// fakeYtDlpSpawnChild mimics yt-dlp running ffmpeg: it starts a long-running
+// child process that shares its stdout, reports some progress, and blocks.
+// Cancelling must kill the child too, or the child would keep running and
+// keep the output pipe open.
+func fakeYtDlpSpawnChild() int {
+	child := exec.Command(os.Args[0])
+	// Clear the state file so the child is not counted as a tool run.
+	child.Env = append(os.Environ(), fakeToolEnv+"=tick", fakeToolStateEnv+"=")
+	child.Stdout = os.Stdout
+	if err := child.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: start child: %v\n", err)
+		return 2
+	}
+	fmt.Println("[download]   1.0% of   10.00MiB at    1.00MiB/s ETA 00:10")
+	time.Sleep(time.Minute)
+	return 0
+}
+
+// fakeTick appends a byte to the fakeToolTickEnv file every 20 ms for a
+// minute, so a test can tell whether the process is still alive.
+func fakeTick() int {
+	path := os.Getenv(fakeToolTickEnv)
+	for range 3000 {
+		if file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			file.Write([]byte("."))
+			file.Close()
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	return 0
 }
 

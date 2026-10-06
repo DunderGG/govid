@@ -19,7 +19,6 @@ import (
 	"image/color"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -148,14 +147,12 @@ type PPCallbacks struct {
 // found or detection failed.
 func (engine *PPEngine) detectCropFilter(ctx context.Context, inputPath string, cb PPCallbacks) string {
 	// Run FFmpeg with cropdetect on the first 60 seconds of the input file.
-	cmd := exec.CommandContext(ctx, engine.FFmpegPath,
+	cmd := newToolCommand(ctx, engine.FFmpegPath,
 		"-t", "60", "-i", inputPath,
 		"-vf", "cropdetect=limit=24:round=16:reset=0",
 		"-f", "null", "-",
 	)
 
-	// Hide the FFmpeg console window on Windows to avoid flashing a black box.
-	hideWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		cb.OnLog(
@@ -275,8 +272,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	defer guard.release()
 
 	start := time.Now()
-	cmd := exec.CommandContext(ctx, engine.FFmpegPath, job.ffmpegArgs...)
-	hideWindow(cmd)
+	cmd := newToolCommand(ctx, engine.FFmpegPath, job.ffmpegArgs...)
 
 	stderrPipe, pipeErr := cmd.StderrPipe()
 	if pipeErr != nil {
@@ -420,7 +416,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 // content — muxers often write nb_frames from declared fps×duration rather
 // than actual packet count, causing estimates to be 2–3× too high.
 func (engine *PPEngine) probeFrameCount(ctx context.Context, inputPath string) int64 {
-	cmd := exec.CommandContext(ctx, engine.FFprobePath,
+	cmd := newToolCommand(ctx, engine.FFprobePath,
 		"-v", "error",
 		"-select_streams", "v:0",
 		"-count_packets",
@@ -428,7 +424,6 @@ func (engine *PPEngine) probeFrameCount(ctx context.Context, inputPath string) i
 		"-of", "csv=p=0",
 		inputPath,
 	)
-	hideWindow(cmd)
 	out, err := cmd.Output()
 	if err == nil && len(out) > 0 {
 		if n, err := strconv.ParseInt(strings.TrimSpace(string(out)), 10, 64); err == nil && n > 0 {
@@ -436,14 +431,13 @@ func (engine *PPEngine) probeFrameCount(ctx context.Context, inputPath string) i
 		}
 	}
 	// Fallback: duration × avg_frame_rate (less reliable but always available).
-	cmd2 := exec.CommandContext(ctx, engine.FFprobePath,
+	cmd2 := newToolCommand(ctx, engine.FFprobePath,
 		"-v", "error",
 		"-select_streams", "v:0",
 		"-show_entries", "stream=duration,avg_frame_rate",
 		"-of", "csv=p=0",
 		inputPath,
 	)
-	hideWindow(cmd2)
 	out2, err := cmd2.Output()
 	if err != nil {
 		return 0
@@ -490,13 +484,12 @@ func (engine *PPEngine) computeOutputFrameCount(ctx context.Context, inputPath s
 
 // probeDuration returns the container duration of the file in seconds.
 func (engine *PPEngine) probeDuration(ctx context.Context, inputPath string) float64 {
-	cmd := exec.CommandContext(ctx, engine.FFprobePath,
+	cmd := newToolCommand(ctx, engine.FFprobePath,
 		"-v", "error",
 		"-show_entries", "format=duration",
 		"-of", "csv=p=0",
 		inputPath,
 	)
-	hideWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return 0

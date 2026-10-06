@@ -120,7 +120,8 @@ func main() {
 	dlApp.uiManager.checkDependencies()
 	dlApp.startGPUDetection()
 
-	// Show a confirmation dialog if a download or post-processing job is active.
+	// Show a confirmation dialog if a download or post-processing job is
+	// active. Quitting then stops the job and waits for it to clean up.
 	mainWindow.SetCloseIntercept(func() {
 		if dlApp.isRunning.Load() {
 			dialog.ShowConfirm(
@@ -128,8 +129,7 @@ func main() {
 				"A download or post-processing job is currently running.\nAre you sure you want to quit?",
 				func(confirmed bool) {
 					if confirmed {
-						dlApp.RequestCancel()
-						mainApp.Quit()
+						dlApp.Shutdown(mainApp.Quit)
 					}
 				},
 				mainWindow,

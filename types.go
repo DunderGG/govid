@@ -237,8 +237,10 @@ type DownloaderApp struct {
 	ui         *UIWidgets                         // The graphical interface components
 	stats      *DownloadStats                     // Statistics tracked during a session
 	logSvc     *LogService                        // Session log, error log, and buffer-limit management
-	cancelMu   sync.Mutex                         // Guards cancelFn updates and reads
-	cancelFn   context.CancelFunc                 // Function used to signal yt-dlp to stop
+	cancelMu   sync.Mutex                         // Guards cancelFn and stopFn updates and reads
+	cancelFn   context.CancelFunc                 // Function used to signal yt-dlp to stop; in batch mode it skips only the current item
+	stopFn     context.CancelFunc                 // Stops the whole session, including the rest of a batch queue
+	sessions   sync.WaitGroup                     // Counts running sessions so Shutdown can wait for them to finish
 	stopPulse  chan struct{}                      // Closed to stop the status dot pulse goroutine
 	pulseDone  chan struct{}                      // Closed by the pulse goroutine when it exits
 	uiManager  *UIManager                         // Owns the main window layout and all secondary windows
