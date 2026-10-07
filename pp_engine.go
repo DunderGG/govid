@@ -360,6 +360,9 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		_ = cmd.Process.Kill()
 	})
 
+	toolDone := trackTool(toolFFmpeg)
+	defer toolDone()
+	markLoop("ffmpeg progress reader ("+filepath.Base(job.finalPath)+")", "started")
 	// Stream FFmpeg's stderr in real-time to the log and status bar.
 	var errLines []string
 	scanner := bufio.NewScanner(stderrPipe)
@@ -382,6 +385,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	}
 
 	err := cmd.Wait()
+	markLoop("ffmpeg progress reader ("+filepath.Base(job.finalPath)+")", "stopped")
 	duration := time.Since(start)
 
 	if err != nil {

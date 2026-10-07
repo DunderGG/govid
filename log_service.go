@@ -16,6 +16,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +32,7 @@ type LogService struct {
 	bufferLimit int
 	sessionDir  string   // anchored once at OpenSessionLog time; used by WriteToErrorLog
 	preSession  []string // timestamped lines written before a session log file exists; flushed by OpenSessionLog
+	recent      []string // the latest recentLogLines lines written, for Copy diagnostics; see Recent
 }
 
 // defaultLogBufferLimit is the number of log lines kept in the UI by default.
@@ -97,6 +99,10 @@ func (svc *LogService) WriteToFile(line string) {
 	svc.mutex.Lock()
 	defer svc.mutex.Unlock()
 	formatted := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), line)
+	svc.recent = append(svc.recent, formatted)
+	if len(svc.recent) > recentLogLines {
+		svc.recent = svc.recent[len(svc.recent)-recentLogLines:]
+	}
 	if svc.file != nil {
 		fmt.Fprintln(svc.file, formatted)
 		return
@@ -259,4 +265,17 @@ func ParseBufferLimit(s string) int {
 		return defaultLogBufferLimit
 	}
 	return n
+}
+
+// recentLogLines is how many of the latest lines LogService keeps for
+// Recent, whether or not a session log is open.
+const recentLogLines = 200
+
+// Recent returns up to the latest n lines written with WriteToFile, oldest
+// first, with their timestamps.
+func (svc *LogService) Recent(n int) []string {
+	svc.mutex.Lock()
+	defer svc.mutex.Unlock()
+	start := max(len(svc.recent)-n, 0)
+	return slices.Clone(svc.recent[start:])
 }

@@ -289,9 +289,16 @@ Tests: `TestFormatRowsListWhatYtDlpLists` (the same 45 formats, in the same orde
 
 ---
 
-## 7. Copy Diagnostics and freeze diagnostics
+## 7. ✅ Copy Diagnostics and freeze diagnostics
 
 **Roadmap:** UI Performance & Stability → Observability for Freeze Reports, and Goroutine Lifecycle Hygiene ("lifecycle diagnostics").
+
+**Status: Done** (new file [diagnostics.go](../diagnostics.go)).
+- **Copy diagnostics.** Help → **Copy diagnostics** builds the report off the UI thread and puts it on the clipboard, with **Save as file…**. It holds the version and build type, Go version, OS and CPUs, yt-dlp / ffmpeg / ffprobe versions and sources, the JavaScript runtime (and why others were skipped), the GPU detection lines, every setting as `govid.json` holds it with cookies shown only as their `cookieLabel` (#3), the queue summary, the goroutine count and tool processes running, and the last 200 log lines (`LogService.Recent`, kept whether or not a session log is open). An `anonymizer` replaces the user profile folder (`%USERPROFILE%`, in either slash and with yt-dlp's doubled backslashes), the user name (`%USERNAME%`, whole words only, so "DunderGG" in a link stays), and the cookies file's path, which yt-dlp's verbose command-line line would otherwise show.
+- **Heartbeat.** With Debug Output on (`setDebug`), every 10 s the session log gets "Heartbeat: UI round trip 3ms, 41 goroutines, tools running: yt-dlp 1, ffmpeg 0, log lines waiting 0". The round trip is timed through `fyne.Do`, and a UI thread that does not answer within an interval is logged while it stalls. Running tools are counted by `trackTool` where yt-dlp downloads and probes, and ffmpeg jobs and remuxes, start. Turning Debug Output off stops the heartbeat and waits for it to end.
+- **Loop markers and the audit.** `markLoop` logs start and stop markers, with the goroutine count, for the status pulse, the progress smoother, the recording monitor, each FFmpeg progress reader, the download workers, and the heartbeat. The throttles have no loop goroutine (one timer per burst of changes), so the audit records that instead of marking them. The review is the "Background loops: owners and stop paths" table in [architecture.md](architecture.md) §7: each loop's owner, stop path, and whether anything waits for it. It found no loop without an owner or a stop.
+
+Tests: `TestDiagnosticsReportHasEverySectionAndNoPrivateData` (every section, and no cookie path in any form, user folder, or user name), `TestAnonymizer`, `TestHeartbeatReportsAFrozenUIThread` (a stand-in UI thread busy for 2 s: the heartbeat reports a round trip of 2 s or more, and the stall while it lasts), `TestLoopMarkersOnlyInDebugMode`, and `TestTrackTool`.
 
 **Problem.** A bug report needs versions, settings, and the log, and users have to collect them by hand. A UI freeze leaves nothing in the logs to explain it.
 

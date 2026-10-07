@@ -107,6 +107,7 @@ type UIManager struct {
 	onPauseItem          func(id int)                                                         // DownloaderApp.pauseItem: a queue row's Pause
 	onSkipItem           func(id int) bool                                                    // DownloaderApp.skipItem: a queue row's Skip
 	onShowFormats        func()                                                               // DownloaderApp.showFormatsForURL: the Formats… button
+	onCopyDiagnostics    func()                                                               // DownloaderApp.copyDiagnostics: Help → Copy diagnostics
 	onItemFormats        func(id int)                                                         // DownloaderApp.showFormatsForItem: a waiting row's Formats…
 	onDiscardPaused      func(id int)                                                         // DownloaderApp.discardPausedItem: a paused row's Remove
 	onLoadHistory        func() ([]DownloadHistoryEntry, error)                               // HistoryService.Load
@@ -132,7 +133,7 @@ type UIManager struct {
 	onWritePresets       func(path string, presets []Preset) error                            // PreferenceService.WritePresetFile
 	onSetLogBufferLimit  func(limit int)                                                      // LogService.SetBufferLimit
 	onLogBufferLimit     func() int                                                           // LogService.BufferLimit
-	onSetShowDebug       func(show bool)                                                      // DownloaderApp.showDebug.Store
+	onSetShowDebug       func(show bool)                                                      // DownloaderApp.setDebug
 	onSetKeepHistory     func(keep bool)                                                      // DownloaderApp.keepHistory.Store
 	onSessionRunning     func() bool                                                          // DownloaderApp.isRunning.Load
 }
@@ -214,7 +215,7 @@ func (manager *UIManager) createMainMenu() {
 				manager.showPostProcessing()
 			}),
 		),
-		fyne.NewMenu("Help", configHelpMenu, fyne.NewMenuItemSeparator(), aboutMenu),
+		fyne.NewMenu("Help", configHelpMenu, fyne.NewMenuItem("Copy diagnostics", func() { manager.onCopyDiagnostics() }), fyne.NewMenuItemSeparator(), aboutMenu),
 	)
 	manager.mainWindow.SetMainMenu(mainMenu)
 }
@@ -408,7 +409,8 @@ func (manager *UIManager) showConfigHelp() {
 			"Entries whose file has been moved or deleted are greyed out.\n\n" +
 			"Before downloading, GoVid checks the history and asks before downloading a video again: **Download again** or **Skip**, and in a batch also **Skip all duplicates**. It recognises a video under a different link too, such as `youtu.be/…` for a `watch?v=…` link it downloaded before.\n\n" +
 			"To stop keeping history, untick **Keep download history** in **Tools → Preferences**; GoVid then offers to delete the history kept so far. **Clear History** in the History window deletes it at any time."},
-		{"Debug Output", "Found in **Tools → Preferences**. GoVid runs yt-dlp in verbose mode so the log file has everything needed for a bug report, but the **[debug]** lines are hidden from the Terminal Output panel unless this is checked. The panel also shows only the latest download progress line for each file; the log file keeps them all."},
+		{"Debug Output", "Found in **Tools → Preferences**. GoVid runs yt-dlp in verbose mode so the log file has everything needed for a bug report, but the **[debug]** lines are hidden from the Terminal Output panel unless this is checked. The panel also shows only the latest download progress line for each file; the log file keeps them all.\n\nWith Debug Output on, GoVid also writes a heartbeat to the log every 10 seconds: how long the window took to answer (a frozen window shows up as a large number, or as \"has not answered\"), how many background tasks and yt-dlp and FFmpeg processes are running, and how many log lines wait to be shown. Background loops log when they start and stop. This helps when GoVid freezes: turn it on, reproduce the freeze, and send the log or **Help → Copy diagnostics**."},
+		{"Copy Diagnostics", "**Help → Copy diagnostics** puts a report for a bug report on the clipboard, and **Save as file…** saves it: GoVid's version, your system, the versions of yt-dlp, FFmpeg, and the JavaScript runtime, the GPU check, every setting, the queue, and the last 200 log lines.\n\nYour user folder and user name are replaced with `%USERPROFILE%` and `%USERNAME%`, and cookies appear only as their source (\"Firefox\", \"file set\"), never the file's path or contents. Look through the report before you post it anywhere public: it still holds the titles and links of what you downloaded."},
 		{"Updates", "Found in **Tools → Preferences**. When **Check for updates on startup** is checked, GoVid asks GitHub (at most once a day) whether a newer yt-dlp is available and, if so, shows a notice with an **Update now** button. Sites change often, and an outdated yt-dlp is the most common reason downloads stop working. **Tools → Update yt-dlp** shows the installed and latest versions and updates on demand.\n\nGoVid also tells you when a newer GoVid release is available; **What's new** shows its release notes and a link to the download page. **Tools → Check for GoVid updates** checks right away.\n\nOn Windows, the release notes also offer **Update now**: GoVid downloads the new release, checks it against the SHA-256 published with it, replaces its own program file (keeping the old one until the next start), and restarts. If the download does not match, nothing is changed. Antivirus software or Windows SmartScreen may scan the new GoVid.exe the first time it starts, which can make that start slow or ask you to confirm it. **Update now** is not offered while a download runs, for releases published without a checksum, or for builds you made yourself.\n\nIf the update fails because GoVid's folder cannot be written to (for example under `Program Files`), run GoVid as administrator once, or move it to a folder you own."},
 		{"Components", "**Tools → Components** lists the tools GoVid uses, the version installed and where it was found (the `bin` folder beside GoVid, which takes precedence, or `PATH`), and the latest version:\n" +
 			"  * **yt-dlp** – downloads the videos\n" +
@@ -1456,4 +1458,11 @@ func buildFooter() fyne.CanvasObject {
 	copyright.TextSize = 14
 	copyright.Alignment = fyne.TextAlignCenter
 	return container.NewCenter(copyright)
+}
+
+// pendingLogLines returns how many log lines wait for the next flush.
+func (manager *UIManager) pendingLogLines() int {
+	manager.logMu.Lock()
+	defer manager.logMu.Unlock()
+	return len(manager.pendingLog)
 }

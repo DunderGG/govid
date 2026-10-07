@@ -39,6 +39,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Speed Limiting**: Cap download bandwidth to avoid saturating your network.
 - **Disk Space Check**: Warns before a download that will not fit in the save folder.
 - **Config Support**: Configuration file support via `govid.json` for startup defaults and repeatable workflows.
+- **Bug Reports**: **Help → Copy diagnostics** puts versions, settings, the queue, and recent log lines on the clipboard, with your user name, user folder, and cookies left out. With Debug Output on, a heartbeat in the log shows when the window stops responding.
 - **Log Export**: Option to save download logs to `.txt` files for troubleshooting.
 - **Completion Notifications**: Optional desktop notifications when downloads complete.
 - **Tools and Components**: **Tools → Components** installs, updates, or repairs yt-dlp, FFmpeg (with ffprobe), and Deno in the `bin/` folder, each download checked against its published SHA-256. GoVid passes yt-dlp a JavaScript runtime (Deno, or Node or Bun on `PATH`), which YouTube now needs, and offers to install Deno or any missing tool at startup.

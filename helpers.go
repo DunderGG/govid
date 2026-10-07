@@ -242,6 +242,8 @@ func (app *DownloaderApp) startStatusPulse(base color.RGBA) {
 	app.stopPulse, app.pulseDone = stopCh, doneCh
 
 	go func() {
+		markLoop("status pulse", "started")
+		defer markLoop("status pulse", "stopped")
 		defer close(doneCh)
 		ticker := time.NewTicker(50 * time.Millisecond)
 		defer ticker.Stop()
@@ -316,6 +318,8 @@ const minVisibleProgressStep = 0.002
 // only ever touched inside fyne.Do, and it skips frames whose change would
 // not be visible.
 func (app *DownloaderApp) runProgressSmoother(ctx context.Context) {
+	markLoop("progress smoother", "started")
+	defer markLoop("progress smoother", "stopped")
 	ticker := time.NewTicker(fpsInterval)
 	defer ticker.Stop()
 

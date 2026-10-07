@@ -86,6 +86,7 @@ govid/
 ├── options.go              Named labels and option lists for every enum-like selector (format, quality, theme, PP modes…)
 ├── helpers.go              Thread-safe UI updates, applyPreferencesToWidgets, cancellation callback guard, GPU detection kickoff
 ├── throttle.go             latestValueThrottle — applies the newest of a stream of values at most once per interval (status label)
+├── diagnostics.go          Help → Copy diagnostics (diagnosticsReport, anonymizer), the Debug Output heartbeat (UI round trip, goroutines, tools running), trackTool, markLoop
 │
 ├── ── Assets / Platform ───────────────────────────────────────────
 ├── theme.go                darkTheme and lightTheme (implement fyne.Theme)
@@ -256,10 +257,13 @@ Owns the session log file handle, two mutexes, daily rotation policy, the UI buf
 - **`WriteToFile(line string)`** — appends a timestamped line to the open session log.
 - **`WriteToErrorLog(line string)`** — appends a timestamped line to the daily `GoVid_errors_YYYY-MM-DD.txt`. Uses the session directory cached by `OpenSessionLog`; falls back to the executable directory when no session is active. Opens and closes the file on each call.
 - **`SetBufferLimit(n int)` / `BufferLimit() int`** — gets/sets the UI log line cap (replaces the former `logBufferLimit` global).
+- **`Recent(n)`** — the latest lines written with `WriteToFile` (up to `recentLogLines` = 200, kept whether or not a session log is open), for Copy diagnostics.
 - Before a session opens, `WriteToFile` keeps timestamped lines in the bounded `preSession` buffer. `OpenSessionLog` flushes those lines into the newly opened file, preserving startup diagnostics such as dependency warnings and GPU detection output.
 - **`WriteSessionConfig(cfg SessionConfig, writeFn func(string, color.Color))`** — writes the session's starting configuration (save path, format/quality, trim, toggles, preferences, URL list, post-process settings) as one log line per setting via `writeFn`. Driven entirely by `SessionConfig`, a plain value struct with no widget references, built by `newSessionConfig(ui *UIWidgets, urls []string, savePath, trimStart, trimEnd string) SessionConfig` — it embeds the existing `PostProcessSettings` (§4.5) for its post-process fields rather than duplicating them.
 
 Package-level helpers: `IsErrorLine(line string) bool` (matches ERROR/FAILED), `ParseBufferLimit(s string) int` (converts the preference string to an integer), `SessionLogPath(dir string)`, `ErrorLogPath(dir string)`.
+
+**Diagnostics** (`diagnostics.go`). Help → **Copy diagnostics** builds `diagnosticsReport` off the UI thread: GoVid's version and build type, the OS, each tool's version and source (`DependencyService.Installed`) and the JavaScript runtime, `FormatGPUDiagnostics`, every setting as `govid.json` holds it with cookies shown only as `cookieLabel` (`diagnosticsSettings`), the queue's summary, the goroutines and tool processes running (`trackTool` counts yt-dlp downloads and probes, ffmpeg jobs and remuxes), and `Recent(200)`. An `anonymizer` then replaces the user profile folder (with either slash, and with doubled backslashes as yt-dlp prints its command line) with `%USERPROFILE%`, the user name, as a whole word, with `%USERNAME%`, and the cookies file's path with `<cookies file>`. The report goes to the clipboard, with **Save as file…**. With Debug Output on, `setDebug` starts the heartbeat, which every `heartbeatInterval` (10 s) writes the round trip of a function sent through `fyne.Do` (`doOnUI`; `runOnUI` replaces it in tests), the goroutine count, the tools running, and the log lines waiting to be shown (`UIManager.pendingLogLines`), and logs when the UI thread has not answered for an interval; it also turns on `markLoop` (see §7).
 
 `appendOutput()` in `helpers.go` is the single call-site for all log writes; it calls `logSvc.WriteToFile` for session logging and `logSvc.WriteToErrorLog` for error mirroring. It passes yt-dlp's `[debug]` lines (`IsDebugLine`) to the log view only when `DownloaderApp.showDebug` is set (the "Debug Output" preference, `prefShowDebug`); the log file always gets every line. `UIManager.renderLogLines` also shows consecutive yt-dlp progress lines (`IsProgressLine` in `logscanner.go`) as one line updated in place, so the view holds a few dozen lines per download instead of hundreds.
 
@@ -472,6 +476,28 @@ func classify(err error) Category {
 | Status dot pulse | `setStatusIndicator("active")` | `stopPulse` channel close |
 | Post-process worker pool | `PPEngine.ApplyFilters()`; GPU jobs additionally wait on `gpuSem` (capacity 2) | same context |
 | Recording monitor | `DownloadEngine.monitorRecording()` while a live or scheduled stream runs; reports once a second through `OnRecording` | the function it returns, called as soon as `Execute` returns |
+
+**Background loops: owners and stop paths.** Audited for [priorities_3.md](priorities_3.md) #7. Each loop below has one owner and one way to stop; "marker" means it logs `[DEBUG] Loop started/stopped: <name>` with the goroutine count while Debug Output is on (`markLoop`).
+
+| Loop | Owner (starts it) | Stops when | Waited for | Marker |
+|---|---|---|---|---|
+| Session goroutine (`runSession`) | `startSession` | the queue is done or `queueCtx` is cancelled (Cancel, `StopSession`, Shutdown) | `sessions` wait group (Shutdown, up to 5 s) | – |
+| Download workers (`runParallel`) | `runQueue` with Simultaneous Downloads > 1 | nothing waits, `queueCtx` ends, a disk-space Stop, or `backOff` lowers the limit below the worker's number | `wg.Wait` in `runParallel` | yes |
+| Progress smoother (`runProgressSmoother`, 33 ms ticker) | `startSession` | `queueCtx` cancelled (`runSession` defers `stopQueue`) | no; it only writes through `fyne.Do` | yes |
+| Status dot pulse (50 ms ticker) | `setStatusIndicator` (UI thread), for the Active and Processing states | `stopStatusPulse`: every state change closes `stopPulse` | yes: `stopStatusPulse` waits for `pulseDone` | yes |
+| yt-dlp output readers (`watchOutput`, two goroutines) | `Execute` | EOF on stdout/stderr once the process tree exits (`cmd.WaitDelay` bounds a pipe a grandchild holds) | `waitGroup.Wait` in `watchOutput` | – |
+| Recording monitor (1 s ticker) | `runArgs`, for live and scheduled streams | the function `monitorRecording` returns, called when `Execute` returns | yes: it waits for `finished` | yes |
+| FFmpeg progress reader (inline scanner in `runJob`) | each post-processing job | EOF when ffmpeg exits; the GPU stall watchdog kills a hung encoder | runs on the job's own worker | yes |
+| Post-processing worker pool | `PPEngine.ApplyFilters` | its jobs run out; the session context cancels ffmpeg | `ApplyFilters` waits | – |
+| Heartbeat (`runHeartbeat`, 10 s ticker) | `setDebug(true)` | `setDebug(false)` → `stopHeartbeat` cancels it | yes: `stopHeartbeat` waits | yes |
+| Throttles (status label, Pause button, Queue panel) | `latestValueThrottle.Set` | no goroutine: one `time.AfterFunc` per burst of changes, which `Flush` stops; nothing re-arms it without a new `Set` | – | – (one would fire on every change) |
+| Log flush timer | `appendLogLine` | no goroutine: one `time.AfterFunc` per burst; `flushLog` clears it | – | – |
+| GPU stall watchdog | `gpuJobGuard.arm` | `release` stops the timer once per job | – | – |
+| Download context hooks (`context.AfterFunc` in `downloadContext`) | `downloadItem` | `release` unhooks them when the item ends | – | – |
+| Short-lived workers: update checks, tool checks, installs, probes for Formats…, Components statuses, self-update, `cleanUpAfterUpdate` (15 retries) | their UI actions or startup | they finish their one task | – | – |
+
+No loop is shared between owners, and none outlives its owner: those without a wait end on their own once their context or pipe closes.
+
 
 The session's queue is a `QueueModel` (`queue_model.go`): the items plus each one's status (Waiting, Checking, Downloading with its progress, Post-processing, Done, Failed, Skipped), behind a mutex. `runQueue` does not index a slice; it asks `Next()` for the first waiting item each time, so the Queue panel (`queue_panel.go`) can remove or move waiting items and put failed or skipped ones back at the end (`Retry`) while the queue runs. Moves only swap neighbouring waiting items, so finished and running items keep their place. `DownloaderApp.queue` (an `atomic.Pointer`) lets `updateProgress` report download progress to the downloading row. The model's `OnChanged` goes through a `latestValueThrottle`, so the panel is redrawn at most every 150 ms. The panel is a collapsible card above the log, titled with `Summary()` ("Queue — 7 of 20 done, 1 failed"), shown while the queue holds more than one item. Its rows offer Move up / Move down / Remove while waiting, Skip (the per-item cancel, as the Cancel button) while running, and Retry for failed or skipped items while the session runs. Items not reached when the queue stops are marked Skipped. Paused items and saving the queue across restarts are described under **Pause and resume** below.
 

@@ -197,6 +197,9 @@ func (app *DownloaderApp) runParallel(queueCtx context.Context, session download
 	)
 	for worker := range workers {
 		wg.Go(func() {
+			name := fmt.Sprintf("download worker %d", worker+1)
+			markLoop(name, "started")
+			defer markLoop(name, "stopped")
 			if !sleepCtx(queueCtx, time.Duration(worker)*workerStagger) {
 				return
 			}

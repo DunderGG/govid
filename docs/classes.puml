@@ -54,7 +54,11 @@ package "Application Core" #F0F4F8 {
         -controls : map[int]*itemControls
         -promptMu : sync.Mutex
         -reservedBytes : atomic.Int64
+        -heartbeatStop : func()
+        -runOnUI : func(func())
         --
+        -setDebug(on bool)
+        -diagnosticsReport(prefs) : string
         +SetCancelFunc(cancel context.CancelFunc)
         +RequestCancel() : bool
         +StopSession()
@@ -833,6 +837,7 @@ package "Log Service" #F0F8FF {
         +CloseSessionLog()
         +WriteToFile(line string)
         +WriteToErrorLog(line string)
+        +Recent(n int) : []string
         +IsActive() : bool
         +SetBufferLimit(n int)
         +BufferLimit() : int

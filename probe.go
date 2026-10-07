@@ -164,6 +164,7 @@ func (engine *DownloadEngine) probe(ctx context.Context, args []string) (MediaIn
 	cmd := newToolCommand(ctx, engine.YtDlpPath, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	defer trackTool(toolYtDlp)()
 	out, err := cmd.Output()
 	if err != nil {
 		if reason := lastLine(stderr.String()); reason != "" {

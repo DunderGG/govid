@@ -343,7 +343,14 @@ type DownloaderApp struct {
 	// formatPicks holds the formats picked in the Format Browser for URLs in
 	// the URL field, until a session queues them.
 	formatPicks formatPicks
-	keepHistory atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
+
+	// The heartbeat (see startHeartbeat): heartbeatStop stops it, nil while
+	// it is not running. runOnUI replaces fyne.Do for its round trip in
+	// tests.
+	heartbeatMu   sync.Mutex
+	heartbeatStop func()
+	runOnUI       func(fn func())
+	keepHistory   atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
 
 	// queue is the running (or last) session's download queue, shown in the
 	// Queue panel; yt-dlp's output readers report download progress to it.

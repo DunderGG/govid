@@ -415,8 +415,8 @@ This document outlines planned features, improvements, and known limitations for
 ### Goroutine Lifecycle Hygiene
 > Ensure background tickers/goroutines never outlive their intended state.
 
-- [ ] Add lightweight lifecycle diagnostics (start/stop markers + goroutine count) around pulse, smoother, and post-process progress loops.
-- [ ] Audit all ticker-based loops to guarantee a single owner and deterministic stop path.
+- [x] Add lightweight lifecycle diagnostics (start/stop markers + goroutine count) around pulse, smoother, and post-process progress loops. (`markLoop` in `diagnostics.go`: with Debug Output on, the status pulse, progress smoother, recording monitor, FFmpeg progress readers, download workers, and heartbeat log start and stop markers with the goroutine count.)
+- [x] Audit all ticker-based loops to guarantee a single owner and deterministic stop path. (Done as a review: the table in [architecture.md](architecture.md) §7, "Background loops: owners and stop paths", lists each loop's owner and stop path. The heartbeat's stop now waits for it to end; nothing else needed changing.)
 - [x] Add a safe shutdown path that cancels active contexts and confirms worker completion before quit. (`DownloaderApp.Shutdown` stops the whole session, waits up to 5 s for it off the UI thread, closes the session log, then quits. Cancelling now kills the whole yt-dlp/ffmpeg process tree via `newToolCommand` in `process.go`, and a failed or cancelled download's partial `GOVID` files are removed.)
 
 ### UI Thread Safety Audit
@@ -429,8 +429,8 @@ This document outlines planned features, improvements, and known limitations for
 ### Observability for Freeze Reports
 > Make future freeze incidents diagnosable from logs.
 
-- [ ] Add optional debug mode that periodically logs UI heartbeat, queued update counters, and active worker counts.
-- [ ] Add a "Copy Diagnostics" action that captures runtime state (settings + goroutine/ticker snapshot) for bug reports.
+- [x] Add optional debug mode that periodically logs UI heartbeat, queued update counters, and active worker counts. (With Debug Output on, a heartbeat every 10 s: the UI round trip through `fyne.Do`, the goroutine count, yt-dlp and ffmpeg processes running, and log lines waiting; a UI thread that does not answer is reported while it stalls.)
+- [x] Add a "Copy Diagnostics" action that captures runtime state (settings + goroutine/ticker snapshot) for bug reports. (Help → **Copy diagnostics**: versions, OS, tools and runtime, GPU, every setting, the queue, goroutines and processes, and the last 200 log lines, with the user folder, user name, and cookie path replaced; to the clipboard or a file.)
 
 ---
 

@@ -91,6 +91,8 @@ func (engine *DownloadEngine) monitorRecording(req DownloadRequest, downloadID s
 	done := make(chan struct{})
 	finished := make(chan struct{})
 	go func() {
+		markLoop("recording monitor", "started")
+		defer markLoop("recording monitor", "stopped")
 		defer close(finished)
 		ticker := time.NewTicker(recordingTick)
 		defer ticker.Stop()
@@ -203,7 +205,9 @@ func (engine *DownloadEngine) finishRecording(paths []string, ext string, onLog 
 		target := recordingTarget(paths[0], container)
 		tmp := strings.TrimSuffix(target, "."+container) + ".remuxing." + container
 		cmd := newToolCommand(ctx, engine.ffmpeg(), recordingRemuxArgs(paths, tmp, container)...)
+		toolDone := trackTool(toolFFmpeg)
 		output, err := cmd.CombinedOutput()
+		toolDone()
 		if err != nil {
 			os.Remove(tmp)
 			if _, ran := errors.AsType[*exec.ExitError](err); !ran {

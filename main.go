@@ -62,7 +62,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	prefs := dlApp.prefSvc.Load()
 	applyPreferencesToWidgets(dlApp.ui, prefs)
 	dlApp.logSvc.SetBufferLimit(ParseBufferLimit(prefs.LogLimit))
-	dlApp.showDebug.Store(prefs.ShowDebug)
+	dlApp.setDebug(prefs.ShowDebug)
 	dlApp.keepHistory.Store(prefs.KeepHistory)
 
 	// Wire history service to both the app and the UIManager's callbacks.
@@ -88,7 +88,8 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onWritePresets = dlApp.prefSvc.WritePresetFile
 	dlApp.uiManager.onSetLogBufferLimit = dlApp.logSvc.SetBufferLimit
 	dlApp.uiManager.onLogBufferLimit = dlApp.logSvc.BufferLimit
-	dlApp.uiManager.onSetShowDebug = dlApp.showDebug.Store
+	dlApp.uiManager.onSetShowDebug = dlApp.setDebug
+	dlApp.uiManager.onCopyDiagnostics = dlApp.copyDiagnostics
 	dlApp.uiManager.onSetKeepHistory = dlApp.keepHistory.Store
 	dlApp.uiManager.onSessionRunning = dlApp.isRunning.Load
 

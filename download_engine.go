@@ -448,6 +448,7 @@ func (engine *DownloadEngine) Execute(ctx context.Context, args []string, opts D
 			cb.OnStatus(fmt.Sprintf("Failed to launch yt-dlp: %v", err))
 			return result, err
 		}
+		toolDone := trackTool(toolYtDlp)
 
 		if opts.Total > 1 {
 			cb.OnStatus(fmt.Sprintf("Status: Downloading (%d of %d)...", opts.Index, opts.Total))
@@ -457,6 +458,7 @@ func (engine *DownloadEngine) Execute(ctx context.Context, args []string, opts D
 
 		result = engine.watchOutput(stdout, stderr, cb)
 		cmdErr = cmd.Wait()
+		toolDone()
 		if cmdErr == nil {
 			break
 		}
