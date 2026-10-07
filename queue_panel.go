@@ -44,34 +44,37 @@ type queueActions struct {
 	pause   func(id int)
 	resume  func(id int)
 	discard func(id int) // removes a paused item and its partial files
+	formats func(id int)
 }
 
 // queueRow is one item of the Queue panel.
 type queueRow struct {
 	widget.BaseWidget
-	status *widget.Label
-	title  *widget.Label
-	up     *widget.Button
-	down   *widget.Button
-	remove *widget.Button
-	skip   *widget.Button
-	retry  *widget.Button
-	pause  *widget.Button
-	resume *widget.Button
+	status  *widget.Label
+	title   *widget.Label
+	up      *widget.Button
+	down    *widget.Button
+	remove  *widget.Button
+	skip    *widget.Button
+	retry   *widget.Button
+	pause   *widget.Button
+	resume  *widget.Button
+	formats *widget.Button
 }
 
 // newQueueRow returns an empty row for the list to fill with show.
 func newQueueRow() *queueRow {
 	row := &queueRow{
-		status: widget.NewLabel(""),
-		title:  widget.NewLabel(""),
-		up:     widget.NewButtonWithIcon("", theme.MoveUpIcon(), nil),
-		down:   widget.NewButtonWithIcon("", theme.MoveDownIcon(), nil),
-		remove: widget.NewButtonWithIcon("", theme.DeleteIcon(), nil),
-		skip:   widget.NewButtonWithIcon("Skip", theme.MediaSkipNextIcon(), nil),
-		retry:  widget.NewButtonWithIcon("Retry", theme.ViewRefreshIcon(), nil),
-		pause:  widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), nil),
-		resume: widget.NewButtonWithIcon("Resume", theme.MediaPlayIcon(), nil),
+		status:  widget.NewLabel(""),
+		title:   widget.NewLabel(""),
+		up:      widget.NewButtonWithIcon("", theme.MoveUpIcon(), nil),
+		down:    widget.NewButtonWithIcon("", theme.MoveDownIcon(), nil),
+		remove:  widget.NewButtonWithIcon("", theme.DeleteIcon(), nil),
+		skip:    widget.NewButtonWithIcon("Skip", theme.MediaSkipNextIcon(), nil),
+		retry:   widget.NewButtonWithIcon("Retry", theme.ViewRefreshIcon(), nil),
+		pause:   widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), nil),
+		resume:  widget.NewButtonWithIcon("Resume", theme.MediaPlayIcon(), nil),
+		formats: widget.NewButtonWithIcon("", theme.ListIcon(), nil),
 	}
 	row.title.Truncation = fyne.TextTruncateEllipsis
 	row.ExtendBaseWidget(row)
@@ -81,7 +84,7 @@ func newQueueRow() *queueRow {
 // CreateRenderer lays the row out: status, title, then the buttons.
 func (row *queueRow) CreateRenderer() fyne.WidgetRenderer {
 	status := fixedWidth(row.status, 160)
-	buttons := container.NewHBox(row.up, row.down, row.remove, row.pause, row.resume, row.skip, row.retry)
+	buttons := container.NewHBox(row.formats, row.up, row.down, row.remove, row.pause, row.resume, row.skip, row.retry)
 	return widget.NewSimpleRenderer(container.NewBorder(nil, nil, status, buttons, row.title))
 }
 
@@ -114,6 +117,7 @@ func (row *queueRow) show(entry queueEntry, running bool, actions queueActions) 
 	}
 	row.pause.OnTapped = func() { actions.pause(id) }
 	row.resume.OnTapped = func() { actions.resume(id) }
+	row.formats.OnTapped = func() { actions.formats(id) }
 	row.skip.OnTapped = func() { actions.skip(id) }
 	if entry.isLive() {
 		row.skip.SetText("Stop recording")
@@ -127,7 +131,7 @@ func (row *queueRow) show(entry queueEntry, running bool, actions queueActions) 
 	retryable := running && (entry.status == queueFailed || entry.status == queueSkipped)
 	paused := running && entry.status == queuePaused
 	for button, visible := range map[*widget.Button]bool{
-		row.up: waiting, row.down: waiting, row.remove: waiting || paused,
+		row.formats: waiting && !entry.isLive(), row.up: waiting, row.down: waiting, row.remove: waiting || paused,
 		row.pause: entry.status == queueDownloading && !entry.isLive(), row.resume: paused,
 		row.skip: active, row.retry: retryable,
 	} {
@@ -180,11 +184,12 @@ func (manager *UIManager) renderQueuePanel() {
 // buildQueuePanel builds the collapsible card and its list.
 func (manager *UIManager) buildQueuePanel(open bool) *queuePanel {
 	actions := queueActions{
-		move:   func(id, delta int) { manager.queueAction(func(queue *QueueModel) { queue.Move(id, delta) }) },
-		remove: func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Remove(id) }) },
-		retry:  func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Retry(id) }) },
-		resume: func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Resume(id) }) },
-		pause:  func(id int) { manager.onPauseItem(id) },
+		move:    func(id, delta int) { manager.queueAction(func(queue *QueueModel) { queue.Move(id, delta) }) },
+		remove:  func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Remove(id) }) },
+		retry:   func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Retry(id) }) },
+		resume:  func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Resume(id) }) },
+		pause:   func(id int) { manager.onPauseItem(id) },
+		formats: func(id int) { manager.onItemFormats(id) },
 		discard: func(id int) {
 			manager.onDiscardPaused(id)
 			manager.refreshQueue()

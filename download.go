@@ -217,7 +217,11 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 		}
 	}
 	for i := range session.items {
-		session.items[i] = session.items[i].withRequest(session.request)
+		item := session.items[i].withRequest(session.request)
+		if pick := app.formatPicks.take(item.url); pick != "" {
+			item.formatPick = pick
+		}
+		session.items[i] = item
 	}
 	switch {
 	case queueCtx.Err() != nil:
@@ -366,6 +370,11 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 	}
 	app.reportQualityFit(item, req)
 	app.reportSubtitles(item, req)
+	if item.info != nil && !req.Live {
+		if text := describeDownload(*item.info, req.FormatPick, formatExtension(req.Format)); text != "" {
+			app.appendOutput(fmt.Sprintf("%s[SYSTEM] Will download %s: %s", run.prefix(), selectedIDs(*item.info, req.FormatPick), text), colInfo)
+		}
+	}
 
 	// A live stream has no size to check; recordingCallback watches the
 	// free space while it records instead.
@@ -459,7 +468,7 @@ func qualityFit(format, quality string, height int) (message string, aboveCap bo
 // probe says item will download at a different resolution from req's
 // quality cap. Nothing is said when its resolution is not known.
 func (app *DownloaderApp) reportQualityFit(item queueItem, req DownloadRequest) {
-	if item.info == nil {
+	if item.info == nil || req.FormatPick != "" {
 		return
 	}
 	message, aboveCap := qualityFit(req.Format, req.Quality, item.info.Height)
@@ -640,6 +649,7 @@ func (app *DownloaderApp) newDownloadRequest(rawURL, savePath, trimStart, trimEn
 		MaxSpeed:           limit,
 		CookiesPath:        cookiesPath,
 		CookiesFromBrowser: cookiesBrowser,
+		PreferredCodec:     app.ui.prefs.preferredCodec.Selected,
 
 		EmbedMetadata:  app.ui.prefs.embedMetadata.Checked,
 		EmbedThumbnail: app.ui.prefs.embedThumbnail.Checked,

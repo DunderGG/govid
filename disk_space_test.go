@@ -61,8 +61,8 @@ func TestMediaInfoEstimatedSize(t *testing.T) {
 		want      uint64
 		wantKnown bool
 	}{
-		{"merged streams", MediaInfo{RequestedFormats: []formatSize{{FileSize: 1000}, {FileSizeApprox: 500}}}, 1500, true},
-		{"merged stream of unknown size", MediaInfo{RequestedFormats: []formatSize{{FileSize: 1000}, {}}}, 0, false},
+		{"merged streams", MediaInfo{RequestedFormats: []FormatInfo{{formatSize: formatSize{FileSize: 1000}}, {formatSize: formatSize{FileSizeApprox: 500}}}}, 1500, true},
+		{"merged stream of unknown size", MediaInfo{RequestedFormats: []FormatInfo{{formatSize: formatSize{FileSize: 1000}}, {}}}, 0, false},
 		{"single format, exact", MediaInfo{formatSize: formatSize{FileSize: 700, FileSizeApprox: 900}}, 700, true},
 		{"single format, approximate", MediaInfo{formatSize: formatSize{FileSizeApprox: 900.7}}, 900, true},
 		{"unknown", MediaInfo{}, 0, false},

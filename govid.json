@@ -10,6 +10,7 @@
   "cookieBrowser": "Firefox",
   "cookieProfile": "",
   "simultaneousDownloads": "1",
+  "preferredCodec": "Any",
   "logLimit": "200",
   "showDebug": false,
   "checkUpdates": true,

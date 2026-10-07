@@ -85,6 +85,7 @@ type PreferenceControls struct {
 	cookieBrowser  *widget.Select     // The browser to read cookies from
 	cookieProfile  *widget.Entry      // The browser profile to read cookies from; empty for the default
 	simultaneous   *widget.Select     // How many downloads run at once (1–3)
+	preferredCodec *widget.Select     // The video codec downloads prefer (Any, H.264, VP9, AV1)
 	savePrefs      *widget.Check      // Option to persist preferences between sessions
 	logLimit       *widget.Select     // Max lines kept in the graphical log view
 	showDebug      *widget.Check      // Option to show yt-dlp [debug] lines in the log view
@@ -123,6 +124,7 @@ func NewPreferenceControls() *PreferenceControls {
 		cookieBrowser:  widget.NewSelect(cookieBrowserOptions, nil),
 		cookieProfile:  cookieProfile,
 		simultaneous:   widget.NewSelect(simultaneousOptions, nil),
+		preferredCodec: widget.NewSelect(preferredCodecOptions, nil),
 		savePrefs:      widget.NewCheck("Save preferences between sessions", nil),
 		logLimit:       widget.NewSelect(logLimitOptions, nil),
 		showDebug:      widget.NewCheck("Show yt-dlp debug output", nil),
@@ -338,7 +340,10 @@ type DownloaderApp struct {
 	// reservedBytes is the disk space the downloads in progress are
 	// expected to need, which the disk space check leaves for them.
 	reservedBytes atomic.Int64
-	keepHistory   atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
+	// formatPicks holds the formats picked in the Format Browser for URLs in
+	// the URL field, until a session queues them.
+	formatPicks formatPicks
+	keepHistory atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
 
 	// queue is the running (or last) session's download queue, shown in the
 	// Queue panel; yt-dlp's output readers report download progress to it.

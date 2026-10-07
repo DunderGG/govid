@@ -1,0 +1,52 @@
+[info] Available formats for dQw4w9WgXcQ:
+ID  EXT   RESOLUTION FPS CH |   FILESIZE    TBR PROTO | VCODEC           VBR ACODEC      ABR ASR MORE INFO
+-----------------------------------------------------------------------------------------------------------------------
+sb3 mhtml 48x27        0    |                   mhtml | images                                   storyboard
+sb2 mhtml 80x45        1    |                   mhtml | images                                   storyboard
+sb1 mhtml 160x90       1    |                   mhtml | images                                   storyboard
+sb0 mhtml 320x180      1    |                   mhtml | images                                   storyboard
+233 mp4   audio only        |                   m3u8  | audio only           unknown             [en] Default, low
+234 mp4   audio only        |                   m3u8  | audio only           unknown             [en] Default, high
+139 m4a   audio only      2 |    1.24MiB    49k https | audio only           mp4a.40.5   49k 22k [en] low, m4a_dash
+249 webm  audio only      2 |    1.17MiB    46k https | audio only           opus        46k 48k [en] low, webm_dash
+250 webm  audio only      2 |    1.55MiB    61k https | audio only           opus        61k 48k [en] low, webm_dash
+140 m4a   audio only      2 |    3.29MiB   130k https | audio only           mp4a.40.2  130k 44k [en] medium, m4a_dash
+251 webm  audio only      2 |    3.27MiB   129k https | audio only           opus       129k 48k [en] medium, webm_dash
+602 mp4   256x144     13    | ~  1.99MiB    79k m3u8  | vp09.00.10.08    79k video only
+269 mp4   256x144     25    | ~  4.27MiB   168k m3u8  | avc1.4D400C     168k video only
+160 mp4   256x144     25    |    1.96MiB    77k https | avc1.4D400C      77k video only          144p, mp4_dash
+603 mp4   256x144     25    | ~  3.16MiB   125k m3u8  | vp09.00.11.08   125k video only
+278 webm  256x144     25    |    1.47MiB    58k https | vp9              58k video only          144p, webm_dash
+394 mp4   256x144     25    |    1.44MiB    57k https | av01.0.00M.08    57k video only          144p, mp4_dash
+229 mp4   426x240     25    | ~  7.64MiB   301k m3u8  | avc1.4D4015     301k video only
+133 mp4   426x240     25    |    4.11MiB   162k https | avc1.4D4015     162k video only          240p, mp4_dash
+604 mp4   426x240     25    | ~  4.85MiB   191k m3u8  | vp09.00.20.08   191k video only
+242 webm  426x240     25    |    2.58MiB   102k https | vp9             102k video only          240p, webm_dash
+395 mp4   426x240     25    |    2.95MiB   116k https | av01.0.00M.08   116k video only          240p, mp4_dash
+230 mp4   640x360     25    | ~ 15.50MiB   611k m3u8  | avc1.4D401E     611k video only
+134 mp4   640x360     25    |    8.00MiB   315k https | avc1.4D401E     315k video only          360p, mp4_dash
+18  mp4   640x360     25  2 |  11.28MiB   444k https | avc1.42001E          mp4a.40.2       44k [en] 360p
+605 mp4   640x360     25    | ~ 11.17MiB   440k m3u8  | vp09.00.21.08   440k video only
+243 webm  640x360     25    |    5.74MiB   226k https | vp9             226k video only          360p, webm_dash
+396 mp4   640x360     25    |    5.42MiB   214k https | av01.0.01M.08   214k video only          360p, mp4_dash
+231 mp4   854x480     25    | ~ 21.90MiB   863k m3u8  | avc1.4D401E     863k video only
+135 mp4   854x480     25    |   13.45MiB   530k https | avc1.4D401E     530k video only          480p, mp4_dash
+606 mp4   854x480     25    | ~ 15.92MiB   627k m3u8  | vp09.00.30.08   627k video only
+244 webm  854x480     25    |    8.95MiB   352k https | vp9             352k video only          480p, webm_dash
+397 mp4   854x480     25    |    9.42MiB   371k https | av01.0.04M.08   371k video only          480p, mp4_dash
+232 mp4   1280x720    25    | ~ 31.70MiB  1248k m3u8  | avc1.4D401F    1248k video only
+136 mp4   1280x720    25    |   25.23MiB   993k https | avc1.4D401F     993k video only          720p, mp4_dash
+609 mp4   1280x720    25    | ~ 26.62MiB  1048k m3u8  | vp09.00.31.08  1048k video only
+247 webm  1280x720    25    |   16.87MiB   664k https | vp9             664k video only          720p, webm_dash
+398 mp4   1280x720    25    |   16.78MiB   661k https | av01.0.05M.08   661k video only          720p, mp4_dash
+270 mp4   1920x1080   25    | ~119.04MiB  4688k m3u8  | avc1.640028    4688k video only
+137 mp4   1920x1080   25    |   77.16MiB  3038k https | avc1.640028    3038k video only          1080p, mp4_dash
+614 mp4   1920x1080   25    | ~ 44.79MiB  1764k m3u8  | vp09.00.40.08  1764k video only
+248 webm  1920x1080   25    |   29.42MiB  1158k https | vp9            1158k video only          1080p, webm_dash
+399 mp4   1920x1080   25    |   29.01MiB  1142k https | av01.0.08M.08  1142k video only          1080p, mp4_dash
+620 mp4   2560x1440   25    | ~242.86MiB  9564k m3u8  | vp09.00.50.08  9564k video only
+271 webm  2560x1440   25    |  144.10MiB  5674k https | vp9            5674k video only          1440p, webm_dash
+400 mp4   2560x1440   25    |  116.51MiB  4588k https | av01.0.12M.08  4588k video only          1440p, mp4_dash
+625 mp4   3840x2160   25    | ~485.43MiB 19118k m3u8  | vp09.00.50.08 19118k video only
+313 webm  3840x2160   25    |  342.00MiB 13466k https | vp9           13466k video only          2160p, webm_dash
+401 mp4   3840x2160   25    |  229.20MiB  9025k https | av01.0.12M.08  9025k video only          2160p, mp4_dash

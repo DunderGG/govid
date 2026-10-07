@@ -431,3 +431,26 @@ func (queue *QueueModel) Summary() string {
 	}
 	return summary
 }
+
+// Item returns the item with id.
+func (queue *QueueModel) Item(id int) (queueItem, bool) {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	if entry := queue.find(id); entry != nil {
+		return entry.item, true
+	}
+	return queueItem{}, false
+}
+
+// SetFormatPick sets the formats a waiting item downloads (a -f value, ""
+// for the automatic choice) and reports whether it could.
+func (queue *QueueModel) SetFormatPick(id int, pick string) bool {
+	return queue.change(func() bool {
+		entry := queue.find(id)
+		if entry == nil || entry.status != queueWaiting {
+			return false
+		}
+		entry.item.formatPick = pick
+		return true
+	})
+}

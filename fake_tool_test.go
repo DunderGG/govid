@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -203,6 +204,8 @@ func runFakeTool(mode string, args []string) int {
 	case "ytdlp-rate-limited":
 		fmt.Fprintln(os.Stderr, "ERROR: [youtube] fake: Unable to download webpage: HTTP Error 429: Too Many Requests")
 		return 1
+	case "ytdlp-formats":
+		return fakeFixtureDownload(args)
 	case "ytdlp-resumable":
 		return fakeYtDlpResumable(args)
 	case "ytdlp-live":
@@ -374,6 +377,9 @@ func checkFakeInfoJSON(path string, args []string) int {
 // https://example.com/v/<n> (unless noPlaylist is set), "ytdlp-probe-fail"
 // fails, and every other mode reports a single 10 MiB, 720p video.
 func fakeYtDlpProbe(mode, url string, noPlaylist bool) int {
+	if mode == "ytdlp-formats" {
+		return fakeFixtureProbe()
+	}
 	if line, ok := fakeAccessErrors[mode]; ok {
 		fmt.Fprintln(os.Stderr, line)
 		return 1
@@ -712,4 +718,28 @@ func useFakeConcurrency(t *testing.T) func() int {
 		}
 		return peak
 	}
+}
+
+// fakeFixtureProbe answers a probe with the real (sanitised) YouTube info
+// in testdata/ytdlp_info_formats.json, whose selector chose 401+251.
+func fakeFixtureProbe() int {
+	data, err := os.ReadFile(filepath.Join("testdata", "ytdlp_info_formats.json"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: %v\n", err)
+		return 2
+	}
+	os.Stdout.Write(data)
+	return 0
+}
+
+// fakeFixtureDownload prints the line real yt-dlp gives before a download,
+// naming the formats it fetches: the -f value when it picks formats by ID,
+// else the fixture's own choice, and then downloads.
+func fakeFixtureDownload(args []string) int {
+	formats := "401+251"
+	if pick := argAfter(args, "-f"); regexp.MustCompile(`^[0-9]+(\+[0-9]+)?$`).MatchString(pick) {
+		formats = pick
+	}
+	fmt.Printf("[info] dQw4w9WgXcQ: Downloading 1 format(s): %s\n", formats)
+	return fakeYtDlpDownload(args)
 }

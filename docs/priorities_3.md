@@ -257,9 +257,18 @@ Tests: `TestThreeDownloadsRunAtOnce` (a new "ytdlp-concurrent" fake marks itself
 
 ---
 
-## 6. Format Browser
+## 6. ✅ Format Browser
 
 **Roadmap:** Medium Priority → Format Browser.
+
+**Status: Done** (new files [formats.go](../formats.go) and [formats_window.go](../formats_window.go)).
+- **The fixture.** YouTube answered this machine again by then, so `testdata/ytdlp_info_formats.json` is a real video's info (`yt-dlp -J -f "bestvideo+bestaudio/best"`, 51 formats, selection 401+251), with every URL replaced by `https://example.invalid/…` and unneeded fields dropped, so it holds no signed links or IP address. `yt-dlp -F --load-info-json` prints the same table for it as for the original; that output is `testdata/ytdlp_list_formats.log`. Getting there showed that yt-dlp needs a `url` per format and `manifest_url`, `available_at`, and `http_headers` to size and order HLS formats as it did.
+- **Table.** `MediaInfo.Formats` holds every `FormatInfo`. **Formats…** next to the URL field (one URL) and on each waiting Queue row opens a table with ID, resolution, FPS, HDR, video codec, audio codec, bitrate, container, and size (`~` for an estimate, worked out from the bitrate as yt-dlp does), filtered by All / Video only / Audio only / Video + audio. Storyboards are left out. A missing codec counts as present ("unknown" in `yt-dlp -F`), which keeps YouTube's HLS audio formats 233 and 234 in the list.
+- **Preview.** The rows the current settings download are marked ●, and the window shows "Will download 247+251: 720p VP9 + Opus → MP4 (~20.1 MiB)" as the choice changes. Each download logs the same kind of line before it starts, with the format IDs; checked against the real yt-dlp, whose "Downloading 1 format(s): 401+251" names the same IDs.
+- **Picking.** Clicking a video row and an audio row (or one combined row) and **Use these formats** sets a pick, `-f 247+251` (`DownloadRequest.FormatPick`), which replaces the selector in the probe and the download; **Automatic** clears it. The container still follows Format. A pick for the URL field is kept per URL (`formatPicks`) until a session queues that URL; a pick on a waiting row is set on the item (`QueueModel.SetFormatPick`) and saved in `queue.json`. The "not available at this quality" notice is skipped for a pick.
+- **Favourites.** Preferences → **Preferred Video Codec** (Any / H.264 / VP9 / AV1, `preferredCodec` in `govid.json`, and in the presets' format group) adds `-S vcodec:avc|vp9|av01` when there is no pick and the format is not audio only. Checked on the fixture with the real yt-dlp: with no preference, Best picks AV1 401; H.264 picks 137 (1080p), even over 4K VP9, because a codec in `-S` sorts before resolution; VP9 picks 313. The guide says so.
+
+Tests: `TestFormatRowsListWhatYtDlpLists` (the same 45 formats, in the same order, with the same container and resolution as `yt-dlp -F`), `TestFormatRowsFilter`, `TestDescribeDownload`, `TestFormatChoice`, `TestFormatArgs`, `TestFormatWindowPicksAVideoAndAnAudioRow` (selecting rows 247 and 251 in the window gives `247+251`), `TestPickedFormatsReachYtDlp` (the fake receives `-f 247+251` in the probe and the download), and `TestWillDownloadMatchesWhatYtDlpDownloads` (a new "ytdlp-formats" fake answers with the fixture and prints yt-dlp's format line).
 
 **Problem.** Users choose a format and quality cap, and yt-dlp picks the actual streams. Users can't see what is available, what will be picked, or choose a particular codec.
 

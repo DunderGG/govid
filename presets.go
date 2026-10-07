@@ -73,7 +73,7 @@ type presetGroup struct {
 // theme or the log limit are left out: they are not part of a download
 // setup.
 var presetGroups = []presetGroup{
-	{label: "Format and quality", fields: []string{"Format", "Quality"}, checked: true},
+	{label: "Format, quality, and preferred codec", fields: []string{"Format", "Quality", "PreferredCodec"}, checked: true},
 	{label: "Save folder", fields: []string{"SavedPath"}},
 	{label: "Speed limit", fields: []string{"MaxSpeed"}},
 	{label: "Embed in file (metadata, thumbnail, chapters)", fields: []string{"EmbedMetadata", "EmbedThumbnail", "EmbedChapters"}, checked: true},

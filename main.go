@@ -125,6 +125,8 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onPauseResume = dlApp.pauseOrResume
 	dlApp.uiManager.onPauseItem = dlApp.pauseItem
 	dlApp.uiManager.onSkipItem = dlApp.skipItem
+	dlApp.uiManager.onShowFormats = dlApp.showFormatsForURL
+	dlApp.uiManager.onItemFormats = dlApp.showFormatsForItem
 	dlApp.uiManager.onDiscardPaused = dlApp.discardPausedItem
 	return dlApp
 }

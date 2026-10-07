@@ -106,6 +106,8 @@ type UIManager struct {
 	onPauseResume        func()                                                               // DownloaderApp.pauseOrResume: the main window's Pause / Resume button
 	onPauseItem          func(id int)                                                         // DownloaderApp.pauseItem: a queue row's Pause
 	onSkipItem           func(id int) bool                                                    // DownloaderApp.skipItem: a queue row's Skip
+	onShowFormats        func()                                                               // DownloaderApp.showFormatsForURL: the Formats… button
+	onItemFormats        func(id int)                                                         // DownloaderApp.showFormatsForItem: a waiting row's Formats…
 	onDiscardPaused      func(id int)                                                         // DownloaderApp.discardPausedItem: a paused row's Remove
 	onLoadHistory        func() ([]DownloadHistoryEntry, error)                               // HistoryService.Load
 	onClearHistory       func() error                                                         // HistoryService.Clear
@@ -370,7 +372,7 @@ func (manager *UIManager) showConfigHelp() {
 		{"Presets", "A preset is a named set of settings, such as an audio-only setup or a 1080p MP4 setup. Choosing one in the **Preset** dropdown sets the settings it holds and leaves every other setting as it is. GoVid starts with three: **Audio (MP3, metadata + cover)**, **1080p MP4**, and **Archive (MKV, Best, subtitles, chapters)**.\n\n" +
 			"**(modified)** appears beside the dropdown once one of the preset's settings has been changed since it was chosen.\n\n" +
 			"The **⋮** button beside the dropdown offers:\n" +
-			"  * **Save current as preset…** – stores the current values of the groups you tick (format and quality, save folder, speed limit, embedding, subtitles, the main window's toggles, post-processing, cookies) under a name. Using an existing name replaces that preset\n" +
+			"  * **Save current as preset…** – stores the current values of the groups you tick (format, quality, and preferred codec, save folder, speed limit, embedding, subtitles, the main window's toggles, post-processing, cookies) under a name. Using an existing name replaces that preset\n" +
 			"  * **Manage presets…** – rename or delete presets\n" +
 			"  * **Import presets…** / **Export presets…** – move presets between computers in one file. Imported presets replace presets of the same name; a value that does not work on this computer, such as a save folder that does not exist, is left out and listed"},
 		{"Output Format", "The container format for the downloaded file:\n" +
@@ -383,6 +385,9 @@ func (manager *UIManager) showConfigHelp() {
 			"  * **" + qualityBest + "** – downloads the highest resolution available\n" +
 			"  * **" + strings.Join(qualityOptions[1:], "** / **") + "** – caps the resolution to save space or bandwidth\n\n" +
 			"A capped download is named after the resolution it actually got, e.g. `_720p`. When a video is not available at the cap, GoVid says so in the log and in a notice above the input card: it downloads the best version below the cap, or, when the site has no version at or below it, the best version there is, with a warning. Audio formats ignore this setting and get no label."},
+		{"Formats", "**Formats…** (next to the URL field, for one URL; and on each waiting row of the Queue panel) lists every format the site offers: resolution, frame rate, HDR, video and audio codec, bitrate, container, and size (`~` marks an estimate). **Show** narrows it to video only, audio only, or video + audio. Thumbnail sheets (storyboards) are left out.\n\n" +
+			"● marks what your **Output Format** and **Max Quality** would download. Click a video row and an audio row, or one row with both, and **Use these formats** downloads exactly those; **Automatic** goes back to letting the settings choose. The file still becomes your Output Format (remuxed or converted as usual).\n\n" +
+			"Before each download the log says what it will fetch, e.g. \"Will download 401+251: 2160p AV1 + Opus → MP4 (~232.5 MiB)\". **Preferred Video Codec** (**Tools → Preferences**: Any, H.264, VP9, or AV1) picks that codec whenever a video offers it, even over a sharper version in another codec; H.264 plays on almost every device."},
 		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\n\nAccepted formats:\n  * `HH:MM:SS` (e.g. 01:30:00)\n  * `MM:SS` (e.g. 01:30)\n  * `Seconds` (e.g. 90)\n\nEither field can be used alone:\n  * **Trim Start only** → downloads from that point to the end\n  * **Trim End only** → downloads from the start to that point"},
 		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a **GoVid_log_YYYY-MM-DD.txt** file in your save destination folder. Errors are also mirrored to a separate **GoVid_errors_YYYY-MM-DD.txt** file."},
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
@@ -431,7 +436,7 @@ func (manager *UIManager) showConfigHelp() {
 			"* **quality**: " + codeList(qualityOptions) + "\n" +
 			"* **maxSpeed**: a rate with unit, e.g. `50K`, `5M`, `1G`, or `\"\"` for unlimited\n" +
 			"* **cookiesPath**: an existing cookies file, or `\"\"` for none\n" +
-			"* **simultaneousDownloads**: " + codeList(simultaneousOptions) + "\n" +
+			"* **simultaneousDownloads**: " + codeList(simultaneousOptions) + "; **preferredCodec**: " + codeList(preferredCodecOptions) + "\n" +
 			"* **cookieSource**: " + codeList(cookieSourceOptions) + "; **cookieBrowser**: " + codeList(cookieBrowserOptions) + "; **cookieProfile**: a browser profile name, or `\"\"` for the default\n" +
 			"* **themeMode**: " + codeList(themeOptions) + "\n" +
 			"* **logLimit**: " + codeList(logLimitOptions) + "\n" +
@@ -507,6 +512,7 @@ func (manager *UIManager) showPreferences() {
 			{Text: "Embed in File", Widget: container.NewHBox(ui.prefs.embedMetadata, ui.prefs.embedThumbnail, ui.prefs.embedChapters), HintText: "Write tags (title, artist, date), cover art, and chapter markers into downloads"},
 			{Text: "Subtitles", Widget: container.NewHBox(ui.prefs.subtitles, ui.prefs.autoSubtitles), HintText: "Embed subtitles in videos, save them as .srt files beside them, or both"},
 			{Text: "Subtitle Languages", Widget: ui.prefs.subtitleLangs, HintText: "Comma-separated language codes or patterns, e.g. en.*,de (yt-dlp --sub-langs)"},
+			{Text: "Preferred Video Codec", Widget: fixedWidth(ui.prefs.preferredCodec, 120), HintText: "Pick this codec when a video offers it, even over a higher resolution in another (H.264 plays everywhere)"},
 			{Text: "Simultaneous Downloads", Widget: fixedWidth(ui.prefs.simultaneous, 80), HintText: "Videos downloaded at once. More than 1 makes YouTube's \"confirm you're not a bot\" check more likely"},
 			{Text: "Max Download Speed", Widget: ui.prefs.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.prefs.themeMode, HintText: "Restart may be required for some changes"},
@@ -1219,6 +1225,7 @@ func (manager *UIManager) buildInputCard(themeMode string) fyne.CanvasObject {
 	ui.download.trimEnd.Validator = validateTimestamp
 
 	loadFileBtn := widget.NewButtonWithIcon("Load from file…", theme.FileTextIcon(), manager.showLoadURLFile)
+	formatsBtn := widget.NewButtonWithIcon("Formats…", theme.ListIcon(), manager.onShowFormats)
 	pasteBtn := widget.NewButtonWithIcon("", theme.ContentPasteIcon(), manager.pasteURLs)
 	clearBtn := widget.NewButtonWithIcon("", theme.ContentClearIcon(), func() {
 		ui.download.entry.SetText("")
@@ -1229,6 +1236,7 @@ func (manager *UIManager) buildInputCard(themeMode string) fyne.CanvasObject {
 			container.NewHBox(
 				widget.NewLabelWithStyle("Video URL:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 				layout.NewSpacer(),
+				formatsBtn,
 				loadFileBtn,
 				ui.download.batchMode,
 			),

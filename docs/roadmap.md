@@ -91,9 +91,9 @@ This document outlines planned features, improvements, and known limitations for
 ### Format Browser
 > Make yt-dlp format selection easier to understand.
 
-- [ ] Show available formats in a readable table with resolution, codec, bitrate, and container.
-- [ ] Add a preview of the final format choice before starting a download.
-- [ ] Let users pin or favorite preferred formats for faster selection.
+- [x] Show available formats in a readable table with resolution, codec, bitrate, and container. (**Formats…** next to the URL field and on each waiting Queue row: resolution, frame rate, HDR, video and audio codec, bitrate, container, and size, filtered by video only / audio only / both, storyboards left out; `formats.go`, `formats_window.go`. Checked against `yt-dlp -F` on a real video's info in `testdata/`. Choosing a video and an audio row downloads exactly those, as `-f 247+251`.)
+- [x] Add a preview of the final format choice before starting a download. (The rows the current settings pick are marked, and each download logs "Will download 401+251: 2160p AV1 + Opus → MP4 (~232.5 MiB)", naming the IDs yt-dlp then downloads.)
+- [x] Let users pin or favorite preferred formats for faster selection. (Done differently: format IDs differ from video to video, so Preferences → **Preferred Video Codec** (Any / H.264 / VP9 / AV1) adds `-S vcodec:…` for every video.)
 
 ### Authentication Support
 > Support downloading from websites like Twitter, which requires cookies.

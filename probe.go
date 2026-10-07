@@ -61,7 +61,11 @@ type MediaInfo struct {
 	// for a single format, or one per stream in RequestedFormats when a
 	// video and an audio stream are merged.
 	formatSize
-	RequestedFormats []formatSize `json:"requested_formats"`
+	RequestedFormats []FormatInfo `json:"requested_formats"`
+
+	// Formats is every format the site offers, worst first, as "yt-dlp -F"
+	// lists them (see formatRows).
+	Formats []FormatInfo `json:"formats"`
 
 	// raw is the JSON yt-dlp printed for a single video, and probedAt is
 	// when. The download loads raw instead of extracting the video again.
@@ -183,11 +187,10 @@ func (engine *DownloadEngine) probe(ctx context.Context, args []string) (MediaIn
 // singleVideo it does not pass --no-playlist, so a playlist is reported as
 // one.
 func (engine *DownloadEngine) probeArgs(req DownloadRequest, singleVideo bool) []string {
-	formatFlag, _, _ := formatSelection(req.Format, req.Quality)
 	// A scheduled stream has no formats yet, which yt-dlp would report as
 	// an error; --ignore-no-formats-error returns its details (live_status,
 	// release_timestamp) instead, so GoVid can offer to wait for it.
-	args := []string{"-J", "--flat-playlist", "--no-warnings", "--ignore-no-formats-error", "-f", formatFlag}
+	args := append([]string{"-J", "--flat-playlist", "--no-warnings", "--ignore-no-formats-error"}, formatArgs(req)...)
 	if singleVideo {
 		args = append(args, "--no-playlist")
 	}

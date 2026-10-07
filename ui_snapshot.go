@@ -35,6 +35,7 @@ func snapshotPreferences(ui *UIWidgets, savePath string) AppPreferences {
 		CookieBrowser:     ui.prefs.cookieBrowser.Selected,
 		CookieProfile:     strings.TrimSpace(ui.prefs.cookieProfile.Text),
 		Simultaneous:      ui.prefs.simultaneous.Selected,
+		PreferredCodec:    ui.prefs.preferredCodec.Selected,
 		LogLimit:          ui.prefs.logLimit.Selected,
 		ShowDebug:         ui.prefs.showDebug.Checked,
 		CheckUpdates:      ui.prefs.checkUpdates.Checked,
@@ -181,6 +182,7 @@ func applyGeneralPrefs(ui *UIWidgets, p AppPreferences) {
 	ui.prefs.cookieBrowser.SetSelected(p.CookieBrowser)
 	ui.prefs.cookieProfile.SetText(p.CookieProfile)
 	ui.prefs.simultaneous.SetSelected(p.Simultaneous)
+	ui.prefs.preferredCodec.SetSelected(p.PreferredCodec)
 }
 
 // applyPostProcessPrefs writes the preferences shown in the Post-Processing

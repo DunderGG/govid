@@ -47,6 +47,7 @@ func (item queueItem) downloadRequest() DownloadRequest {
 		req = *item.request
 	}
 	req.URL, req.DownloadID = item.url, item.downloadID
+	req.FormatPick = item.formatPick
 	return req
 }
 

@@ -51,6 +51,7 @@ type savedQueueItem struct {
 	Extractor  string       `json:"extractor,omitempty"`
 	DownloadID string       `json:"downloadId"`
 	FormatID   string       `json:"formatId,omitempty"`
+	FormatPick string       `json:"formatPick,omitempty"`
 	Status     string       `json:"status"`
 	Request    savedRequest `json:"request"`
 }
@@ -65,7 +66,7 @@ type savedQueue struct {
 func saveItem(item queueItem, status string) savedQueueItem {
 	saved := savedQueueItem{
 		URL: item.url, Title: item.title, VideoID: item.videoID, Extractor: item.extractor,
-		DownloadID: item.downloadID, FormatID: item.formatID, Status: status,
+		DownloadID: item.downloadID, FormatID: item.formatID, FormatPick: item.formatPick, Status: status,
 	}
 	if req := item.request; req != nil {
 		saved.Request = savedRequest{
@@ -85,7 +86,7 @@ func (saved savedQueueItem) queueItem() queueItem {
 	settings := saved.Request
 	return queueItem{
 		url: saved.URL, title: saved.Title, videoID: saved.VideoID, extractor: saved.Extractor,
-		downloadID: saved.DownloadID, formatID: saved.FormatID,
+		downloadID: saved.DownloadID, formatID: saved.FormatID, formatPick: saved.FormatPick,
 		request: &DownloadRequest{
 			SavePath: settings.SavePath, Format: settings.Format, Quality: settings.Quality,
 			TrimStart: settings.TrimStart, TrimEnd: settings.TrimEnd, MaxSpeed: settings.MaxSpeed,

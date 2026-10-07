@@ -66,6 +66,12 @@ type DownloadRequest struct {
 	TrimEnd     string // HH:MM:SS or empty
 	MaxSpeed    string // e.g. "5M" or empty
 	CookiesPath string // path to cookies.txt or empty
+	// FormatPick is the formats the user chose in the Format Browser, as a
+	// -f value ("247+251"); "" uses Format and Quality (and PreferredCodec,
+	// one of preferredCodecOptions). The container still follows Format.
+	FormatPick     string
+	PreferredCodec string
+
 	// CookiesFromBrowser is a --cookies-from-browser value, e.g. "firefox" or
 	// "firefox:work"; when set, it is used instead of CookiesPath.
 	CookiesFromBrowser string
@@ -177,7 +183,7 @@ const heightLabel = "%(height&_{}p|)s"
 // FFmpegPath comes from the engine rather than the request, since it is
 // configured once at engine construction and shared across all downloads.
 func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
-	formatFlag, extension, height := formatSelection(req.Format, req.Quality)
+	_, extension, height := formatSelection(req.Format, req.Quality)
 
 	// A capped download is labelled with the height yt-dlp actually picked,
 	// which can be lower than the cap (or, through the selector's final
@@ -212,8 +218,9 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 	}
 	args := []string{
 		"--newline", "--progress", "--verbose", partFlag, "--no-playlist",
-		"-f", formatFlag, "-P", req.SavePath, "-o", outputTemplate,
+		"-P", req.SavePath, "-o", outputTemplate,
 	}
+	args = append(args, formatArgs(req)...)
 
 	// Use bundled ffmpeg if available.
 	if engine.FFmpegPath != "" {

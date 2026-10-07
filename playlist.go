@@ -44,6 +44,9 @@ type queueItem struct {
 	// formatID is the format(s) the last probe picked, e.g. "137+251", to
 	// tell when a resumed item's formats have changed.
 	formatID string
+	// formatPick is the formats chosen in the Format Browser, as a -f
+	// value ("247+251"); "" lets Format and Max Quality choose.
+	formatPick string
 	// request is the download settings the item downloads with: the
 	// session's, taken when it was queued, or those saved with it in
 	// queue.json. nil until the session queues it (see withRequest).
@@ -117,6 +120,7 @@ func (app *DownloaderApp) checkURLs(ctx context.Context, session downloadSession
 
 		req := session.request
 		req.URL = rawURL
+		req.FormatPick = app.formatPicks.get(rawURL)
 		info, err := engine.Probe(ctx, req)
 		switch {
 		case ctx.Err() != nil:

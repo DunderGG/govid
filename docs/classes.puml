@@ -288,6 +288,8 @@ package "Download Engine" #FFF8F0 {
         +MaxSpeed : string
         +CookiesPath : string
         +CookiesFromBrowser : string
+        +FormatPick : string
+        +PreferredCodec : string
         +DownloadID : string
         +EmbedMetadata : bool
         +EmbedThumbnail : bool
@@ -397,6 +399,8 @@ package "Download Engine" #FFF8F0 {
         +Height : int
         +Subtitles : map[string]RawMessage
         +AutomaticCaptions : map[string]RawMessage
+        +Formats : []FormatInfo
+        +FormatID : string
         +LiveStatus : string
         +ReleaseTimestamp : float64
         -raw : []byte
@@ -408,6 +412,21 @@ package "Download Engine" #FFF8F0 {
         +IsUpcoming() : bool
         +IsPostLive() : bool
         +EstimatedSize() : (uint64, bool)
+    }
+
+    class FormatInfo <<data>> {
+        +ID : string
+        +Ext : string
+        +Width : int
+        +Height : int
+        +FPS : float64
+        +VCodec : string
+        +ACodec : string
+        +TBR : float64
+        +DynamicRange : string
+        --
+        -kind() : formatKind
+        -sizeText(duration) : string
     }
 
     class PlaylistEntry <<data>> {
@@ -935,6 +954,7 @@ ToolInstaller --> DependencyService : bin/ paths
 ToolInstaller --> ReleaseService : GitHub releases
 ToolInstaller ..> toolSpec : installs
 DownloadEngine --> JSRuntime : --js-runtimes
+MediaInfo *--> FormatInfo : Formats, RequestedFormats
 DownloaderApp *--> ToolInstaller : toolInstaller
 DownloaderApp *--> QueueStore : queueStore
 
