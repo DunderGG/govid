@@ -11,6 +11,7 @@
   "cookieProfile": "",
   "simultaneousDownloads": "1",
   "preferredCodec": "Any",
+  "filenameTemplate": "GoVid_%(title)s{quality}",
   "logLimit": "200",
   "showDebug": false,
   "checkUpdates": true,

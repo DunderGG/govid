@@ -84,6 +84,7 @@ var presetGroups = []presetGroup{
 		"NormalizeAudio", "VividMode", "Denoise", "DenoiseMode", "HDRToSDR", "Deband", "AutoCrop",
 		"Stabilize", "Deinterlace", "NightMode", "UpscaleVideo", "UpscaleTarget", "GPUBackend",
 	}},
+	{label: "Filename template", fields: []string{"FilenameTemplate"}},
 	{label: "Cookies (source, browser, and profile)", fields: []string{"CookieSource", "CookieBrowser", "CookieProfile"}},
 }
 

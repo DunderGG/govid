@@ -163,17 +163,18 @@ func (svc *LogService) BufferLimit() int {
 // starts with. It has no widget references, so it can be built once from the
 // UI and passed anywhere (WriteSessionConfig, future structured logging, etc.).
 type SessionConfig struct {
-	URLs        []string
-	RawURLField string
-	SavePath    string
-	BatchMode   bool
-	Format      string
-	Quality     string
-	TrimStart   string
-	TrimEnd     string
-	MaxSpeed    string
-	Cookies     string // where cookies come from, as cookieLabel names it; never a path
-	JSRuntime   string // the JavaScript runtime yt-dlp uses, e.g. "deno 2.9.7 (bin/)"
+	URLs             []string
+	RawURLField      string
+	SavePath         string
+	BatchMode        bool
+	Format           string
+	Quality          string
+	TrimStart        string
+	TrimEnd          string
+	MaxSpeed         string
+	Cookies          string // where cookies come from, as cookieLabel names it; never a path
+	FilenameTemplate string
+	JSRuntime        string // the JavaScript runtime yt-dlp uses, e.g. "deno 2.9.7 (bin/)"
 
 	SaveLog            bool
 	Notify             bool
@@ -215,6 +216,9 @@ func (svc *LogService) WriteSessionConfig(cfg SessionConfig, writeFn func(string
 	writeFn(fmt.Sprintf("[SYSTEM] Trim: start=%q, end=%q", cfg.TrimStart, cfg.TrimEnd), colSystem)
 	writeFn(fmt.Sprintf("[SYSTEM] Max speed: %s", maxSpeed), colSystem)
 	writeFn(fmt.Sprintf("[SYSTEM] Cookies: %s", cmp.Or(cfg.Cookies, "none")), colSystem)
+	if cfg.FilenameTemplate != "" {
+		writeFn(fmt.Sprintf("[SYSTEM] Filename template: %q", cfg.FilenameTemplate), colSystem)
+	}
 	if cfg.JSRuntime != "" {
 		writeFn(fmt.Sprintf("[SYSTEM] JS runtime: %s", cfg.JSRuntime), colSystem)
 	}

@@ -79,26 +79,27 @@ func NewDownloadControls() *DownloadControls {
 
 // PreferenceControls holds the widgets shown in the Preferences dialog.
 type PreferenceControls struct {
-	maxSpeed       *widget.Entry      // Download speed limit (e.g. 5M)
-	themeMode      *widget.RadioGroup // Theme mode selector (Dark / Light)
-	cookies        *widget.Entry      // Path to a Mozilla/Netscape-format cookies file
-	cookieSource   *widget.Select     // Where cookies come from: None, From file, or From browser
-	cookieBrowser  *widget.Select     // The browser to read cookies from
-	cookieProfile  *widget.Entry      // The browser profile to read cookies from; empty for the default
-	simultaneous   *widget.Select     // How many downloads run at once (1–3)
-	preferredCodec *widget.Select     // The video codec downloads prefer (Any, H.264, VP9, AV1)
-	portable       *widget.Check      // Portable Mode: settings in settings.json beside GoVid (from the next start)
-	savePrefs      *widget.Check      // Option to persist preferences between sessions
-	logLimit       *widget.Select     // Max lines kept in the graphical log view
-	showDebug      *widget.Check      // Option to show yt-dlp [debug] lines in the log view
-	checkUpdates   *widget.Check      // Option to check for newer yt-dlp and GoVid releases on startup
-	embedMetadata  *widget.Check      // Option to write metadata tags into downloaded files
-	embedThumbnail *widget.Check      // Option to write the thumbnail into downloaded files as cover art
-	embedChapters  *widget.Check      // Option to write chapter markers into downloaded files
-	subtitles      *widget.Select     // Subtitle mode: Off, Embed, Save as .srt, or Both
-	subtitleLangs  *widget.Entry      // Subtitle languages, in yt-dlp --sub-langs syntax
-	autoSubtitles  *widget.Check      // Option to also take auto-generated captions
-	keepHistory    *widget.Check      // Option to record downloads in the download history
+	maxSpeed         *widget.Entry      // Download speed limit (e.g. 5M)
+	themeMode        *widget.RadioGroup // Theme mode selector (Dark / Light)
+	cookies          *widget.Entry      // Path to a Mozilla/Netscape-format cookies file
+	cookieSource     *widget.Select     // Where cookies come from: None, From file, or From browser
+	cookieBrowser    *widget.Select     // The browser to read cookies from
+	cookieProfile    *widget.Entry      // The browser profile to read cookies from; empty for the default
+	simultaneous     *widget.Select     // How many downloads run at once (1–3)
+	preferredCodec   *widget.Select     // The video codec downloads prefer (Any, H.264, VP9, AV1)
+	portable         *widget.Check      // Portable Mode: settings in settings.json beside GoVid (from the next start)
+	filenameTemplate *widget.Entry      // The Filename Template (yt-dlp output template syntax plus {quality})
+	savePrefs        *widget.Check      // Option to persist preferences between sessions
+	logLimit         *widget.Select     // Max lines kept in the graphical log view
+	showDebug        *widget.Check      // Option to show yt-dlp [debug] lines in the log view
+	checkUpdates     *widget.Check      // Option to check for newer yt-dlp and GoVid releases on startup
+	embedMetadata    *widget.Check      // Option to write metadata tags into downloaded files
+	embedThumbnail   *widget.Check      // Option to write the thumbnail into downloaded files as cover art
+	embedChapters    *widget.Check      // Option to write chapter markers into downloaded files
+	subtitles        *widget.Select     // Subtitle mode: Off, Embed, Save as .srt, or Both
+	subtitleLangs    *widget.Entry      // Subtitle languages, in yt-dlp --sub-langs syntax
+	autoSubtitles    *widget.Check      // Option to also take auto-generated captions
+	keepHistory      *widget.Check      // Option to record downloads in the download history
 }
 
 // NewPreferenceControls constructs the Preferences dialog's widgets.
@@ -119,26 +120,27 @@ func NewPreferenceControls() *PreferenceControls {
 	subtitleLangs.SetPlaceHolder(defaultSubtitleLangs + " (e.g. en.*,de,ja)")
 
 	return &PreferenceControls{
-		maxSpeed:       maxSpeed,
-		themeMode:      themeMode,
-		cookies:        cookies,
-		cookieSource:   widget.NewSelect(cookieSourceOptions, nil),
-		cookieBrowser:  widget.NewSelect(cookieBrowserOptions, nil),
-		cookieProfile:  cookieProfile,
-		simultaneous:   widget.NewSelect(simultaneousOptions, nil),
-		preferredCodec: widget.NewSelect(preferredCodecOptions, nil),
-		portable:       widget.NewCheck("Keep settings beside GoVid (settings.json)", nil),
-		savePrefs:      widget.NewCheck("Save preferences between sessions", nil),
-		logLimit:       widget.NewSelect(logLimitOptions, nil),
-		showDebug:      widget.NewCheck("Show yt-dlp debug output", nil),
-		checkUpdates:   widget.NewCheck("Check for updates on startup", nil),
-		embedMetadata:  widget.NewCheck("Metadata", nil),
-		embedThumbnail: widget.NewCheck("Thumbnail", nil),
-		embedChapters:  widget.NewCheck("Chapters", nil),
-		subtitles:      widget.NewSelect(subtitleModeOptions, nil),
-		subtitleLangs:  subtitleLangs,
-		autoSubtitles:  widget.NewCheck("Include auto-generated", nil),
-		keepHistory:    widget.NewCheck("Keep download history", nil),
+		maxSpeed:         maxSpeed,
+		themeMode:        themeMode,
+		cookies:          cookies,
+		cookieSource:     widget.NewSelect(cookieSourceOptions, nil),
+		cookieBrowser:    widget.NewSelect(cookieBrowserOptions, nil),
+		cookieProfile:    cookieProfile,
+		simultaneous:     widget.NewSelect(simultaneousOptions, nil),
+		preferredCodec:   widget.NewSelect(preferredCodecOptions, nil),
+		portable:         widget.NewCheck("Keep settings beside GoVid (settings.json)", nil),
+		filenameTemplate: newTemplateEntry(),
+		savePrefs:        widget.NewCheck("Save preferences between sessions", nil),
+		logLimit:         widget.NewSelect(logLimitOptions, nil),
+		showDebug:        widget.NewCheck("Show yt-dlp debug output", nil),
+		checkUpdates:     widget.NewCheck("Check for updates on startup", nil),
+		embedMetadata:    widget.NewCheck("Metadata", nil),
+		embedThumbnail:   widget.NewCheck("Thumbnail", nil),
+		embedChapters:    widget.NewCheck("Chapters", nil),
+		subtitles:        widget.NewSelect(subtitleModeOptions, nil),
+		subtitleLangs:    subtitleLangs,
+		autoSubtitles:    widget.NewCheck("Include auto-generated", nil),
+		keepHistory:      widget.NewCheck("Keep download history", nil),
 	}
 }
 
@@ -381,4 +383,13 @@ func newDisabledButton(label string) *widget.Button {
 	button := widget.NewButton(label, nil)
 	button.Disable()
 	return button
+}
+
+// newTemplateEntry returns the Filename Template entry, which refuses an
+// invalid template (the Preferences form cannot be saved meanwhile).
+func newTemplateEntry() *widget.Entry {
+	entry := widget.NewEntry()
+	entry.SetPlaceHolder(defaultFilenameTemplate)
+	entry.Validator = validateFilenameTemplate
+	return entry
 }

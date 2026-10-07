@@ -29,18 +29,19 @@ const (
 // savedRequest is the part of a DownloadRequest an item is saved with.
 // Cookies are not saved: the cookie settings in use when it resumes apply.
 type savedRequest struct {
-	SavePath       string `json:"savePath"`
-	Format         string `json:"format"`
-	Quality        string `json:"quality"`
-	TrimStart      string `json:"trimStart,omitempty"`
-	TrimEnd        string `json:"trimEnd,omitempty"`
-	MaxSpeed       string `json:"maxSpeed,omitempty"`
-	EmbedMetadata  bool   `json:"embedMetadata"`
-	EmbedThumbnail bool   `json:"embedThumbnail"`
-	EmbedChapters  bool   `json:"embedChapters"`
-	Subtitles      string `json:"subtitles,omitempty"`
-	SubtitleLangs  string `json:"subtitleLangs,omitempty"`
-	AutoSubtitles  bool   `json:"autoSubtitles"`
+	SavePath         string `json:"savePath"`
+	Format           string `json:"format"`
+	Quality          string `json:"quality"`
+	TrimStart        string `json:"trimStart,omitempty"`
+	TrimEnd          string `json:"trimEnd,omitempty"`
+	MaxSpeed         string `json:"maxSpeed,omitempty"`
+	FilenameTemplate string `json:"filenameTemplate,omitempty"`
+	EmbedMetadata    bool   `json:"embedMetadata"`
+	EmbedThumbnail   bool   `json:"embedThumbnail"`
+	EmbedChapters    bool   `json:"embedChapters"`
+	Subtitles        string `json:"subtitles,omitempty"`
+	SubtitleLangs    string `json:"subtitleLangs,omitempty"`
+	AutoSubtitles    bool   `json:"autoSubtitles"`
 }
 
 // savedQueueItem is one queue item in queue.json.
@@ -71,7 +72,7 @@ func saveItem(item queueItem, status string) savedQueueItem {
 	if req := item.request; req != nil {
 		saved.Request = savedRequest{
 			SavePath: req.SavePath, Format: req.Format, Quality: req.Quality,
-			TrimStart: req.TrimStart, TrimEnd: req.TrimEnd, MaxSpeed: req.MaxSpeed,
+			TrimStart: req.TrimStart, TrimEnd: req.TrimEnd, MaxSpeed: req.MaxSpeed, FilenameTemplate: req.FilenameTemplate,
 			EmbedMetadata: req.EmbedMetadata, EmbedThumbnail: req.EmbedThumbnail, EmbedChapters: req.EmbedChapters,
 			Subtitles: req.Subtitles, SubtitleLangs: req.SubtitleLangs, AutoSubtitles: req.AutoSubtitles,
 		}
@@ -89,7 +90,7 @@ func (saved savedQueueItem) queueItem() queueItem {
 		downloadID: saved.DownloadID, formatID: saved.FormatID, formatPick: saved.FormatPick,
 		request: &DownloadRequest{
 			SavePath: settings.SavePath, Format: settings.Format, Quality: settings.Quality,
-			TrimStart: settings.TrimStart, TrimEnd: settings.TrimEnd, MaxSpeed: settings.MaxSpeed,
+			TrimStart: settings.TrimStart, TrimEnd: settings.TrimEnd, MaxSpeed: settings.MaxSpeed, FilenameTemplate: settings.FilenameTemplate,
 			EmbedMetadata: settings.EmbedMetadata, EmbedThumbnail: settings.EmbedThumbnail, EmbedChapters: settings.EmbedChapters,
 			Subtitles: settings.Subtitles, SubtitleLangs: settings.SubtitleLangs, AutoSubtitles: settings.AutoSubtitles,
 		},

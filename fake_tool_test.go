@@ -420,7 +420,7 @@ func fakeOutputPath(args []string) (path, ext string) {
 	if ext == "" {
 		ext = argAfter(args, "--audio-format")
 	}
-	name := strings.NewReplacer("%(title)s", "Fake Video", heightLabel, fmt.Sprintf("_%dp", fakeVideoHeight), "%(ext)s", ext).Replace(template)
+	name := strings.NewReplacer("%(title)s", "Fake Video", "%(uploader)s", "Fake Uploader", "%(id)s", "fakevid", heightLabel, fmt.Sprintf("_%dp", fakeVideoHeight), "%(ext)s", ext).Replace(template)
 	return filepath.Join(dir, name), ext
 }
 

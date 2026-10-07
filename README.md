@@ -20,6 +20,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Metadata & Cover Art**: Writes title, artist, and date tags, the thumbnail as cover art, and (optionally) chapters into downloaded files, and keeps them through post-processing.
 - **Download History**: **File → History** lists past downloads with their real titles; search it, re-add a URL, show the file in its folder, or copy the URL. GoVid warns before downloading the same video again, even from a different link to it. History can be turned off in Preferences.
 - **Subtitles**: Embed subtitles in the video, save them as `.srt` files beside it, or both, in the languages you choose (optionally including auto-generated captions).
+- **Filename Template**: Name downloads your way with yt-dlp's template syntax, e.g. `%(uploader)s - %(title)s`, with a live preview in Preferences. The default keeps GoVid's usual names.
 - **Quality Control**: Select your preferred maximum resolution for downloads. GoVid tells you when a video is not available at that resolution, and names the file after the resolution it actually downloaded.
 - **Format Browser**: **Formats…** shows every format a video offers (resolution, frame rate, HDR, codecs, bitrate, container, size), marks what your settings would download, and lets you pick a video and an audio stream yourself. The log says what each download will fetch, and a **Preferred Video Codec** setting (H.264, VP9, or AV1) works for every video.
 - **Video Trimming**: Download only a specific segment — specify a start time, an end time, or both (`HH:MM:SS` / `MM:SS` / seconds).
@@ -149,6 +150,7 @@ A key left out of the file leaves that setting unchanged, so a file can hold jus
 | `cookieProfile` | The browser profile to read cookies from; `""` for the default profile (`""`) |
 | `simultaneousDownloads` | `1`, `2`, `3`: videos downloaded at the same time (`1`) |
 | `preferredCodec` | `Any`, `H.264`, `VP9`, `AV1`: the video codec downloads prefer, even over a higher resolution in another codec (`Any`) |
+| `filenameTemplate` | yt-dlp's output template without the extension, plus `{quality}` for the height of capped downloads; no `/` or `` (`GoVid_%(title)s{quality}`) |
 | `themeMode` | `System`, `Dark`, `Light` (`System` for new installs) |
 | `logLimit` | `100`, `200`, `500`, `1000`, `5000`, `Unlimited` (`200`) |
 | `savePrefs` | `true` or `false`: remember settings between sessions (`true`) |

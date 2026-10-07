@@ -650,6 +650,7 @@ func (app *DownloaderApp) newDownloadRequest(rawURL, savePath, trimStart, trimEn
 		CookiesPath:        cookiesPath,
 		CookiesFromBrowser: cookiesBrowser,
 		PreferredCodec:     app.ui.prefs.preferredCodec.Selected,
+		FilenameTemplate:   app.ui.prefs.filenameTemplate.Text,
 
 		EmbedMetadata:  app.ui.prefs.embedMetadata.Checked,
 		EmbedThumbnail: app.ui.prefs.embedThumbnail.Checked,

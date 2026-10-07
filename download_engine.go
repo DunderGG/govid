@@ -88,6 +88,11 @@ type DownloadRequest struct {
 	SubtitleLangs string
 	AutoSubtitles bool
 
+	// FilenameTemplate names the downloaded files, in yt-dlp's output
+	// template syntax plus {quality} (see outputTemplate); "" for
+	// defaultFilenameTemplate.
+	FilenameTemplate string
+
 	// DownloadID is the token in the names of the files yt-dlp writes (see
 	// newDownloadID); "" makes BuildArgs create one. A queued item keeps
 	// its own, so its partial files can be continued.
@@ -202,11 +207,8 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 		downloadID = newDownloadID()
 	}
 
-	outputTemplate := "GoVid_%(title)s" + qualitySuffix + "_" + downloadID + ".%(ext)s"
 	hasTrim := req.TrimStart != "" || req.TrimEnd != ""
-	if hasTrim {
-		outputTemplate = "GoVid_%(title)s" + qualitySuffix + "_TRIM_" + downloadID + ".%(ext)s"
-	}
+	template := outputTemplate(req.FilenameTemplate, qualitySuffix, downloadID, hasTrim)
 
 	// yt-dlp writes .part files and continues them, so an interrupted
 	// download resumes where it stopped. A live recording cannot be
@@ -218,7 +220,7 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 	}
 	args := []string{
 		"--newline", "--progress", "--verbose", partFlag, "--no-playlist",
-		"-P", req.SavePath, "-o", outputTemplate,
+		"-P", req.SavePath, "-o", template,
 	}
 	args = append(args, formatArgs(req)...)
 

@@ -450,9 +450,9 @@ This document outlines planned features, improvements, and known limitations for
 ### Custom Output Filename Template
 > Let power users control how downloaded files are named.
 
-- [ ] Add an advanced "Filename Template" input in the options.
-- [ ] Pre-populate with the current default (`GoVid_%(title)s.%(ext)s`).
-- [ ] Show a live preview of what the filename will look like.
+- [x] Add an advanced "Filename Template" input in the options. (Preferences → **Filename Template**, in yt-dlp's output template syntax plus `{quality}` for the height label of capped downloads; `filenameTemplate` in `govid.json` and a presets group. GoVid still adds `_TRIM` and its download token, which `FinalizeFiles` strips. A template with `/` or ``, or an empty one, is refused, and one without `%(title)s` or `%(id)s` gets a warning.)
+- [x] Pre-populate with the current default (`GoVid_%(title)s.%(ext)s`). (The default is `GoVid_%(title)s{quality}`, which gives the same names as before; **Reset** puts it back.)
+- [x] Show a live preview of what the filename will look like. (Below the field: the name a sample video gets with the current Format and Max Quality, with `title`, `id`, `uploader`, `upload_date`, `height`, and `ext` filled in the way yt-dlp does, including defaults, replacements, date formats, and truncation. Other fields are shown as written, with a note.)
 
 ### Config File Support
 > Allow users to configure defaults via a config file.

@@ -293,6 +293,7 @@ package "Download Engine" #FFF8F0 {
         +CookiesPath : string
         +CookiesFromBrowser : string
         +FormatPick : string
+        +FilenameTemplate : string
         +PreferredCodec : string
         +DownloadID : string
         +EmbedMetadata : bool
@@ -705,6 +706,7 @@ package "Preference Service" #FFF0F0 {
         +CookieSource : string
         +CookieBrowser : string
         +CookieProfile : string
+        +FilenameTemplate : string
         +MaxSpeed : string
         +BatchMode : bool
         +SaveLog : bool

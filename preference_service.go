@@ -35,6 +35,7 @@ const (
 	prefCookieProfile     = "cookieProfile"
 	prefSimultaneous      = "simultaneousDownloads"
 	prefPreferredCodec    = "preferredCodec"
+	prefFilenameTemplate  = "filenameTemplate"
 	prefLogLimit          = "logLimit"
 	prefShowDebug         = "showDebug"
 	prefCheckUpdates      = "checkUpdates"
@@ -117,6 +118,7 @@ type AppPreferences struct {
 	CookieProfile     string // the browser profile to read cookies from; "" for the default
 	Simultaneous      string // how many downloads run at once, one of simultaneousOptions
 	PreferredCodec    string // one of preferredCodecOptions: the video codec downloads prefer
+	FilenameTemplate  string // names downloads: yt-dlp's output template syntax plus {quality}
 	LogLimit          string
 	ShowDebug         bool   // show yt-dlp [debug] lines in the log view (they always go to the log file)
 	CheckUpdates      bool   // check for newer yt-dlp and GoVid releases on startup
@@ -197,6 +199,7 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		CookieProfile:     prefSvc.store.String(prefCookieProfile),
 		Simultaneous:      prefSvc.store.StringWithFallback(prefSimultaneous, defaultSimultaneous),
 		PreferredCodec:    prefSvc.store.StringWithFallback(prefPreferredCodec, defaultPreferredCodec),
+		FilenameTemplate:  prefSvc.store.StringWithFallback(prefFilenameTemplate, defaultFilenameTemplate),
 		LogLimit:          prefSvc.store.StringWithFallback(prefLogLimit, defaultLogLimit),
 		ShowDebug:         prefSvc.store.Bool(prefShowDebug),
 		CheckUpdates:      prefSvc.store.BoolWithFallback(prefCheckUpdates, defaultCheckUpdates),
@@ -234,8 +237,8 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 	return resolveDefaults(p)
 }
 
-// resolveDefaults fills the save path, format, quality, and cookie source
-// when they are empty. Unlike the fixed defaults applied in Load, an
+// resolveDefaults fills the save path, format, quality, cookie source, and
+// filename template when they are empty (or, for the template, invalid). Unlike the fixed defaults applied in Load, an
 // explicitly stored empty value also falls back, since none of them is
 // usable empty.
 // The save path and format defaults depend on the install location and
@@ -249,6 +252,9 @@ func resolveDefaults(p AppPreferences) AppPreferences {
 	}
 	if p.Quality == "" {
 		p.Quality = defaultQuality
+	}
+	if validateFilenameTemplate(p.FilenameTemplate) != nil {
+		p.FilenameTemplate = defaultFilenameTemplate
 	}
 	// Before the Cookies choice existed, a cookies file was used whenever
 	// one was set, so settings from then keep using it.
@@ -309,6 +315,7 @@ func (prefSvc *PreferenceService) write(p AppPreferences) {
 	prefSvc.store.SetString(prefCookieProfile, p.CookieProfile)
 	prefSvc.store.SetString(prefSimultaneous, p.Simultaneous)
 	prefSvc.store.SetString(prefPreferredCodec, p.PreferredCodec)
+	prefSvc.store.SetString(prefFilenameTemplate, p.FilenameTemplate)
 	prefSvc.store.SetString(prefLogLimit, p.LogLimit)
 	prefSvc.store.SetBool(prefShowDebug, p.ShowDebug)
 	prefSvc.store.SetBool(prefCheckUpdates, p.CheckUpdates)
@@ -349,7 +356,7 @@ func (prefSvc *PreferenceService) write(p AppPreferences) {
 func (prefSvc *PreferenceService) Reset() {
 	for _, key := range []string{
 		prefSavedPath, prefFormat, prefQuality, prefMaxSpeed, prefThemeMode,
-		prefSavePrefs, prefCookiesPath, prefCookieSource, prefCookieBrowser, prefCookieProfile, prefSimultaneous, prefPreferredCodec, prefLogLimit, prefShowDebug, prefCheckUpdates,
+		prefSavePrefs, prefCookiesPath, prefCookieSource, prefCookieBrowser, prefCookieProfile, prefSimultaneous, prefPreferredCodec, prefFilenameTemplate, prefLogLimit, prefShowDebug, prefCheckUpdates,
 		prefEmbedMetadata, prefEmbedThumbnail, prefEmbedChapters,
 		prefSubtitles, prefSubtitleLangs, prefAutoSubtitles,
 		prefKeepHistory,

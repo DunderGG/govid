@@ -412,9 +412,17 @@ Tests: `TestShortcutsOpenTheirWindows` (Ctrl+H, Ctrl+, and F1 open their windows
 
 ---
 
-## 10. Custom filename template
+## 10. ✅ Custom filename template
 
 **Roadmap:** Low Priority → Custom Output Filename Template. It is listed here because the fixed name, starting with `GoVid_`, is something many users rename by hand after every download. It is also the step between downloading a file and filing it in a media library.
+
+**Status: Done** (new file [filename_template.go](../filename_template.go)).
+- **The setting.** Preferences → **Filename Template**, with **Reset**, in yt-dlp's output template syntax. The default, `GoVid_%(title)s{quality}`, gives exactly the names GoVid used before: `{quality}` becomes `heightLabel` for a capped download and nothing otherwise. `outputTemplate` then adds `_TRIM` for a trimmed download and `_<download ID>`, and `.%(ext)s`; `FinalizeFiles` strips the token as before, so finalizing, cleanup, subtitle splitting, and resuming are unchanged. `filenameTemplate` is in `AppConfig` (validated by `configRules`), `govid.json`, a new presets group, the saved queue, and the session configuration log.
+- **Validation.** `/` and `\` are refused (subfolders would need `FinalizeFiles` to look in them), and so is an empty template, both in the Preferences entry (its validator keeps the form from being saved) and in imported settings; a stored invalid one falls back to the default. A template with neither `%(title)s` nor `%(id)s` gets a warning.
+- **Live preview.** Below the field, the name a sample video gets with the current Format and Max Quality. `title`, `id`, `uploader`, `upload_date`, `height`, and `ext` are filled in as yt-dlp fills them, including `|default`, `&replacement|`, `>date format`, precision (`%(title).10s`), and padding (`%(height)05d`). Each of these was checked against the bundled yt-dlp's `--print filename` on the #6 fixture. Other fields are shown as written, with a note that yt-dlp fills them in or writes NA.
+- **Checked with the real yt-dlp.** `%(uploader)s - %(title)s` with GoVid's token gave `Rick Astley - Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)_GOVID1.mp4` for the fixture's real title; the token is what `FinalizeFiles` removes. The preview's sample title gives `Rick Astley - Never Gonna Give You Up.mp4`.
+
+Tests: `TestPreviewFilename` (including `%(uploader)s - %(title)s` → `Rick Astley - Never Gonna Give You Up.mp4`), `TestOutputTemplate`, `TestValidateFilenameTemplate`, `TestTemplatePreviewText`, `TestConfigRefusesAnInvalidTemplate`, and, with `%(uploader)s - %(title)s` as the template (the fake yt-dlp now fills `%(uploader)s`), `TestCustomTemplateNamesTheDownload` (no token left, and a second download of the same name gets " 1") and `TestCustomTemplateWithTrimAndSubtitles` (the `_TRIM` file and its `.srt` sidecar, and only the video in history).
 
 **What we found**
 - The template is fixed: `"GoVid_%(title)s" + qualitySuffix + "_" + downloadID + ".%(ext)s"`, with a `_TRIM_` variant ([download_engine.go:159](../download_engine.go#L159)).

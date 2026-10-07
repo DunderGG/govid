@@ -402,6 +402,11 @@ func (manager *UIManager) showConfigHelp() {
 		{"Formats", "**Formats…** (next to the URL field, for one URL; and on each waiting row of the Queue panel) lists every format the site offers: resolution, frame rate, HDR, video and audio codec, bitrate, container, and size (`~` marks an estimate). **Show** narrows it to video only, audio only, or video + audio. Thumbnail sheets (storyboards) are left out.\n\n" +
 			"● marks what your **Output Format** and **Max Quality** would download. Click a video row and an audio row, or one row with both, and **Use these formats** downloads exactly those; **Automatic** goes back to letting the settings choose. The file still becomes your Output Format (remuxed or converted as usual).\n\n" +
 			"Before each download the log says what it will fetch, e.g. \"Will download 401+251: 2160p AV1 + Opus → MP4 (~232.5 MiB)\". **Preferred Video Codec** (**Tools → Preferences**: Any, H.264, VP9, or AV1) picks that codec whenever a video offers it, even over a sharper version in another codec; H.264 plays on almost every device."},
+		{"Filename Template", "Found in **Tools → Preferences**. How downloaded files are named, in yt-dlp's output template syntax, without the extension. The default, `GoVid_%(title)s{quality}`, gives GoVid's usual names. For example:\n" +
+			"  * `%(uploader)s - %(title)s` → `Rick Astley - Never Gonna Give You Up.mp4`\n" +
+			"  * `%(upload_date>%Y-%m-%d)s %(title)s [%(id)s]` → `2009-10-25 Never Gonna Give You Up [dQw4w9WgXcQ].mp4`\n\n" +
+			"`{quality}` adds the height of a capped download, e.g. `_720p` (nothing for Best Quality or audio). A trimmed download still gets `_TRIM`. Below the field, a preview shows the name a sample video would get; fields the preview does not know are shown as written and filled in by yt-dlp (or written as `NA` when a site does not have them). **Reset** brings back the default.\n\n" +
+			"The template cannot be empty or hold `/` or `\\`: files are saved directly in the save folder. Without `%(title)s` or `%(id)s`, every download gets the same name plus a number, so GoVid warns."},
 		{"Trim Start / Trim End", "Download only a segment of the video. Leave both blank to download the full video.\n\nAccepted formats:\n  * `HH:MM:SS` (e.g. 01:30:00)\n  * `MM:SS` (e.g. 01:30)\n  * `Seconds` (e.g. 90)\n\nEither field can be used alone:\n  * **Trim Start only** → downloads from that point to the end\n  * **Trim End only** → downloads from the start to that point"},
 		{"Save output to log file", "When checked, everything printed in the Terminal Output panel is also saved to a **GoVid_log_YYYY-MM-DD.txt** file in your save destination folder. Errors are also mirrored to a separate **GoVid_errors_YYYY-MM-DD.txt** file."},
 		{"Notify on Completion", "When checked, a system notification is sent when a download finishes (success or failure), but not when cancelled."},
@@ -467,6 +472,7 @@ func (manager *UIManager) showConfigHelp() {
 			"* **quality**: " + codeList(qualityOptions) + "\n" +
 			"* **maxSpeed**: a rate with unit, e.g. `50K`, `5M`, `1G`, or `\"\"` for unlimited\n" +
 			"* **cookiesPath**: an existing cookies file, or `\"\"` for none\n" +
+			"* **filenameTemplate**: yt-dlp's output template without the extension, plus `{quality}`; no `/` or `\\`\n" +
 			"* **simultaneousDownloads**: " + codeList(simultaneousOptions) + "; **preferredCodec**: " + codeList(preferredCodecOptions) + "\n" +
 			"* **cookieSource**: " + codeList(cookieSourceOptions) + "; **cookieBrowser**: " + codeList(cookieBrowserOptions) + "; **cookieProfile**: a browser profile name, or `\"\"` for the default\n" +
 			"* **themeMode**: " + codeList(themeOptions) + "\n" +
@@ -559,6 +565,7 @@ func (manager *UIManager) showPreferences() {
 			{Text: "Subtitles", Widget: container.NewHBox(ui.prefs.subtitles, ui.prefs.autoSubtitles), HintText: "Embed subtitles in videos, save them as .srt files beside them, or both"},
 			{Text: "Subtitle Languages", Widget: ui.prefs.subtitleLangs, HintText: "Comma-separated language codes or patterns, e.g. en.*,de (yt-dlp --sub-langs)"},
 			{Text: "Portable Mode", Widget: ui.prefs.portable, HintText: "Settings and presets travel with the GoVid folder (e.g. on a USB stick); takes effect after a restart"},
+			{Text: "Filename Template", Widget: manager.buildFilenameTemplateRow(), HintText: "yt-dlp's output template, e.g. %(uploader)s - %(title)s; {quality} adds the height of capped downloads"},
 			{Text: "Preferred Video Codec", Widget: fixedWidth(ui.prefs.preferredCodec, 120), HintText: "Pick this codec when a video offers it, even over a higher resolution in another (H.264 plays everywhere)"},
 			{Text: "Simultaneous Downloads", Widget: fixedWidth(ui.prefs.simultaneous, 80), HintText: "Videos downloaded at once. More than 1 makes YouTube's \"confirm you're not a bot\" check more likely"},
 			{Text: "Max Download Speed", Widget: ui.prefs.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
