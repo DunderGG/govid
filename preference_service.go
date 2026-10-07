@@ -291,6 +291,13 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 	if !p.SavePrefs {
 		return
 	}
+	prefSvc.write(p)
+}
+
+// write stores every preference in p, whatever "Save preferences" says;
+// Portable Mode uses it to copy all settings to their new place.
+func (prefSvc *PreferenceService) write(p AppPreferences) {
+	prefSvc.store.SetBool(prefSavePrefs, p.SavePrefs)
 	prefSvc.store.SetString(prefSavedPath, p.SavedPath)
 	prefSvc.store.SetString(prefFormat, p.Format)
 	prefSvc.store.SetString(prefQuality, p.Quality)

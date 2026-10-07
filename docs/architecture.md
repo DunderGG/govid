@@ -40,6 +40,7 @@ govid/
 ├── probe.go                DownloadEngine.Probe / ProbeVideo — yt-dlp -J --flat-playlist; MediaInfo / PlaylistEntry
 ├── pp_engine.go            PPEngine — concurrent FFmpeg post-processing worker pool
 ├── preference_service.go   PreferenceService — preference keys, defaults, Load/Save/Reset
+├── portable.go             Portable Mode: fileStore (fyne.Preferences in settings.json), chooseSettingsStore (GoVid.portable marker), setPortable (copy and switch), flushSettings
 ├── config_file.go          AppConfig / configRules — govid.json: LoadFromFile, MergeConfig, ExportConfig, WriteConfigFile
 ├── presets.go              Preset — starter presets, groups, list edits; LoadPresets / SavePresets / ReadPresetFile / WritePresetFile
 ├── preset_ui.go            UIManager preset dropdown, "(modified)" marker, Save / Manage / Import / Export dialogs
@@ -242,6 +243,8 @@ Every Fyne preference storage key is a named constant here (`prefSavedPath`, `pr
 - **`ExportConfig(AppPreferences) AppConfig`** and **`WriteConfigFile(path, AppConfig) error`** — turn preferences into a complete `AppConfig`, every key set, and write it as indented JSON (atomically, through `writeFileAtomic`). Tools → Export settings… uses them; Tools → Import settings… and the Preferences window's **Load from Config** go through `UIManager.importConfig` → `MergeConfig` → `applyAndSavePreferences` (widgets, runtime preferences, store, theme).
 - **Presets** (`presets.go`, `preset_ui.go`). A `Preset` is a name plus a partial `AppConfig`. They are stored as JSON under the `presets` key (`LoadPresets` / `SavePresets`), saved even when "Save preferences" is off, and kept by Restore Defaults. Until some are stored, `LoadPresets` returns `starterPresets()`. `UIManager.applyPreset` runs `ValidateConfig` and `applyConfig` (the halves of `MergeConfig`) onto the current widget values, so settings the preset does not hold are untouched, then applies and saves the result and rebuilds the window only if the theme changed. `refreshPresetState`, called from `savePreferences` and the Format/Quality handlers, shows "(modified)" when `configMatches` finds that a setting the preset holds has changed. "Save current as preset…" keeps the ticked `presetGroups` of `configFromPreferences(current)` (`configFields`). `ReadPresetFile` validates each preset like `govid.json` and drops invalid values, so presets exported on one machine import on another.
 
+
+**Portable Mode** (`portable.go`). `newDownloaderApp` calls `chooseSettingsStore` before reading any setting: with a `GoVid.portable` marker beside the executable (`executableDir`) and a folder it can write to, the store is a `fileStore`, a `fyne.Preferences` kept in `settings.json` there, saved atomically `fileStoreSaveDelay` (300 ms) after a burst of changes and flushed on quit (`flushSettings`); otherwise it is the Fyne store, which is then the only one touched. A marker in a folder GoVid cannot write to falls back to the Fyne store with a startup warning (`settingsNote`). `PreferenceService` and `ReleaseService` take whichever store it chose. Preferences → **Portable Mode** acts at once (`onPortableChanged` → `setPortable`): `copySettings` writes every preference (`PreferenceService.write`, which ignores "Save preferences") and the presets into the other store, the marker is created or deleted, and GoVid offers to restart (`restart`: `startDetached` and `Shutdown`).
 
 `AppPreferences` is a plain value struct with no widget references. `applyPreferencesToWidgets(AppPreferences)` in `helpers.go` is the single translator from struct → widget state. `UIManager.savePreferences(path)` reads widget state and delegates to `prefSvc.Save`; `DownloaderApp.savePreferences` in `preference_service.go` is a one-line delegate to it. `UIManager.resetPreferences()` (data + log-buffer reset) and `UIManager.rebuildUI()` (dark theme + `createUI`) together handle a full application reset; separating them lets callers invoke only what they need.
 
@@ -580,12 +583,12 @@ rather than cancelled and the queue is saved (see **Pause and resume**).
 
 | Store | Location | Format | Owner |
 |---|---|---|---|
-| User preferences | Fyne app data (`com.govid.downloader`) | Fyne KV store | `PreferenceService` |
+| User preferences | Fyne app data (`com.govid.downloader`), or `<exe dir>/settings.json` in Portable Mode | Fyne KV store | `PreferenceService` |
 | Session log | `<save dir>/GoVid_log_YYYY-MM-DD.txt` | Plain text | `LogService` |
 | Error log | `<save dir>/GoVid_errors_YYYY-MM-DD.txt` | Plain text | `LogService` |
 | Download history | `<exe dir>/download_history.json` | JSON array | `HistoryService` |
 | Saved queue | `<exe dir>/queue.json` (only after quitting with downloads waiting or paused) | JSON object | `QueueStore` |
-| Latest-release cache | Fyne app data (`latestRelease:<owner>/<repo>` keys) | JSON in the Fyne KV store | `ReleaseService` |
+| Latest-release cache | The preferences store (`latestRelease:<owner>/<repo>` keys) | JSON in the Fyne KV store | `ReleaseService` |
 | Override config | `<cwd>/govid.json`, or any file picked in Tools → Import settings… | JSON object | `PreferenceService` (`LoadFromFile` / `MergeConfig`; `ExportConfig` / `WriteConfigFile` for Tools → Export settings…); `AppConfig` is defined in `config_file.go` |
 
 ---

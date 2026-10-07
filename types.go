@@ -86,6 +86,7 @@ type PreferenceControls struct {
 	cookieProfile  *widget.Entry      // The browser profile to read cookies from; empty for the default
 	simultaneous   *widget.Select     // How many downloads run at once (1–3)
 	preferredCodec *widget.Select     // The video codec downloads prefer (Any, H.264, VP9, AV1)
+	portable       *widget.Check      // Portable Mode: settings in settings.json beside GoVid (from the next start)
 	savePrefs      *widget.Check      // Option to persist preferences between sessions
 	logLimit       *widget.Select     // Max lines kept in the graphical log view
 	showDebug      *widget.Check      // Option to show yt-dlp [debug] lines in the log view
@@ -125,6 +126,7 @@ func NewPreferenceControls() *PreferenceControls {
 		cookieProfile:  cookieProfile,
 		simultaneous:   widget.NewSelect(simultaneousOptions, nil),
 		preferredCodec: widget.NewSelect(preferredCodecOptions, nil),
+		portable:       widget.NewCheck("Keep settings beside GoVid (settings.json)", nil),
 		savePrefs:      widget.NewCheck("Save preferences between sessions", nil),
 		logLimit:       widget.NewSelect(logLimitOptions, nil),
 		showDebug:      widget.NewCheck("Show yt-dlp debug output", nil),
@@ -347,6 +349,13 @@ type DownloaderApp struct {
 	// The heartbeat (see startHeartbeat): heartbeatStop stops it, nil while
 	// it is not running. runOnUI replaces fyne.Do for its round trip in
 	// tests.
+	// settingsStore is where the settings live: settings.json beside GoVid in
+	// Portable Mode (portable), else the Fyne store in the user profile.
+	// settingsNote explains a fallback, logged at startup.
+	settingsStore fyne.Preferences
+	portable      bool
+	settingsNote  string
+
 	heartbeatMu   sync.Mutex
 	heartbeatStop func()
 	runOnUI       func(fn func())

@@ -353,6 +353,14 @@ package "Download Engine" #FFF8F0 {
         +Install(zipPath) : error
     }
 
+    class fileStore <<service>> {
+        -path : string
+        -values : map[string]any
+        --
+        +Flush() : error
+        ..fyne.Preferences..
+    }
+
     class QueueStore <<service>> {
         -filePath : string
         --
@@ -962,6 +970,8 @@ DownloadEngine --> JSRuntime : --js-runtimes
 MediaInfo *--> FormatInfo : Formats, RequestedFormats
 DownloaderApp *--> ToolInstaller : toolInstaller
 DownloaderApp *--> QueueStore : queueStore
+fileStore ..|> FynePreferences
+DownloaderApp --> FynePreferences : settingsStore
 
 ' DownloaderApp composition (owns these fields)
 DownloaderApp *--> UIWidgets       : ui

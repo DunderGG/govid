@@ -334,9 +334,18 @@ Tests: `TestDiagnosticsReportHasEverySectionAndNoPrivateData` (every section, an
 
 ---
 
-## 8. Portable Mode
+## 8. ✅ Portable Mode
 
 **Roadmap:** Technical Improvements → Portable Mode.
+
+**Status: Done** (new file [portable.go](../portable.go)).
+- **Marker.** `chooseSettingsStore` runs in `newDownloaderApp` before any setting is read. With `GoVid.portable` beside the executable, settings come from `settings.json` there; without it, from the Fyne store. The Fyne store is only fetched when it is used, which is what the test checks. `PreferenceService` and `ReleaseService` (the update-check cache) both take the chosen store. History, `queue.json` (#4), and `bin/` were already beside the executable.
+- **fileStore.** A complete `fyne.Preferences` (scalars, the four list types, `RemoveValue`, change listeners) over a JSON map. Changes are saved through `writeFileAtomic` 300 ms after a burst (one `Save` sets 45 keys), and flushed when GoVid quits, by either path. A damaged `settings.json` starts empty with a warning and is replaced at the next save.
+- **The toggle.** Preferences → **Portable Mode** acts when ticked, not on Save, because it is a marker file rather than a preference (so it stays out of `AppConfig`). It copies every preference (`PreferenceService.write`, which ignores the "Save preferences" gate) and the presets to the other store, creates or removes the marker, and offers to restart; during a download it says to restart afterwards. A failure, such as an unwritable folder, puts the toggle back and explains.
+- **Unwritable folder.** Checked with `dirWritable`: Portable Mode cannot be turned on, and a portable copy started in such a folder uses the user profile with a startup warning.
+- The guide explains the two modes and lists which files live where.
+
+Tests: `TestPortableModeNeverTouchesTheUserProfileStore` (settings and presets end up in `settings.json`, and the Fyne store stays empty), `TestSwitchingPortableModeCopiesTheSettings` (on, a copy of the folder elsewhere starting with the same settings and presets, and off again), `TestChooseSettingsStore`, `TestFileStoreKeepsEveryType`, `TestFileStoreSavesShortlyAfterAChange`, and `TestFileStoreStartsEmptyFromADamagedFile`.
 
 **Problem.** GoVid ships as a ZIP that runs from any folder, but its settings live in `%AppData%`. A copy on a USB stick doesn't take its settings along, and two copies on one machine share the same settings.
 

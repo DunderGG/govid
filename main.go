@@ -39,6 +39,8 @@ var (
 // newDownloaderApp constructs and fully initialises a DownloaderApp.
 func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	depSvc := NewDependencyService()
+	// Portable Mode is decided before any setting is read.
+	store, portable, settingsNote := chooseSettingsStore(executableDir(), fyne.CurrentApp().Preferences, dirWritable)
 	dlApp := &DownloaderApp{
 		window:     window,
 		uiManager:  NewUIManager(window),
@@ -47,7 +49,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 		logSvc:     NewLogService(),
 		depSvc:     depSvc,
 		gpuSvc:     NewGPUCapabilityService(depSvc.Resolve("ffmpeg")),
-		releaseSvc: NewReleaseService(fyne.CurrentApp().Preferences(), "GoVid/"+version),
+		releaseSvc: NewReleaseService(store, "GoVid/"+version),
 	}
 	if updater, err := NewSelfUpdater("GoVid/" + version); err == nil {
 		dlApp.selfUpdater = updater
@@ -58,7 +60,8 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.statusThrottle = newLatestValueThrottle(statusThrottleInterval, dlApp.showStatus)
 	dlApp.pauseThrottle = newLatestValueThrottle(statusThrottleInterval, dlApp.showPauseControl)
 
-	dlApp.prefSvc = NewPreferenceService(fyne.CurrentApp().Preferences())
+	dlApp.settingsStore, dlApp.portable, dlApp.settingsNote = store, portable, settingsNote
+	dlApp.prefSvc = NewPreferenceService(store)
 	prefs := dlApp.prefSvc.Load()
 	applyPreferencesToWidgets(dlApp.ui, prefs)
 	dlApp.logSvc.SetBufferLimit(ParseBufferLimit(prefs.LogLimit))
@@ -90,6 +93,8 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onLogBufferLimit = dlApp.logSvc.BufferLimit
 	dlApp.uiManager.onSetShowDebug = dlApp.setDebug
 	dlApp.uiManager.onCopyDiagnostics = dlApp.copyDiagnostics
+	dlApp.uiManager.onIsPortable = func() bool { return dlApp.portable }
+	dlApp.uiManager.onSetPortable = dlApp.onPortableChanged
 	dlApp.uiManager.onSetKeepHistory = dlApp.keepHistory.Store
 	dlApp.uiManager.onSessionRunning = dlApp.isRunning.Load
 
@@ -164,6 +169,7 @@ func main() {
 
 	dlApp.uiManager.createMainMenu()
 	dlApp.uiManager.createUI()
+	dlApp.reportSettingsLocation()
 	removeOldTools(dlApp.depSvc)
 	dlApp.uiManager.checkDependencies()
 	dlApp.checkTools()
@@ -188,6 +194,7 @@ func main() {
 			)
 			return
 		}
+		dlApp.flushSettings()
 		mainApp.Quit()
 	})
 

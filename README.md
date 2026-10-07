@@ -38,6 +38,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Sign-in Cookies**: Pass your login to yt-dlp from a browser (Firefox works best on Windows) or a `cookies.txt` file, for age-restricted, members-only, and private videos and YouTube's bot check. When cookies cannot be read, or a site asks you to sign in, the log says what to do.
 - **Speed Limiting**: Cap download bandwidth to avoid saturating your network.
 - **Disk Space Check**: Warns before a download that will not fit in the save folder.
+- **Portable Mode**: Keep settings and presets in `settings.json` beside `GoVid.exe` (Preferences → Portable Mode), so a GoVid folder on a USB stick carries them along with its history and tools.
 - **Config Support**: Configuration file support via `govid.json` for startup defaults and repeatable workflows.
 - **Bug Reports**: **Help → Copy diagnostics** puts versions, settings, the queue, and recent log lines on the clipboard, with your user name, user folder, and cookies left out. With Debug Output on, a heartbeat in the log shows when the window stops responding.
 - **Log Export**: Option to save download logs to `.txt` files for troubleshooting.

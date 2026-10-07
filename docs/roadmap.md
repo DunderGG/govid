@@ -267,7 +267,7 @@ This document outlines planned features, improvements, and known limitations for
 ### Portable Mode
 > Carry settings alongside the executable.
 
-- [ ] Add a "Portable Mode" toggle to store preferences in `settings.json` locally.
+- [x] Add a "Portable Mode" toggle to store preferences in `settings.json` locally. (`portable.go`: a `GoVid.portable` marker beside the exe makes GoVid keep settings, presets, and the update-check cache in `settings.json` there, through `fileStore`, a `fyne.Preferences`; Preferences → **Portable Mode** creates or removes it, copies the settings across, and offers to restart. A folder GoVid cannot write to falls back to the user profile and says so.)
 
 ### General improvements
 > Any general improvements we can think of

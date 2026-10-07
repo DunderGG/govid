@@ -108,6 +108,8 @@ type UIManager struct {
 	onSkipItem           func(id int) bool                                                    // DownloaderApp.skipItem: a queue row's Skip
 	onShowFormats        func()                                                               // DownloaderApp.showFormatsForURL: the Formats… button
 	onCopyDiagnostics    func()                                                               // DownloaderApp.copyDiagnostics: Help → Copy diagnostics
+	onIsPortable         func() bool                                                          // DownloaderApp.portable: settings are kept beside GoVid
+	onSetPortable        func(on bool, revert func())                                         // DownloaderApp.onPortableChanged: the Portable Mode toggle
 	onItemFormats        func(id int)                                                         // DownloaderApp.showFormatsForItem: a waiting row's Formats…
 	onDiscardPaused      func(id int)                                                         // DownloaderApp.discardPausedItem: a paused row's Remove
 	onLoadHistory        func() ([]DownloadHistoryEntry, error)                               // HistoryService.Load
@@ -419,6 +421,12 @@ func (manager *UIManager) showConfigHelp() {
 			"Each row has one button: **Install** (when the tool is missing, or found only on `PATH`), **Update** (when a newer version exists), or **Reinstall**, which repairs a broken copy. For yt-dlp, **Update** runs `yt-dlp -U`. Every download is checked against the SHA-256 its source publishes (yt-dlp and Deno from their GitHub releases, FFmpeg from gyan.dev), and if anything goes wrong the old tool is kept. Tools cannot be installed while a download runs.\n\n" +
 			"GoVid also looks for Deno, Node.js (22 or newer), or Bun on `PATH`, and uses the first one yt-dlp supports; **Help → About** and the session log say which. When yt-dlp, FFmpeg, or a JavaScript runtime is missing, a notice at startup offers to install it.\n\n" +
 			"On Linux the downloads do not apply; install the tools with your package manager."},
+		{"Portable Mode", "Found in **Tools → Preferences**. Normally GoVid keeps its settings and presets in your user profile, so a copy of GoVid on a USB stick does not take them along, and two copies on one computer share them. With **Portable Mode** on, they are kept in `settings.json` beside `GoVid.exe` instead, so the whole GoVid folder carries them.\n\n" +
+			"Turning it on or off copies your current settings and presets to the other place and takes effect when GoVid restarts (it offers to restart). It creates or deletes a small `GoVid.portable` file beside `GoVid.exe`; that file is what makes a copy portable. If GoVid's folder cannot be written to (for example under `Program Files`), Portable Mode cannot be turned on, and a portable copy started there keeps its settings in your user profile and says so.\n\n" +
+			"What lives where:\n" +
+			"  * **Beside GoVid.exe, always**: `download_history.json` (history), `queue.json` (downloads saved when you quit), and the `bin` folder (yt-dlp, FFmpeg, Deno)\n" +
+			"  * **Beside GoVid.exe in Portable Mode, else in your user profile**: settings, presets, and the cached update checks\n" +
+			"  * **In the save folder**: the log files"},
 		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
 		{"Cookies", "Found in **Tools → Preferences**. Cookies are your login: with them, yt-dlp can download age-restricted, members-only, and private videos you can watch when signed in, and get past YouTube's \"Sign in to confirm you're not a bot\" check. Choose where they come from:\n" +
@@ -503,6 +511,20 @@ func (manager *UIManager) showPreferences() {
 	// discarded by closing it without saving.
 	applyGeneralPrefs(ui, manager.onLoadPreferences())
 	ui.prefs.keepHistory.OnChanged = manager.onKeepHistoryChanged
+	// Portable Mode is not a stored preference but a marker file, so the
+	// toggle acts at once rather than on Save. A switch that fails puts it
+	// back without acting again.
+	portable := ui.prefs.portable
+	var onPortable func(on bool)
+	setPortable := func(on bool) {
+		portable.OnChanged = nil
+		portable.SetChecked(on)
+		portable.OnChanged = onPortable
+	}
+	onPortable = func(on bool) {
+		manager.onSetPortable(on, func() { setPortable(!on) })
+	}
+	setPortable(manager.onIsPortable())
 
 	form := &widget.Form{
 		Items: []*widget.FormItem{
@@ -514,6 +536,7 @@ func (manager *UIManager) showPreferences() {
 			{Text: "Embed in File", Widget: container.NewHBox(ui.prefs.embedMetadata, ui.prefs.embedThumbnail, ui.prefs.embedChapters), HintText: "Write tags (title, artist, date), cover art, and chapter markers into downloads"},
 			{Text: "Subtitles", Widget: container.NewHBox(ui.prefs.subtitles, ui.prefs.autoSubtitles), HintText: "Embed subtitles in videos, save them as .srt files beside them, or both"},
 			{Text: "Subtitle Languages", Widget: ui.prefs.subtitleLangs, HintText: "Comma-separated language codes or patterns, e.g. en.*,de (yt-dlp --sub-langs)"},
+			{Text: "Portable Mode", Widget: ui.prefs.portable, HintText: "Settings and presets travel with the GoVid folder (e.g. on a USB stick); takes effect after a restart"},
 			{Text: "Preferred Video Codec", Widget: fixedWidth(ui.prefs.preferredCodec, 120), HintText: "Pick this codec when a video offers it, even over a higher resolution in another (H.264 plays everywhere)"},
 			{Text: "Simultaneous Downloads", Widget: fixedWidth(ui.prefs.simultaneous, 80), HintText: "Videos downloaded at once. More than 1 makes YouTube's \"confirm you're not a bot\" check more likely"},
 			{Text: "Max Download Speed", Widget: ui.prefs.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},

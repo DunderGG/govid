@@ -94,6 +94,7 @@ func (app *DownloaderApp) Shutdown(quit func()) {
 			app.logSvc.WriteToFile(fmt.Sprintf("[SYSTEM] Session did not stop within %v; quitting anyway.", shutdownTimeout))
 		}
 		app.logSvc.CloseSessionLog()
+		app.flushSettings()
 		fyne.Do(quit)
 	}()
 }
