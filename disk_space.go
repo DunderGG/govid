@@ -116,16 +116,10 @@ func existingDir(path string) string {
 // the whole session (*continueAll). An unknown size, or free space that
 // cannot be measured, skips the check, and the log says so.
 func (app *DownloaderApp) checkDiskSpace(ctx context.Context, req DownloadRequest, postProcess bool, item queueItem, moreQueued bool, continueAll *bool) diskSpaceDecision {
-	estimate, known := uint64(0), false
-	if item.info != nil {
-		estimate, known = item.info.EstimatedSize()
-	}
+	needed, known := downloadNeeds(item, req, postProcess)
 	if !known {
 		app.appendOutput("[SYSTEM] Download size unknown; skipping the disk space check.", colSystem)
 		return spaceProceed
-	}
-	if item.info.Duration > 0 {
-		estimate = uint64(float64(estimate) * trimFraction(item.info.Duration, req.TrimStart, req.TrimEnd))
 	}
 
 	free, err := app.freeBytes(existingDir(req.SavePath))
@@ -133,7 +127,8 @@ func (app *DownloaderApp) checkDiskSpace(ctx context.Context, req DownloadReques
 		app.appendOutput(fmt.Sprintf("[SYSTEM] Could not check free disk space (%v); skipping the check.", err), colWarning)
 		return spaceProceed
 	}
-	needed := diskSpaceNeeded(estimate, postProcess)
+	// Downloads already running will take some of it.
+	free = uint64(max(int64(free)-app.reservedBytes.Load(), 0))
 	if free >= needed {
 		return spaceProceed
 	}
@@ -219,4 +214,21 @@ func (manager *UIManager) showDiskSpaceDialog(prompt diskSpacePrompt, onAnswer f
 	dlg.Resize(fyne.NewSize(460, 0))
 	dlg.Show()
 	return dlg
+}
+
+// downloadNeeds returns the free space a download of item with req is
+// expected to need (see diskSpaceNeeded), from the probe's size scaled to
+// req's trim range, and whether that is known.
+func downloadNeeds(item queueItem, req DownloadRequest, postProcess bool) (uint64, bool) {
+	if item.info == nil {
+		return 0, false
+	}
+	estimate, known := item.info.EstimatedSize()
+	if !known {
+		return 0, false
+	}
+	if item.info.Duration > 0 {
+		estimate = uint64(float64(estimate) * trimFraction(item.info.Duration, req.TrimStart, req.TrimEnd))
+	}
+	return diskSpaceNeeded(estimate, postProcess), true
 }

@@ -51,7 +51,9 @@ package "Application Core" #F0F4F8 {
         +queue : atomic.Pointer[QueueModel]
         +quitting : atomic.Bool
         +queueStore : *QueueStore
-        -pauseFn : func()
+        -controls : map[int]*itemControls
+        -promptMu : sync.Mutex
+        -reservedBytes : atomic.Int64
         --
         +SetCancelFunc(cancel context.CancelFunc)
         +RequestCancel() : bool
@@ -369,7 +371,10 @@ package "Download Engine" #FFF8F0 {
         +Resume(id) : bool
         +ResumeAll() : bool
         +RemovePaused(id) : (queueItem, bool)
-        +HasPaused() : bool
+        +SetItem(id, item)
+        +SetProgress(id, progress)
+        +OverallProgress() : float64
+        +ActiveCount() : int
         +Changed() : <-chan struct{}
         +SetItem(id, item)
         +SetStatus(id, status)

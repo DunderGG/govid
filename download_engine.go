@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -667,6 +668,10 @@ func (engine *DownloadEngine) FinalizeFiles(savePath, downloadID string, onLog f
 	if err != nil {
 		return nil
 	}
+	// Picking a free name and taking it must not interleave with another
+	// download finishing at the same time (Simultaneous Downloads).
+	renameMu.Lock()
+	defer renameMu.Unlock()
 	var finalPaths []string
 	for _, tmpPath := range matches {
 		if isPartialFile(tmpPath) {
@@ -691,6 +696,11 @@ func (engine *DownloadEngine) FinalizeFiles(savePath, downloadID string, onLog f
 	}
 	return finalPaths
 }
+
+// renameMu is held while a finished file is given its final name, from
+// uniquePath to the rename, so two downloads finishing at once with the
+// same title cannot both pick the same free name.
+var renameMu sync.Mutex
 
 // partialRemoveAttempts and partialRemoveRetryDelay bound how long
 // RemovePartialFiles keeps retrying a file that is still locked. On Windows a

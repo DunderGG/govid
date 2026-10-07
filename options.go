@@ -133,3 +133,7 @@ var cookieBrowserOptions = []string{
 	browserFirefox, browserChrome, browserEdge, browserBrave, browserChromium,
 	browserOpera, browserVivaldi, browserWhale, browserSafari,
 }
+
+// simultaneousOptions lists how many downloads may run at once
+// (Preferences "Simultaneous Downloads").
+var simultaneousOptions = []string{"1", "2", "3"}

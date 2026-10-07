@@ -39,9 +39,9 @@ type queuePanel struct {
 type queueActions struct {
 	move    func(id, delta int)
 	remove  func(id int)
-	skip    func()
+	skip    func(id int)
 	retry   func(id int)
-	pause   func()
+	pause   func(id int)
 	resume  func(id int)
 	discard func(id int) // removes a paused item and its partial files
 }
@@ -112,9 +112,9 @@ func (row *queueRow) show(entry queueEntry, running bool, actions queueActions) 
 	if entry.status == queuePaused {
 		row.remove.OnTapped = func() { actions.discard(id) }
 	}
-	row.pause.OnTapped = actions.pause
+	row.pause.OnTapped = func() { actions.pause(id) }
 	row.resume.OnTapped = func() { actions.resume(id) }
-	row.skip.OnTapped = actions.skip
+	row.skip.OnTapped = func() { actions.skip(id) }
 	if entry.isLive() {
 		row.skip.SetText("Stop recording")
 	} else {
@@ -184,13 +184,13 @@ func (manager *UIManager) buildQueuePanel(open bool) *queuePanel {
 		remove: func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Remove(id) }) },
 		retry:  func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Retry(id) }) },
 		resume: func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Resume(id) }) },
-		pause:  func() { manager.onPause() },
+		pause:  func(id int) { manager.onPauseItem(id) },
 		discard: func(id int) {
 			manager.onDiscardPaused(id)
 			manager.refreshQueue()
 		},
-		skip: func() {
-			if manager.onRequestCancel() {
+		skip: func(id int) {
+			if manager.onSkipItem(id) {
 				manager.onLog("Download skipped by user.", colWarning)
 			}
 		},

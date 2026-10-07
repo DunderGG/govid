@@ -32,6 +32,7 @@ type scanResult struct {
 	hadSubtitleErr    bool          // true when stderr said subtitles could not be downloaded, which fails the whole download
 	hadNoJSRuntime    bool          // true when yt-dlp warned that it found no JavaScript runtime for YouTube
 	accessProblem     accessProblem // the first error that cookies caused or would fix (see classifyAccessError)
+	hadRateLimit      bool          // true when the site answered HTTP 429 (too many requests)
 }
 
 // expiredLinkErrPatterns are substrings of the errors a site gives for a
@@ -158,6 +159,7 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 			stderrConverted = stderrConverted || isConversionLine(line)
 			// Detect transient network / rate-limit errors so the caller can retry.
 			result.hadTransientErr = result.hadTransientErr || containsAny(line, transientErrPatterns)
+			result.hadRateLimit = result.hadRateLimit || strings.Contains(line, "HTTP Error 429") || strings.Contains(line, "Too Many Requests")
 			// Detect errors a newer yt-dlp may fix, so the caller can say so.
 			isError := strings.Contains(line, "ERROR:")
 			result.hadExtractorErr = result.hadExtractorErr || (isError && containsAny(line, extractorErrPatterns))
@@ -191,8 +193,13 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 }
 
 // progressLinePattern matches yt-dlp's per-update progress lines, e.g.
-// "[download]  42.3% of   10.00MiB at    1.20MiB/s ETA 00:07".
-var progressLinePattern = regexp.MustCompile(`^\[download\]\s+\d+(\.\d+)?%`)
+// "[download]  42.3% of   10.00MiB at    1.20MiB/s ETA 00:07", with the
+// "[2/5] " item prefix simultaneous downloads add (see itemPrefix).
+var progressLinePattern = regexp.MustCompile(`^(\[\d+/\d+\] )?\[download\]\s+\d+(\.\d+)?%`)
+
+// itemPrefixPattern matches the "[2/5] " prefix that marks which queue item
+// a line comes from when several download at once.
+var itemPrefixPattern = regexp.MustCompile(`^\[\d+/\d+\] `)
 
 // IsProgressLine reports whether line is one of yt-dlp's progress lines.
 // With --newline yt-dlp prints hundreds of them per file, so the log view
@@ -200,6 +207,12 @@ var progressLinePattern = regexp.MustCompile(`^\[download\]\s+\d+(\.\d+)?%`)
 // file keeps them all.
 func IsProgressLine(line string) bool {
 	return progressLinePattern.MatchString(line)
+}
+
+// lineItem returns the item prefix of line ("[2/5] "), or "" when it has
+// none.
+func lineItem(line string) string {
+	return itemPrefixPattern.FindString(line)
 }
 
 // parseProgress scans a line of yt-dlp output for percentage markers and size

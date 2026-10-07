@@ -48,6 +48,7 @@ govid/
 ├── duplicates.go           skipDownloaded / askDuplicate — "Already downloaded" check before a session downloads
 ├── queue_model.go          QueueModel — the session's queue: items, per-item status, Next / Move / Remove / Retry
 ├── queue_panel.go          UIManager.showQueue — the collapsible Queue panel above the log
+├── parallel.go             runParallel (Simultaneous Downloads workers), itemControls (per-item Skip/Pause), itemRun, showParallelProgress, backOff, reserveSpace
 ├── pause_resume.go         downloadContext (Pause / Cancel / quit causes), Pause/Resume button, waitForResume, finishQueue, offerQueueRestore / resumeQueue
 ├── queue_store.go          QueueStore — queue.json: the waiting and paused items saved when GoVid quits
 ├── log_service.go          LogService — session log open/close, error log routing, buffer-limit management
@@ -125,7 +126,9 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `askDiskSpace func(ctx, diskSpacePrompt) diskSpaceDecision` | Asks what to do when a download will not fit; set to `UIManager.askDiskSpace`, stubbed in tests |
 | `askLive func(ctx, livePrompt) liveDecision` | Asks how to record a live or scheduled stream; set to `UIManager.askLive`, stubbed in tests |
 | `recording atomic.Bool` | Set while a live stream is recorded (`setRecordingView`); the Cancel button then reads "Stop recording" and does not log a cancel |
-| `pauseFn func()` | Pauses the running download (`setPauseFunc`, guarded by `cancelMu`); nil when none can be paused |
+| `controls map[int]*itemControls` | Skip and Pause of each item downloading, by queue ID (`registerSkip`, `registerPause`; guarded by `cancelMu`), so the Queue panel's row buttons act on their own item; `requestPause` pauses them all |
+| `promptMu sync.Mutex` | One prompt at a time (live stream, disk space) when several items download at once |
+| `reservedBytes atomic.Int64` | Disk space the downloads in progress are expected to need; `checkDiskSpace` leaves it for them (`reserveSpace`) |
 | `quitting atomic.Bool` | Set by `Shutdown`: a download it stops is paused and the queue saved |
 | `queueStore *QueueStore` | `queue.json` (see §7, Pause and resume) |
 | `askRestoreQueue func(count, answer)` | Asks whether to resume the saved queue; set to `UIManager.askRestoreQueue`, stubbed in tests |
@@ -264,7 +267,7 @@ Package-level helpers: `IsErrorLine(line string) bool` (matches ERROR/FAILED), `
 Owns the path to `download_history.json` (beside the executable) and exposes three methods:
 
 - **`Load() ([]DownloadHistoryEntry, error)`** — reads all entries in chronological order. Returns nil with no error when the file does not yet exist.
-- **`AppendAll(rec DownloadRecord)`** — builds one `DownloadHistoryEntry` per path in `rec.FinalPaths` and writes the updated array in a single write. When `rec.FinalPaths` is empty a placeholder entry is appended so the URL is still recorded.
+- **`AppendAll(rec DownloadRecord)`** — under `mu` (downloads may finish at once), builds one `DownloadHistoryEntry` per path in `rec.FinalPaths` and writes the updated array in a single write. When `rec.FinalPaths` is empty a placeholder entry is appended so the URL is still recorded.
 - **`Clear() error`** — overwrites the file with an empty JSON array.
 
 The private `buildEntries` helper and `inferOriginalTitle` live here; neither has a UI dependency. `buildEntries` uses `rec.Title` (the probe's or the playlist's title) and falls back to `inferOriginalTitle` only when it is empty. `findDownloaded(entries, url, videoID, extractor)` returns the newest entry for the same video: one with the same video ID and extractor key, so `youtu.be/x` and `watch?v=x&t=1` match, or, for entries recorded before IDs were kept, the identical URL. `DownloaderApp` holds `historySvc *HistoryService`; `UIManager` uses injected `onLoadHistory` and `onClearHistory` callbacks so `showHistory` never touches the file path directly.
@@ -459,7 +462,7 @@ func classify(err error) Category {
 
 | Goroutine | Started by | Cancelled by |
 |---|---|---|
-| Download queue worker | `startDownload()` launches one background goroutine; URLs are processed sequentially | `queueCtx` via `context.WithCancel` |
+| Download queue worker | `startDownload()` launches one background goroutine; URLs are processed sequentially, or by `Simultaneous Downloads` workers (`runParallel`, up to 3, started `workerStagger` = 3 s apart) | `queueCtx` via `context.WithCancel` |
 | `DownloadEngine.watchOutput` stdout/stderr | `DownloadEngine.Execute()` | process exit + pipe close |
 | Progress bar smoother | `startDownload()` → 33 ms ticker goroutine (frames that would change the bar by less than 0.002 are skipped) | `queueCtx` cancellation |
 | Status dot pulse | `setStatusIndicator("active")` | `stopPulse` channel close |
@@ -468,7 +471,7 @@ func classify(err error) Category {
 
 The session's queue is a `QueueModel` (`queue_model.go`): the items plus each one's status (Waiting, Checking, Downloading with its progress, Post-processing, Done, Failed, Skipped), behind a mutex. `runQueue` does not index a slice; it asks `Next()` for the first waiting item each time, so the Queue panel (`queue_panel.go`) can remove or move waiting items and put failed or skipped ones back at the end (`Retry`) while the queue runs. Moves only swap neighbouring waiting items, so finished and running items keep their place. `DownloaderApp.queue` (an `atomic.Pointer`) lets `updateProgress` report download progress to the downloading row. The model's `OnChanged` goes through a `latestValueThrottle`, so the panel is redrawn at most every 150 ms. The panel is a collapsible card above the log, titled with `Summary()` ("Queue — 7 of 20 done, 1 failed"), shown while the queue holds more than one item. Its rows offer Move up / Move down / Remove while waiting, Skip (the per-item cancel, as the Cancel button) while running, and Retry for failed or skipped items while the session runs. Items not reached when the queue stops are marked Skipped. Paused items and saving the queue across restarts are described under **Pause and resume** below.
 
-The download queue itself is sequential. Before it starts, `checkURLs` probes
+The download queue is sequential unless **Simultaneous Downloads** is above 1 (see **Simultaneous downloads** below). Before it starts, `checkURLs` probes
 each URL under `queueCtx` (so Cancel stops the probes) and builds
 `downloadSession.items`. A playlist's chosen videos become separate items, so a
 single playlist URL turns the session into a batch. The playlist prompt
@@ -499,6 +502,8 @@ can process multiple files concurrently.
 process tree (`taskkill /T` on Windows, the process group on Unix) and
 `cmd.WaitDelay` so `Wait` cannot hang on pipes a surviving grandchild holds.
 This matters because yt-dlp runs its own ffmpeg for merging and trimming.
+
+**Simultaneous downloads** (`parallel.go`). With the preference at 2 or 3 (`session.workers`, read once), `runQueue` hands the queue to `runParallel`: that many workers, each taking `Next()` until nothing waits; a worker that finds only paused items, with none active, waits for a resume. Each item gets an `itemRun` with its own `DownloadStats`; `parallelCallbacks` prefixes its log lines with "[n/total] " (`lineItem`; `renderLogLines` keeps one in-place progress line per prefix in `UIManager.progressLines`), sends its progress to its row (`QueueModel.SetProgress`), and shows the whole queue in the bar and status (`showParallelProgress`: `OverallProgress`, `ActiveCount`); `reportDownloadResult` then leaves the status, dot, and bar to the queue, and `runParallel` sets them when all are done. Cancel stops the session; each row's Skip and Pause act on their own item through `controls`. Shared state is serialised: prompts by `promptMu`, picking a free name and renaming by `renameMu` (`FinalizeFiles`, `finishRecording`), history writes by `HistoryService.mu`, and the disk check subtracts `reservedBytes`. After an HTTP 429 (`scanResult.hadRateLimit`) or a bot check, `backOff` lowers `queueMode.limit` to 1, so the other workers stop taking items, and logs it once.
 
 **Pause and resume** (`pause_resume.go`, `queue_store.go`). yt-dlp runs with
 `--continue` and writes `.part` files (a live recording keeps `--no-part`, so a

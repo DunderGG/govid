@@ -68,6 +68,10 @@ type UIManager struct {
 	pendingLog    []pendingLogLine
 	logFlushArmed bool                                    // true while a flush timer is pending
 	afterFunc     func(time.Duration, func()) *time.Timer // schedules the flush; time.AfterFunc, replaced in tests
+	// progressLines holds, by item prefix ("" outside simultaneous
+	// downloads), the log line showing that item's latest progress; see
+	// renderLogLines. Only touched on the UI thread.
+	progressLines map[string]*canvas.Text
 
 	// Notices shown above the input card; see showNotice. Only touched on
 	// the UI thread.
@@ -100,7 +104,8 @@ type UIManager struct {
 	onRequestCancel      func() bool                                                          // cancels the active download or post-process job
 	onRecording          func() bool                                                          // DownloaderApp.recording.Load: a live stream is being recorded
 	onPauseResume        func()                                                               // DownloaderApp.pauseOrResume: the main window's Pause / Resume button
-	onPause              func()                                                               // DownloaderApp.requestPause: a queue row's Pause
+	onPauseItem          func(id int)                                                         // DownloaderApp.pauseItem: a queue row's Pause
+	onSkipItem           func(id int) bool                                                    // DownloaderApp.skipItem: a queue row's Skip
 	onDiscardPaused      func(id int)                                                         // DownloaderApp.discardPausedItem: a paused row's Remove
 	onLoadHistory        func() ([]DownloadHistoryEntry, error)                               // HistoryService.Load
 	onClearHistory       func() error                                                         // HistoryService.Clear
@@ -132,7 +137,7 @@ type UIManager struct {
 
 // NewUIManager returns a UIManager bound to the given primary window.
 func NewUIManager(mainWindow fyne.Window) *UIManager {
-	manager := &UIManager{mainWindow: mainWindow, afterFunc: time.AfterFunc}
+	manager := &UIManager{mainWindow: mainWindow, afterFunc: time.AfterFunc, progressLines: map[string]*canvas.Text{}}
 	manager.queueThrottle = newLatestValueThrottle(statusThrottleInterval, func(int64) {
 		fyne.Do(manager.refreshQueue)
 	})
@@ -348,6 +353,9 @@ func (manager *UIManager) showConfigHelp() {
 			"  * A **paused** video can be resumed (it goes first among the waiting ones and continues where it stopped) or removed, which deletes what it had downloaded\n" +
 			"  * A video that **failed** or was **skipped** can be retried; it goes back to the end of the queue\n\n" +
 			"Videos the queue did not get to, because it was stopped, are marked Skipped."},
+		{"Simultaneous Downloads", "Found in **Tools → Preferences**. How many videos of a batch or playlist download at the same time: 1 (the default), 2, or 3. Many short videos finish much sooner, because each spends a few seconds starting before any data moves.\n\n" +
+			"With more than one, the progress bar shows the whole queue, the status says how many are downloading, and each log line starts with its video's place in the queue, e.g. `[2/5]`. **Cancel** stops the whole queue; use **Skip** or **Pause** on a video's row in the Queue panel to stop just that one.\n\n" +
+			"Downloading several at once makes YouTube's \"confirm you're not a bot\" check more likely. GoVid starts the downloads a few seconds apart, and when a site answers \"Too Many Requests\" (HTTP 429) or asks for the bot check, it goes back to one at a time for the rest of the session and says so in the log."},
 		{"Pause and Resume", "**Pause** (beside Cancel, and on the downloading row of the Queue panel) stops the download but keeps what it has downloaded so far; the queue moves on to the next video. When only paused videos are left, the button reads **Resume**, which continues them all from where they stopped. **Cancel** or **Skip** still deletes the partly downloaded files.\n\n" +
 			"Interrupted downloads also continue rather than start over: an automatic retry after a network error, a **Retry** of a failed or skipped video in the same session, and downloads GoVid was closed during. When you close GoVid with videos waiting or paused (including the one downloading), it saves them, and at the next start asks whether to **Resume** them or **Discard** them, which deletes their partial files. A resumed video is checked again first; if the site now offers different formats, its partial download starts over, and the log says so.\n\n" +
 			"Live recordings cannot be paused; see **Live Streams**."},
@@ -423,6 +431,7 @@ func (manager *UIManager) showConfigHelp() {
 			"* **quality**: " + codeList(qualityOptions) + "\n" +
 			"* **maxSpeed**: a rate with unit, e.g. `50K`, `5M`, `1G`, or `\"\"` for unlimited\n" +
 			"* **cookiesPath**: an existing cookies file, or `\"\"` for none\n" +
+			"* **simultaneousDownloads**: " + codeList(simultaneousOptions) + "\n" +
 			"* **cookieSource**: " + codeList(cookieSourceOptions) + "; **cookieBrowser**: " + codeList(cookieBrowserOptions) + "; **cookieProfile**: a browser profile name, or `\"\"` for the default\n" +
 			"* **themeMode**: " + codeList(themeOptions) + "\n" +
 			"* **logLimit**: " + codeList(logLimitOptions) + "\n" +
@@ -498,6 +507,7 @@ func (manager *UIManager) showPreferences() {
 			{Text: "Embed in File", Widget: container.NewHBox(ui.prefs.embedMetadata, ui.prefs.embedThumbnail, ui.prefs.embedChapters), HintText: "Write tags (title, artist, date), cover art, and chapter markers into downloads"},
 			{Text: "Subtitles", Widget: container.NewHBox(ui.prefs.subtitles, ui.prefs.autoSubtitles), HintText: "Embed subtitles in videos, save them as .srt files beside them, or both"},
 			{Text: "Subtitle Languages", Widget: ui.prefs.subtitleLangs, HintText: "Comma-separated language codes or patterns, e.g. en.*,de (yt-dlp --sub-langs)"},
+			{Text: "Simultaneous Downloads", Widget: fixedWidth(ui.prefs.simultaneous, 80), HintText: "Videos downloaded at once. More than 1 makes YouTube's \"confirm you're not a bot\" check more likely"},
 			{Text: "Max Download Speed", Widget: ui.prefs.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.prefs.themeMode, HintText: "Restart may be required for some changes"},
 			{Text: "Cookies", Widget: manager.buildCookiesRow(), HintText: "Your login, for age-restricted, members-only, and private videos and YouTube's bot check. On Windows, Firefox works best"},
@@ -1366,22 +1376,31 @@ func (manager *UIManager) renderLogLines(lines []pendingLogLine) {
 		if col == nil {
 			col = theme.Color(theme.ColorNameForeground)
 		}
-		// Consecutive yt-dlp progress lines share one line of the view,
-		// which shows the latest; the log file keeps every one.
-		if IsProgressLine(line.text) {
-			if last := lastLogText(logList); last != nil && IsProgressLine(last.Text) {
-				last.Text, last.Color = line.text, col
-				last.Refresh()
-				continue
-			}
+		// A file's yt-dlp progress lines share one line of the view, which
+		// shows the latest; the log file keeps every one. With several
+		// downloads at once, each item (by its line prefix) has its own,
+		// until another line of that item, such as the next file's
+		// destination, follows it.
+		item := lineItem(line.text)
+		if !IsProgressLine(line.text) {
+			delete(manager.progressLines, item)
+		} else if shown := manager.progressLines[item]; shown != nil {
+			shown.Text, shown.Color = line.text, col
+			shown.Refresh()
+			continue
 		}
 		label := canvas.NewText(line.text, col)
 		label.TextSize = theme.TextSize()
 		logList.Objects = append(logList.Objects, label)
+		if IsProgressLine(line.text) {
+			manager.progressLines[item] = label
+		}
 	}
 
 	if limit := screenLogLimit(manager.onLogBufferLimit()); len(logList.Objects) > limit {
 		logList.Objects = logList.Objects[len(logList.Objects)-limit:]
+		// A progress line may have been trimmed away; start new ones.
+		clear(manager.progressLines)
 	}
 
 	logList.Refresh()
@@ -1392,15 +1411,6 @@ func (manager *UIManager) renderLogLines(lines []pendingLogLine) {
 		output.Content.Resize(output.Content.MinSize().Max(output.Size()))
 		output.ScrollToBottom()
 	}
-}
-
-// lastLogText returns the last line of the log view, or nil when it is empty.
-func lastLogText(logList *fyne.Container) *canvas.Text {
-	if len(logList.Objects) == 0 {
-		return nil
-	}
-	text, _ := logList.Objects[len(logList.Objects)-1].(*canvas.Text)
-	return text
 }
 
 // isScrolledToBottom reports whether scroll shows the end of its content,
@@ -1425,6 +1435,7 @@ func (manager *UIManager) clearTerminalOutput() {
 	fyne.Do(func() {
 		ui.download.logList.Objects = nil
 		ui.download.logList.Refresh()
+		clear(manager.progressLines)
 		if ui.download.output != nil {
 			ui.download.output.ScrollToTop()
 		}

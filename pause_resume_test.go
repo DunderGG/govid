@@ -352,3 +352,20 @@ func TestDiscardingTheRestoredQueueRemovesItsFiles(t *testing.T) {
 		t.Errorf("queue.json still holds %+v", saved)
 	}
 }
+
+func TestShowPauseControl(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	button := h.app.ui.download.pauseBtn
+	if !button.Disabled() || button.Text != "Pause" {
+		t.Fatalf("Pause button starts as %q, disabled %v", button.Text, button.Disabled())
+	}
+
+	h.app.showPauseControl(pauseControl{label: "Resume", enabled: true})
+	if button.Disabled() || button.Text != "Resume" {
+		t.Errorf("button = %q, disabled %v; want Resume, enabled", button.Text, button.Disabled())
+	}
+	h.app.showPauseControl(pauseControl{label: "Pause"})
+	if !button.Disabled() || button.Text != "Pause" {
+		t.Errorf("button = %q, disabled %v; want Pause, disabled", button.Text, button.Disabled())
+	}
+}

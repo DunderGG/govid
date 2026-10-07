@@ -33,6 +33,7 @@ const (
 	prefCookieSource      = "cookieSource"
 	prefCookieBrowser     = "cookieBrowser"
 	prefCookieProfile     = "cookieProfile"
+	prefSimultaneous      = "simultaneousDownloads"
 	prefLogLimit          = "logLimit"
 	prefShowDebug         = "showDebug"
 	prefCheckUpdates      = "checkUpdates"
@@ -95,6 +96,7 @@ const (
 	defaultEnablePostProcess = true
 	defaultGPUBackend        = gpuBackendLabelAuto
 	defaultCookieBrowser     = browserFirefox
+	defaultSimultaneous      = "1"
 )
 
 // AppPreferences is a plain value struct that mirrors every user preference.
@@ -111,6 +113,7 @@ type AppPreferences struct {
 	CookieSource      string // one of cookieSourceOptions
 	CookieBrowser     string // one of cookieBrowserOptions
 	CookieProfile     string // the browser profile to read cookies from; "" for the default
+	Simultaneous      string // how many downloads run at once, one of simultaneousOptions
 	LogLimit          string
 	ShowDebug         bool   // show yt-dlp [debug] lines in the log view (they always go to the log file)
 	CheckUpdates      bool   // check for newer yt-dlp and GoVid releases on startup
@@ -189,6 +192,7 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		CookieSource:      prefSvc.store.String(prefCookieSource),
 		CookieBrowser:     prefSvc.store.StringWithFallback(prefCookieBrowser, defaultCookieBrowser),
 		CookieProfile:     prefSvc.store.String(prefCookieProfile),
+		Simultaneous:      prefSvc.store.StringWithFallback(prefSimultaneous, defaultSimultaneous),
 		LogLimit:          prefSvc.store.StringWithFallback(prefLogLimit, defaultLogLimit),
 		ShowDebug:         prefSvc.store.Bool(prefShowDebug),
 		CheckUpdates:      prefSvc.store.BoolWithFallback(prefCheckUpdates, defaultCheckUpdates),
@@ -292,6 +296,7 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 	prefSvc.store.SetString(prefCookieSource, p.CookieSource)
 	prefSvc.store.SetString(prefCookieBrowser, p.CookieBrowser)
 	prefSvc.store.SetString(prefCookieProfile, p.CookieProfile)
+	prefSvc.store.SetString(prefSimultaneous, p.Simultaneous)
 	prefSvc.store.SetString(prefLogLimit, p.LogLimit)
 	prefSvc.store.SetBool(prefShowDebug, p.ShowDebug)
 	prefSvc.store.SetBool(prefCheckUpdates, p.CheckUpdates)
@@ -332,7 +337,7 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 func (prefSvc *PreferenceService) Reset() {
 	for _, key := range []string{
 		prefSavedPath, prefFormat, prefQuality, prefMaxSpeed, prefThemeMode,
-		prefSavePrefs, prefCookiesPath, prefCookieSource, prefCookieBrowser, prefCookieProfile, prefLogLimit, prefShowDebug, prefCheckUpdates,
+		prefSavePrefs, prefCookiesPath, prefCookieSource, prefCookieBrowser, prefCookieProfile, prefSimultaneous, prefLogLimit, prefShowDebug, prefCheckUpdates,
 		prefEmbedMetadata, prefEmbedThumbnail, prefEmbedChapters,
 		prefSubtitles, prefSubtitleLangs, prefAutoSubtitles,
 		prefKeepHistory,

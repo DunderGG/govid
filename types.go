@@ -84,6 +84,7 @@ type PreferenceControls struct {
 	cookieSource   *widget.Select     // Where cookies come from: None, From file, or From browser
 	cookieBrowser  *widget.Select     // The browser to read cookies from
 	cookieProfile  *widget.Entry      // The browser profile to read cookies from; empty for the default
+	simultaneous   *widget.Select     // How many downloads run at once (1–3)
 	savePrefs      *widget.Check      // Option to persist preferences between sessions
 	logLimit       *widget.Select     // Max lines kept in the graphical log view
 	showDebug      *widget.Check      // Option to show yt-dlp [debug] lines in the log view
@@ -121,6 +122,7 @@ func NewPreferenceControls() *PreferenceControls {
 		cookieSource:   widget.NewSelect(cookieSourceOptions, nil),
 		cookieBrowser:  widget.NewSelect(cookieBrowserOptions, nil),
 		cookieProfile:  cookieProfile,
+		simultaneous:   widget.NewSelect(simultaneousOptions, nil),
 		savePrefs:      widget.NewCheck("Save preferences between sessions", nil),
 		logLimit:       widget.NewSelect(logLimitOptions, nil),
 		showDebug:      widget.NewCheck("Show yt-dlp debug output", nil),
@@ -271,10 +273,10 @@ type DownloaderApp struct {
 	ui            *UIWidgets            // The graphical interface components
 	stats         *DownloadStats        // Statistics tracked during a session
 	logSvc        *LogService           // Session log, error log, and buffer-limit management
-	cancelMu      sync.Mutex            // Guards cancelFn, stopFn, and pauseFn updates and reads
+	cancelMu      sync.Mutex            // Guards cancelFn, stopFn, and controls
 	cancelFn      context.CancelFunc    // Function used to signal yt-dlp to stop; in batch mode it skips only the current item
 	stopFn        context.CancelFunc    // Stops the whole session, including the rest of a batch queue
-	pauseFn       func()                // Pauses the running download (see setPauseFunc); nil when none can be paused
+	controls      map[int]*itemControls // Skip and Pause of each item being downloaded, by queue ID (see registerSkip); guarded by cancelMu
 	sessions      sync.WaitGroup        // Counts running sessions so Shutdown can wait for them to finish
 	stopPulse     chan struct{}         // Closed to stop the status dot pulse goroutine
 	pulseDone     chan struct{}         // Closed by the pulse goroutine when it exits
@@ -314,6 +316,9 @@ type DownloaderApp struct {
 	// statusThrottle rate-limits and de-duplicates status label updates;
 	// see updateStatus.
 	statusThrottle *latestValueThrottle[string]
+	// pauseThrottle applies Pause / Resume button changes one at a time; see
+	// setPauseControl.
+	pauseThrottle *latestValueThrottle[pauseControl]
 
 	// sessionFailed is set when any download or post-processing job in the
 	// session fails, so the download button offers "Retry" when it ends.
@@ -326,7 +331,14 @@ type DownloaderApp struct {
 	recording      atomic.Bool // true while a live stream is recorded; see setRecordingView
 	quitting       atomic.Bool // true once Shutdown has begun: a stopped download is paused and the queue saved
 	awaitingResume atomic.Bool // true while the queue waits with only paused items left; see waitForResume
-	keepHistory    atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
+
+	// promptMu lets one download at a time show a prompt (live stream,
+	// disk space) when several run at once.
+	promptMu sync.Mutex
+	// reservedBytes is the disk space the downloads in progress are
+	// expected to need, which the disk space check leaves for them.
+	reservedBytes atomic.Int64
+	keepHistory   atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
 
 	// queue is the running (or last) session's download queue, shown in the
 	// Queue panel; yt-dlp's output readers report download progress to it.

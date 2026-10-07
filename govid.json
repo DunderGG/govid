@@ -9,6 +9,7 @@
   "cookieSource": "None",
   "cookieBrowser": "Firefox",
   "cookieProfile": "",
+  "simultaneousDownloads": "1",
   "logLimit": "200",
   "showDebug": false,
   "checkUpdates": true,

@@ -75,33 +75,6 @@ func (app *DownloaderApp) downloadContext(parent context.Context, live bool) (ct
 	}
 }
 
-// setPauseFunc replaces the function that pauses the running download;
-// nil when none can be paused.
-func (app *DownloaderApp) setPauseFunc(pause func()) {
-	app.cancelMu.Lock()
-	app.pauseFn = pause
-	app.cancelMu.Unlock()
-	if pause != nil {
-		app.setPauseControl("Pause", true)
-	} else {
-		app.setPauseControl("Pause", false)
-	}
-}
-
-// requestPause pauses the running download, if one can be paused, and
-// reports whether it did.
-func (app *DownloaderApp) requestPause() bool {
-	app.cancelMu.Lock()
-	pause := app.pauseFn
-	app.pauseFn = nil
-	app.cancelMu.Unlock()
-	if pause == nil {
-		return false
-	}
-	pause()
-	return true
-}
-
 // pauseOrResume is the main window's Pause / Resume button: it pauses the
 // running download, or, when the queue only has paused items left, resumes
 // them all.
@@ -114,13 +87,26 @@ func (app *DownloaderApp) pauseOrResume() {
 	}
 }
 
+// pauseControl is the state of the Pause / Resume button.
+type pauseControl struct {
+	label   string
+	enabled bool
+}
+
 // setPauseControl sets the Pause / Resume button's label and whether it can
-// be pressed. It is safe to call from any goroutine.
+// be pressed. It is safe to call from any goroutine: the change goes
+// through pauseThrottle, so updates from several downloads at once are
+// applied one at a time, newest last.
 func (app *DownloaderApp) setPauseControl(label string, enabled bool) {
+	app.pauseThrottle.Set(pauseControl{label: label, enabled: enabled})
+}
+
+// showPauseControl is pauseThrottle's apply function.
+func (app *DownloaderApp) showPauseControl(state pauseControl) {
 	fyne.Do(func() {
 		button := app.ui.download.pauseBtn
-		button.SetText(label)
-		if enabled {
+		button.SetText(state.label)
+		if state.enabled {
 			button.Enable()
 		} else {
 			button.Disable()
@@ -251,6 +237,7 @@ func (app *DownloaderApp) resumeQueue(saved []savedQueueItem) {
 		session.items = append(session.items, item.queueItem())
 	}
 	session.request = app.newDownloadRequest("", session.savePath, "", "")
+	session.workers = simultaneousDownloads(app.ui.prefs.simultaneous.Selected)
 	if app.ui.postProcess.enablePostProcess.Checked {
 		session.vfFilters, session.afFilters = buildPostProcessFilters(newPostProcessSettings(app.ui))
 	}

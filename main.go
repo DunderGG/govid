@@ -56,6 +56,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 
 	// Load saved preferences and apply them to all widgets.
 	dlApp.statusThrottle = newLatestValueThrottle(statusThrottleInterval, dlApp.showStatus)
+	dlApp.pauseThrottle = newLatestValueThrottle(statusThrottleInterval, dlApp.showPauseControl)
 
 	dlApp.prefSvc = NewPreferenceService(fyne.CurrentApp().Preferences())
 	prefs := dlApp.prefSvc.Load()
@@ -122,7 +123,8 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onRequestCancel = dlApp.RequestCancel
 	dlApp.uiManager.onRecording = dlApp.recording.Load
 	dlApp.uiManager.onPauseResume = dlApp.pauseOrResume
-	dlApp.uiManager.onPause = func() { dlApp.requestPause() }
+	dlApp.uiManager.onPauseItem = dlApp.pauseItem
+	dlApp.uiManager.onSkipItem = dlApp.skipItem
 	dlApp.uiManager.onDiscardPaused = dlApp.discardPausedItem
 	return dlApp
 }

@@ -218,8 +218,11 @@ func (engine *DownloadEngine) finishRecording(paths []string, ext string, onLog 
 				onLog(fmt.Sprintf("[SYSTEM] Could not remove %s: %v", filepath.Base(path), err), colWarning)
 			}
 		}
+		renameMu.Lock()
 		final := uniquePath(target)
-		if err := os.Rename(tmp, final); err != nil {
+		err = os.Rename(tmp, final)
+		renameMu.Unlock()
+		if err != nil {
 			onLog(fmt.Sprintf("[SYSTEM] Failed to rename the recording: %v", err), colErrorSoft)
 			return []string{tmp}
 		}
@@ -231,8 +234,11 @@ func (engine *DownloadEngine) finishRecording(paths []string, ext string, onLog 
 		onLog("[SYSTEM] The recording's video and audio are kept as separate files.", colWarning)
 		return paths
 	}
+	renameMu.Lock()
 	ts := uniquePath(strings.TrimSuffix(paths[0], filepath.Ext(paths[0])) + ".ts")
-	if err := os.Rename(paths[0], ts); err != nil {
+	err := os.Rename(paths[0], ts)
+	renameMu.Unlock()
+	if err != nil {
 		return paths
 	}
 	onLog(fmt.Sprintf("[SYSTEM] Kept the recording as MPEG-TS: %s", filepath.Base(ts)), colSystem)
@@ -327,17 +333,20 @@ func clock(d time.Duration) string {
 // countdown to a scheduled stream) in the status label, keeps the session
 // stats' size current, and every liveSpaceCheckInterval checks the free
 // space, stopping the recording with stop when less than liveMinFreeBytes
-// is left.
-func (app *DownloaderApp) recordingCallback(req DownloadRequest, stop func()) func(started bool, elapsed time.Duration, size int64) {
+// is left. Alongside other downloads (run.parallel) it leaves the status label
+// to the whole queue.
+func (app *DownloaderApp) recordingCallback(req DownloadRequest, stop func(), run itemRun) func(started bool, elapsed time.Duration, size int64) {
 	var lastCheck time.Time
 	stopped := false
 	return func(started bool, elapsed time.Duration, size int64) {
 		now := time.Now()
-		app.updateStatus(liveStatusText(started, elapsed, size, req.ReleaseTime, now))
+		if !run.parallel {
+			app.updateStatus(liveStatusText(started, elapsed, size, req.ReleaseTime, now))
+		}
 		if !started || stopped {
 			return
 		}
-		app.stats.recordSize(strings.ReplaceAll(formatBytes(size), " ", ""))
+		run.stats.recordSize(strings.ReplaceAll(formatBytes(size), " ", ""))
 		if now.Sub(lastCheck) < liveSpaceCheckInterval {
 			return
 		}

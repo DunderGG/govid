@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -104,6 +105,10 @@ func findDownloaded(entries []DownloadHistoryEntry, url, videoID, extractor stri
 // AppendAll, and Clear. It has no UI dependency.
 type HistoryService struct {
 	filePath string
+	// mu serialises the writes: AppendAll reads, extends, and rewrites the
+	// file, and downloads finishing at once (Simultaneous Downloads) must not
+	// lose each other's entries.
+	mu sync.Mutex
 }
 
 // NewHistoryService returns a HistoryService that persists to
@@ -140,6 +145,8 @@ func (svc *HistoryService) Load() ([]DownloadHistoryEntry, error) {
 // appends them all to the history file in a single atomic write. When
 // FinalPaths is empty a placeholder entry is written so the URL is still recorded.
 func (svc *HistoryService) AppendAll(rec DownloadRecord) error {
+	svc.mu.Lock()
+	defer svc.mu.Unlock()
 	entries, err := svc.Load()
 	if err != nil {
 		return err
@@ -156,6 +163,8 @@ func (svc *HistoryService) AppendAll(rec DownloadRecord) error {
 // Clear overwrites the history file with an empty JSON array,
 // effectively removing all recorded entries.
 func (svc *HistoryService) Clear() error {
+	svc.mu.Lock()
+	defer svc.mu.Unlock()
 	return writeFileAtomic(svc.filePath, []byte("[]"))
 }
 

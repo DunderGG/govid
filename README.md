@@ -25,6 +25,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Batch Processing**: Download multiple URLs at once by switching to Batch Mode (one URL per line). Load a `.txt` list of URLs, paste several links at once, or drop a list or an internet shortcut (`.url`) onto the window.
 - **Presets**: Switch between setups (e.g. audio-only, 1080p MP4, archive) with the Preset dropdown. Save the current settings as a preset, choosing which groups of settings it holds, and import or export presets to move them between machines.
 - **Queue Panel**: With more than one video queued, a Queue panel above the log shows each video's status and progress. Remove or reorder waiting videos, pause or skip the one downloading, resume a paused one, or retry one that failed, while the queue runs.
+- **Simultaneous Downloads**: Download up to three videos of a batch or playlist at once (Preferences → Simultaneous Downloads). The progress bar shows the whole queue, and GoVid drops back to one at a time if a site rate-limits or asks for a bot check.
 - **Pause, Resume, and Restart-Proof Downloads**: Pause a download and resume it later from where it stopped. Interrupted downloads (a network error, a retry) continue rather than start over, and when you close GoVid with downloads queued or paused, it offers to resume them at the next start.
 - **Live Streams**: Record a live stream from now or (YouTube, Twitch) from its start, or wait for a scheduled stream or premiere and record it when it begins. **Stop recording** keeps what was recorded, saved in your chosen format and added to the history; free space is watched while recording.
 - **Playlists**: Paste a playlist URL to pick all of it, a range (e.g. `5-8`), or just the linked video; each video is queued separately.
@@ -143,6 +144,7 @@ A key left out of the file leaves that setting unchanged, so a file can hold jus
 | `cookieSource` | `None`, `From file` (use `cookiesPath`), `From browser` (use `cookieBrowser`) (`None`; settings saved before this choice existed keep using their cookies file) |
 | `cookieBrowser` | `Firefox`, `Chrome`, `Edge`, `Brave`, `Chromium`, `Opera`, `Vivaldi`, `Whale`, `Safari` (`Firefox`) |
 | `cookieProfile` | The browser profile to read cookies from; `""` for the default profile (`""`) |
+| `simultaneousDownloads` | `1`, `2`, `3`: videos downloaded at the same time (`1`) |
 | `themeMode` | `Dark`, `Light` (`Dark`) |
 | `logLimit` | `100`, `200`, `500`, `1000`, `5000`, `Unlimited` (`200`) |
 | `savePrefs` | `true` or `false`: remember settings between sessions (`true`) |

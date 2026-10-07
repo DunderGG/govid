@@ -198,6 +198,11 @@ func runFakeTool(mode string, args []string) int {
 	case "ytdlp-cookies-locked", "ytdlp-bot-check":
 		fmt.Fprintln(os.Stderr, fakeAccessErrors[mode])
 		return 1
+	case "ytdlp-concurrent":
+		return fakeYtDlpConcurrent(args)
+	case "ytdlp-rate-limited":
+		fmt.Fprintln(os.Stderr, "ERROR: [youtube] fake: Unable to download webpage: HTTP Error 429: Too Many Requests")
+		return 1
 	case "ytdlp-resumable":
 		return fakeYtDlpResumable(args)
 	case "ytdlp-live":
@@ -665,4 +670,46 @@ func fakeYtDlpResumable(args []string) int {
 		return 2
 	}
 	return 0
+}
+
+// fakeConcurrencyEnv names the folder the "ytdlp-concurrent" mode marks its
+// running downloads in.
+const fakeConcurrencyEnv = "GOVID_FAKE_CONCURRENCY_DIR"
+
+// fakeYtDlpConcurrent mimics a download that takes a while, and records how
+// many downloads were running at once: each run leaves a file named after
+// its process ID in the fakeConcurrencyEnv folder while it runs, and
+// appends the number of such files it saw to "peaks" there.
+func fakeYtDlpConcurrent(args []string) int {
+	dir := os.Getenv(fakeConcurrencyEnv)
+	marker := filepath.Join(dir, fmt.Sprintf("run-%d", os.Getpid()))
+	os.WriteFile(marker, nil, 0644)
+	defer os.Remove(marker)
+	for range 8 {
+		running, _ := filepath.Glob(filepath.Join(dir, "run-*"))
+		if file, err := os.OpenFile(filepath.Join(dir, "peaks"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintln(file, len(running))
+			file.Close()
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fakeYtDlpDownload(args)
+}
+
+// useFakeConcurrency points the "ytdlp-concurrent" mode at a fresh folder
+// and returns a function reporting the most downloads it saw at once.
+func useFakeConcurrency(t *testing.T) func() int {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv(fakeConcurrencyEnv, dir)
+	return func() int {
+		data, _ := os.ReadFile(filepath.Join(dir, "peaks"))
+		peak := 0
+		for _, line := range strings.Fields(string(data)) {
+			var n int
+			fmt.Sscan(line, &n)
+			peak = max(peak, n)
+		}
+		return peak
+	}
 }

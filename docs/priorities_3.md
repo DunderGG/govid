@@ -212,9 +212,19 @@ Tests: `TestPauseAndResumeContinuesTheDownload` (a new "ytdlp-resumable" fake wr
 
 ---
 
-## 5. Parallel downloads
+## 5. ✅ Parallel downloads
 
 **Roadmap:** Medium Priority → Queue Manager (new item added this round; from "Concurrency & Goroutines" in `notes.txt`).
+
+**Status: Done** (new file [parallel.go](../parallel.go)).
+- **Setting.** Preferences → **Simultaneous Downloads** (1–3, default 1), with the bot-check warning as its hint; `simultaneousDownloads` in `govid.json`. It is read once when the session starts. With 1, the queue runs exactly as before.
+- **Workers.** `runParallel` starts that many workers, `workerStagger` (3 s) apart, each taking `queue.Next()`. A worker that finds only paused items, with nothing else active, waits for a resume (#4).
+- **Progress.** Each item has an `itemRun` with its own `DownloadStats`. Its progress goes to its Queue row (`QueueModel.SetProgress(id)`, replacing the "first downloading item" lookup in parallel mode). The bar shows `OverallProgress()` (finished items plus active fractions, over all), and the status reads "Downloading 3 videos…". Each line from yt-dlp gets an "[n/total]" prefix; `renderLogLines` keeps one in-place progress line per prefix, so interleaved progress does not flood the view. Each item's summary block is prefixed too, and the final status ("3 of 3 done") is set when all workers end.
+- **Controls.** Single-item controls became per-item (`itemControls`): each row's Skip and Pause act on that item, the main Pause pauses every download, and Cancel stops the session. A live recording in parallel mode keeps the normal progress view, and its row's Skip stops and keeps it.
+- **Shared state.** Prompts take turns (`promptMu`, which also guards "continue for all" on low space). `renameMu` covers `uniquePath` plus the rename in `FinalizeFiles` and `finishRecording`. `HistoryService` has a mutex around `AppendAll` and `Clear`. The disk check subtracts `reservedBytes`, the estimates of downloads in progress (`reserveSpace`).
+- **Back off.** `scanResult.hadRateLimit` (HTTP 429 / "Too Many Requests") or a bot check makes `backOff` lower the worker limit to 1 for the rest of the session, logged once; the other workers stop taking items after their current one.
+
+Tests: `TestThreeDownloadsRunAtOnce` (a new "ytdlp-concurrent" fake marks itself running in a folder and records the peak: 3; the three same-titled videos get three names; three history entries; the prefixes), `TestOneDownloadAtATimeByDefault`, `TestRateLimitBacksOffToOneWorker`, `TestBackOffNeedsRateLimitOrBotCheck`, `TestDiskCheckLeavesSpaceForRunningDownloads`, `TestProgressLinesStayInPlacePerItem`, `TestQueueModelOverallProgress`, and `TestSimultaneousDownloads`. `go test -race ./...` passes.
 
 **Problem.** The queue downloads one video at a time. A playlist of many short videos is slow, because each item spends several seconds starting yt-dlp and extracting before any data moves.
 

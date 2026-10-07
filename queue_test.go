@@ -226,7 +226,7 @@ func TestQueueRowOffersActionsByStatus(t *testing.T) {
 	actions := queueActions{
 		move:   func(id, delta int) { moved = append(moved, id*10+delta) },
 		remove: func(id int) { removed = append(removed, id) },
-		skip:   func() { skipped++ },
+		skip:   func(int) { skipped++ },
 		retry:  func(id int) { retried = append(retried, id) },
 	}
 	visible := func(row *queueRow) []string {

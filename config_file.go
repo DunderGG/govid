@@ -40,6 +40,7 @@ type AppConfig struct {
 	CookieSource      *string  `json:"cookieSource,omitempty"`
 	CookieBrowser     *string  `json:"cookieBrowser,omitempty"`
 	CookieProfile     *string  `json:"cookieProfile,omitempty"`
+	Simultaneous      *string  `json:"simultaneousDownloads,omitempty"`
 	LogLimit          *string  `json:"logLimit,omitempty"`
 	ShowDebug         *bool    `json:"showDebug,omitempty"`
 	CheckUpdates      *bool    `json:"checkUpdates,omitempty"`
@@ -92,6 +93,7 @@ var configRules = map[string]configRule{
 	"CookiesPath":      {check: checkFileOrEmpty},
 	"CookieSource":     {options: func() []string { return cookieSourceOptions }},
 	"CookieBrowser":    {options: func() []string { return cookieBrowserOptions }},
+	"Simultaneous":     {options: func() []string { return simultaneousOptions }},
 	"Format":           {options: func() []string { return formatOptions }},
 	"Quality":          {options: func() []string { return qualityOptions }},
 	"ThemeMode":        {options: func() []string { return themeOptions }},

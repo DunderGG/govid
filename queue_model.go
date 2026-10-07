@@ -227,6 +227,53 @@ func (queue *QueueModel) SetActiveProgress(progress float64) {
 	})
 }
 
+// SetProgress records the download progress (0..1) of the item with id,
+// while it downloads. A change of less than 1% is not reported.
+func (queue *QueueModel) SetProgress(id int, progress float64) {
+	queue.change(func() bool {
+		entry := queue.find(id)
+		if entry == nil || entry.status != queueDownloading || int(entry.progress*100) == int(progress*100) {
+			return false
+		}
+		entry.progress = progress
+		return true
+	})
+}
+
+// OverallProgress returns how far the whole queue has got (0..1): the
+// items that have finished (done, failed, or skipped) plus the downloaded
+// fraction of each item downloading, over all items.
+func (queue *QueueModel) OverallProgress() float64 {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	if len(queue.entries) == 0 {
+		return 0
+	}
+	var finished float64
+	for _, entry := range queue.entries {
+		switch entry.status {
+		case queueDone, queueFailed, queueSkipped, queuePostProcessing:
+			finished++
+		case queueDownloading:
+			finished += entry.progress
+		}
+	}
+	return finished / float64(len(queue.entries))
+}
+
+// ActiveCount returns how many items are being checked or downloaded.
+func (queue *QueueModel) ActiveCount() int {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	count := 0
+	for _, entry := range queue.entries {
+		if entry.status == queueChecking || entry.status == queueDownloading {
+			count++
+		}
+	}
+	return count
+}
+
 // MarkAll sets every item with status from to status to.
 func (queue *QueueModel) MarkAll(from, to queueStatus) {
 	queue.change(func() bool {
