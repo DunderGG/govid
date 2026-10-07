@@ -196,6 +196,17 @@ This document outlines planned features, improvements, and known limitations for
 - [x] Add startup dependency check with a user-friendly dialog if tools are missing.
 - [x] Publish a SHA-256 checksum with each release, and refuse to package without the bundled tools. (`package.ps1` writes `SHA256SUMS` next to the ZIP, records the bundled yt-dlp and FFmpeg versions in `VERSIONS.txt` inside it, stops if `external/yt-dlp.exe` or `external/ffmpeg.exe` is missing, and ends with a checklist: upload the ZIP and `SHA256SUMS`. Self-update relies on both.)
 
+### Continuous Integration
+> Keep `ci.yml` fast, trustworthy, and quiet.
+
+- [x] Commit the `.log` fixtures in `testdata/`. (The `*.log` rule in `.gitignore` hid them, so they existed only locally and five tests failed in CI. They are now un-ignored and marked `-text` in `.gitattributes`, so `ffmpeg_progress.log` keeps its mixed CR/LF/CRLF endings.)
+- [ ] Fail when a file under `testdata/` is untracked or ignored (`git ls-files --others testdata` and `git ls-files --others --ignored --exclude-standard testdata` both empty), as a step in `build.bat`/`build.sh` or a pre-push hook. CI can't catch this itself, because the missing files never reach the runner.
+- [ ] Save the Go build cache even when a job fails. `setup-go` saves its cache only after a successful job, so every failed run starts cold ("Cache is not found"): `go vet` took about 6 minutes and `go test -race` about 9.5, mostly compiling Fyne and GLFW with cgo. Use `actions/cache/restore` and `actions/cache/save` with `if: always()`, keyed on `go.sum` and the OS.
+- [ ] Move to action versions that run on Node 24 (`actions/checkout@v5`, `actions/setup-go@v6` or later). The runner warns that Node 20 is deprecated and already forces these actions onto Node 24. Add a Dependabot config for `github-actions` so they stay current, and consider pinning actions to commit SHAs.
+- [ ] Add `timeout-minutes` to the job (e.g. 30) and `-timeout` to `go test`, so a hung test or fake tool fails quickly instead of holding the runner for the default 6 hours.
+- [ ] Cancel superseded runs with a `concurrency` group on the branch (`cancel-in-progress: true`), and run `push` only for `main` so a pull request branch isn't tested twice.
+- [ ] Check that `go.mod` and `go.sum` are tidy (`go mod tidy -diff`).
+
 ### Proper Version String
 > Embed a build version for display and update-checking purposes.
 
