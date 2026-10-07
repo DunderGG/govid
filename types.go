@@ -79,6 +79,9 @@ type PreferenceControls struct {
 	maxSpeed       *widget.Entry      // Download speed limit (e.g. 5M)
 	themeMode      *widget.RadioGroup // Theme mode selector (Dark / Light)
 	cookies        *widget.Entry      // Path to a Mozilla/Netscape-format cookies file
+	cookieSource   *widget.Select     // Where cookies come from: None, From file, or From browser
+	cookieBrowser  *widget.Select     // The browser to read cookies from
+	cookieProfile  *widget.Entry      // The browser profile to read cookies from; empty for the default
 	savePrefs      *widget.Check      // Option to persist preferences between sessions
 	logLimit       *widget.Select     // Max lines kept in the graphical log view
 	showDebug      *widget.Check      // Option to show yt-dlp [debug] lines in the log view
@@ -103,6 +106,9 @@ func NewPreferenceControls() *PreferenceControls {
 	cookies := widget.NewEntry()
 	cookies.SetPlaceHolder("Path to cookies.txt (optional)")
 
+	cookieProfile := widget.NewEntry()
+	cookieProfile.SetPlaceHolder("Profile (optional)")
+
 	subtitleLangs := widget.NewEntry()
 	subtitleLangs.SetPlaceHolder(defaultSubtitleLangs + " (e.g. en.*,de,ja)")
 
@@ -110,6 +116,9 @@ func NewPreferenceControls() *PreferenceControls {
 		maxSpeed:       maxSpeed,
 		themeMode:      themeMode,
 		cookies:        cookies,
+		cookieSource:   widget.NewSelect(cookieSourceOptions, nil),
+		cookieBrowser:  widget.NewSelect(cookieBrowserOptions, nil),
+		cookieProfile:  cookieProfile,
 		savePrefs:      widget.NewCheck("Save preferences between sessions", nil),
 		logLimit:       widget.NewSelect(logLimitOptions, nil),
 		showDebug:      widget.NewCheck("Show yt-dlp debug output", nil),

@@ -64,6 +64,9 @@ type DownloadRequest struct {
 	TrimEnd     string // HH:MM:SS or empty
 	MaxSpeed    string // e.g. "5M" or empty
 	CookiesPath string // path to cookies.txt or empty
+	// CookiesFromBrowser is a --cookies-from-browser value, e.g. "firefox" or
+	// "firefox:work"; when set, it is used instead of CookiesPath.
+	CookiesFromBrowser string
 
 	// Written into the downloaded file by yt-dlp (with ffmpeg).
 	EmbedMetadata  bool // title, artist, upload date, … tags
@@ -205,11 +208,7 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 		args = append(args, "--limit-rate", req.MaxSpeed)
 	}
 
-	if req.CookiesPath != "" {
-		if _, err := os.Stat(req.CookiesPath); err == nil {
-			args = append(args, "--cookies", req.CookiesPath)
-		}
-	}
+	args = append(args, cookieArgs(req)...)
 
 	if isAudioOnlyExt(extension) {
 		args = append(args, "--extract-audio", "--audio-format", extension, "--audio-quality", "0")

@@ -10,6 +10,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"image/color"
 	"math"
@@ -165,7 +166,7 @@ type SessionConfig struct {
 	TrimStart   string
 	TrimEnd     string
 	MaxSpeed    string
-	CookiesPath string
+	Cookies     string // where cookies come from, as cookieLabel names it; never a path
 	JSRuntime   string // the JavaScript runtime yt-dlp uses, e.g. "deno 2.9.7 (bin/)"
 
 	SaveLog            bool
@@ -196,10 +197,6 @@ func (svc *LogService) WriteSessionConfig(cfg SessionConfig, writeFn func(string
 	if maxSpeed == "" {
 		maxSpeed = "(none)"
 	}
-	cookiesPath := cfg.CookiesPath
-	if cookiesPath == "" {
-		cookiesPath = "(none)"
-	}
 	rawURLField := cfg.RawURLField
 	if strings.TrimSpace(rawURLField) == "" {
 		rawURLField = "(empty)"
@@ -211,7 +208,7 @@ func (svc *LogService) WriteSessionConfig(cfg SessionConfig, writeFn func(string
 	writeFn(fmt.Sprintf("[SYSTEM] Format/quality: %s / %s", cfg.Format, cfg.Quality), colSystem)
 	writeFn(fmt.Sprintf("[SYSTEM] Trim: start=%q, end=%q", cfg.TrimStart, cfg.TrimEnd), colSystem)
 	writeFn(fmt.Sprintf("[SYSTEM] Max speed: %s", maxSpeed), colSystem)
-	writeFn(fmt.Sprintf("[SYSTEM] Cookies file: %s", cookiesPath), colSystem)
+	writeFn(fmt.Sprintf("[SYSTEM] Cookies: %s", cmp.Or(cfg.Cookies, "none")), colSystem)
 	if cfg.JSRuntime != "" {
 		writeFn(fmt.Sprintf("[SYSTEM] JS runtime: %s", cfg.JSRuntime), colSystem)
 	}

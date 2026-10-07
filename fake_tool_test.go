@@ -195,6 +195,9 @@ func runFakeTool(mode string, args []string) int {
 		return fakeYtDlpDownload(args)
 	case "ytdlp-mixed":
 		return fakeYtDlpMixed(args)
+	case "ytdlp-cookies-locked", "ytdlp-bot-check":
+		fmt.Fprintln(os.Stderr, fakeAccessErrors[mode])
+		return 1
 	case "ytdlp-live":
 		return fakeYtDlpLive(args)
 	case "ytdlp-upcoming":
@@ -364,6 +367,10 @@ func checkFakeInfoJSON(path string, args []string) int {
 // https://example.com/v/<n> (unless noPlaylist is set), "ytdlp-probe-fail"
 // fails, and every other mode reports a single 10 MiB, 720p video.
 func fakeYtDlpProbe(mode, url string, noPlaylist bool) int {
+	if line, ok := fakeAccessErrors[mode]; ok {
+		fmt.Fprintln(os.Stderr, line)
+		return 1
+	}
 	switch {
 	case mode == "ytdlp-playlist" && !noPlaylist:
 		var entries []string
@@ -607,4 +614,12 @@ func fakeYtDlpUpcoming(args []string) int {
 	}
 	fmt.Println("[download] Destination: " + path)
 	return 0
+}
+
+// fakeAccessErrors are the errors the "ytdlp-cookies-locked" and
+// "ytdlp-bot-check" modes fail with, probe and download alike, as the
+// bundled yt-dlp printed them.
+var fakeAccessErrors = map[string]string{
+	"ytdlp-cookies-locked": "ERROR: Could not copy Chrome cookie database. See  https://github.com/yt-dlp/yt-dlp/issues/7271  for more info",
+	"ytdlp-bot-check":      "ERROR: [youtube] jNQXAC9IVRw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies.",
 }

@@ -32,6 +32,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **GPU-Accelerated Encoding**: Optional hardware-accelerated final encode (NVIDIA NVENC, Intel QSV, AMD AMF, or VAAPI) with automatic CPU fallback if the selected backend is unavailable.
 - **Motion Smoothing**: Three interpolation modes (Precise, Balanced, Fast) for smoother motion at higher frame rates.
 - **Download Management**: Start, monitor, and cancel active downloads from a single queue view.
+- **Sign-in Cookies**: Pass your login to yt-dlp from a browser (Firefox works best on Windows) or a `cookies.txt` file, for age-restricted, members-only, and private videos and YouTube's bot check. When cookies cannot be read, or a site asks you to sign in, the log says what to do.
 - **Speed Limiting**: Cap download bandwidth to avoid saturating your network.
 - **Disk Space Check**: Warns before a download that will not fit in the save folder.
 - **Config Support**: Configuration file support via `govid.json` for startup defaults and repeatable workflows.
@@ -138,6 +139,9 @@ A key left out of the file leaves that setting unchanged, so a file can hold jus
 | `quality` | `Best Quality`, `1080p`, `720p`, `480p`, `360p` (`Best Quality`) |
 | `maxSpeed` | A rate with unit, e.g. `50K`, `5M`, `1G`; `""` for unlimited (`""`) |
 | `cookiesPath` | An existing cookies.txt file, or `""` for none (`""`) |
+| `cookieSource` | `None`, `From file` (use `cookiesPath`), `From browser` (use `cookieBrowser`) (`None`; settings saved before this choice existed keep using their cookies file) |
+| `cookieBrowser` | `Firefox`, `Chrome`, `Edge`, `Brave`, `Chromium`, `Opera`, `Vivaldi`, `Whale`, `Safari` (`Firefox`) |
+| `cookieProfile` | The browser profile to read cookies from; `""` for the default profile (`""`) |
 | `themeMode` | `Dark`, `Light` (`Dark`) |
 | `logLimit` | `100`, `200`, `500`, `1000`, `5000`, `Unlimited` (`200`) |
 | `savePrefs` | `true` or `false`: remember settings between sessions (`true`) |

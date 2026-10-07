@@ -493,7 +493,7 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, ite
 	if dl.Scan.hadNoJSRuntime {
 		app.showJSRuntimeNotice()
 	}
-	app.reportDownloadResult(ctx, dl, time.Since(startTime))
+	app.reportDownloadResult(ctx, dl, time.Since(startTime), failureHints(dl.Scan, req))
 	return dl.FinalPaths
 }
 
@@ -515,15 +515,24 @@ func (app *DownloaderApp) newDownloadRequest(rawURL, savePath, trimStart, trimEn
 		limit = app.prefSvc.Load().MaxSpeed
 	}
 
+	var cookiesPath, cookiesBrowser string
+	switch app.ui.prefs.cookieSource.Selected {
+	case cookieSourceFile:
+		cookiesPath = strings.TrimSpace(app.ui.prefs.cookies.Text)
+	case cookieSourceBrowser:
+		cookiesBrowser = cookiesFromBrowser(app.ui.prefs.cookieBrowser.Selected, app.ui.prefs.cookieProfile.Text)
+	}
+
 	return DownloadRequest{
-		URL:         rawURL,
-		SavePath:    savePath,
-		Format:      app.ui.download.format.Selected,
-		Quality:     app.ui.download.quality.Selected,
-		TrimStart:   trimStart,
-		TrimEnd:     trimEnd,
-		MaxSpeed:    limit,
-		CookiesPath: strings.TrimSpace(app.ui.prefs.cookies.Text),
+		URL:                rawURL,
+		SavePath:           savePath,
+		Format:             app.ui.download.format.Selected,
+		Quality:            app.ui.download.quality.Selected,
+		TrimStart:          trimStart,
+		TrimEnd:            trimEnd,
+		MaxSpeed:           limit,
+		CookiesPath:        cookiesPath,
+		CookiesFromBrowser: cookiesBrowser,
 
 		EmbedMetadata:  app.ui.prefs.embedMetadata.Checked,
 		EmbedThumbnail: app.ui.prefs.embedThumbnail.Checked,
@@ -567,7 +576,8 @@ func (app *DownloaderApp) recordHistory(req DownloadRequest, item queueItem, fin
 // session-failed flag and notification. It blocks until those updates are
 // committed and the new status is applied, so the result is shown before the
 // caller starts post-processing and overwrites the status.
-func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadResult, elapsed time.Duration) {
+// After a failure it logs hints, which say what may fix it (see failureHints).
+func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadResult, elapsed time.Duration, hints []string) {
 	lastSize, downloadedRaw, unit := app.stats.sizeSnapshot()
 	elapsedStr := fmt.Sprintf("%.2fs", elapsed.Seconds())
 	avgSpeed := averageSpeed(downloadedRaw, elapsed.Seconds(), unit)
@@ -609,8 +619,8 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 			app.updateStatus("Status: Failed. Check output below.")
 			app.setStatusIndicator(StatusFailed)
 			app.sessionFailed.Store(true)
-			if dl.Scan.hadExtractorErr {
-				app.appendOutput(ytDlpUpdateHint, colInfo)
+			for _, hint := range hints {
+				app.appendOutput(hint, colInfo)
 			}
 			if app.ui.download.notify.Checked {
 				fyne.CurrentApp().SendNotification(&fyne.Notification{
@@ -711,6 +721,20 @@ func validateTimestamp(timestamp string) error {
 	matched, _ := regexp.MatchString(`^\d+:\d{2}:\d{2}$|^\d+:\d{2}$|^\d+(\.\d+)?$`, timestamp)
 	if !matched {
 		return fmt.Errorf("use HH:MM:SS, MM:SS or seconds (e.g. 90)")
+	}
+	return nil
+}
+
+// failureHints returns what to tell the user after a download of req
+// failed with scan's errors: what cookies caused or would fix (see
+// accessHint), or, for an error that usually means the site changed, to
+// update yt-dlp.
+func failureHints(scan scanResult, req DownloadRequest) []string {
+	if hint := accessHint(scan.accessProblem, req); hint != "" {
+		return []string{hint}
+	}
+	if scan.hadExtractorErr {
+		return []string{ytDlpUpdateHint}
 	}
 	return nil
 }

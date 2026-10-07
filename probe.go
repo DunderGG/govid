@@ -17,7 +17,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 )
@@ -190,10 +189,6 @@ func (engine *DownloadEngine) probeArgs(req DownloadRequest, singleVideo bool) [
 		args = append(args, "--no-playlist")
 	}
 	args = append(args, engine.jsRuntimeArgs()...)
-	if req.CookiesPath != "" {
-		if _, err := os.Stat(req.CookiesPath); err == nil {
-			args = append(args, "--cookies", req.CookiesPath)
-		}
-	}
+	args = append(args, cookieArgs(req)...)
 	return append(args, req.URL)
 }

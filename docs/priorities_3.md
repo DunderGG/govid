@@ -136,9 +136,17 @@ Tests: `TestRunStoppedRecordingKeepsAndFinalizesIt` and the existing `TestRunCan
 
 ---
 
-## 3. Cookies from the browser
+## 3. ✅ Cookies from the browser
 
 **Roadmap:** Medium Priority → Authentication Support (new item added this round).
+
+**Status: Done in code** (new file [cookies.go](../cookies.go)); the hand check with a signed-in Firefox is still to do (see the roadmap's Testing section).
+- **The setting.** Preferences → **Cookies** is None / From file (the existing file field) / From browser (a browser dropdown with Firefox first, and an optional profile name); the controls of the chosen source show below it. `cookieSource`, `cookieBrowser`, and `cookieProfile` are in `AppConfig` (validated against `cookieSourceOptions` and `cookieBrowserOptions`), `govid.json`, and a new "Cookies" presets group, added last so the existing groups keep their order. Settings saved before have no source; `resolveDefaults` makes it From file when a cookies file was set, so nobody's cookies stop working. `cookieArgs` gives both the probe and the download `--cookies-from-browser <browser>[:<profile>]` or `--cookies <file>`.
+- **The recorded lines.** Run with the bundled yt-dlp 2026.03.17 on 2026-10-07, against a local URL (nothing listening) so the cookies were only read and never sent: Chrome with its database held open without sharing, as a running Chrome holds it, gave `ERROR: Could not copy Chrome cookie database. See  https://github.com/yt-dlp/yt-dlp/issues/7271  for more info`. Chrome and Edge, closed, gave `ERROR: Failed to decrypt with DPAPI. See  https://github.com/yt-dlp/yt-dlp/issues/10927  for more info` (app-bound encryption). A Firefox profile that does not exist gave `ERROR: could not find firefox cookies database in '…'`. `classifyAccessError` matches these, and `accessHint` says plainly: close the browser, use Firefox, or export a `cookies.txt`.
+- **Better hints.** The bot check ("Sign in to confirm you’re not a bot", as YouTube answered this machine), age-restricted, members-only, and private errors now suggest cookies and name **Tools → Preferences → Cookies**. The advice depends on what was passed: with no cookies, choose From browser; with a browser, check that you are signed in there; with a file, export it again. The bot-check hint still suggests updating yt-dlp; other site-change errors keep the update hint.
+- **Safety.** The guide says cookies are your login, that GoVid only passes them to yt-dlp, and that the log names only the source. The session configuration's "Cookies file: <path>" line is now "Cookies: Firefox" / "file set" (`cookieLabel`), never the path or the profile name; #7's diagnostics will use the same label.
+
+Tests: `TestCookieArgsForEachSource` (download and probe), `TestClassifyAccessError` (the recorded lines and YouTube's sign-in messages), `TestAccessHintsSayWhatToDo`, `TestBrowserCookiesFailureExplainsWhatToDo` and `TestBotCheckSuggestsCookies` (new fake modes failing with the recorded lines), `TestCookieLabelNeverShowsThePath`, `TestSessionLogNamesOnlyTheCookieSource`, `TestLoadKeepsAnExistingCookiesFile`, `TestCookiesRowShowsTheChosenSource`, `TestCookiesFromBrowserAndItsLabel`, and the config round-trip tests, which now cover the three new keys.
 
 **Problem.** Age-restricted, members-only, and private videos need the user's login, and so does getting past YouTube's "Sign in to confirm you're not a bot" check. GoVid accepts only a `cookies.txt` file. Users have to export it with a browser extension, and it goes stale.
 

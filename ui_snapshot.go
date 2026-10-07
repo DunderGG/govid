@@ -31,6 +31,9 @@ func snapshotPreferences(ui *UIWidgets, savePath string) AppPreferences {
 		MaxSpeed:          strings.TrimSpace(ui.prefs.maxSpeed.Text),
 		ThemeMode:         ui.prefs.themeMode.Selected,
 		CookiesPath:       strings.TrimSpace(ui.prefs.cookies.Text),
+		CookieSource:      ui.prefs.cookieSource.Selected,
+		CookieBrowser:     ui.prefs.cookieBrowser.Selected,
+		CookieProfile:     strings.TrimSpace(ui.prefs.cookieProfile.Text),
 		LogLimit:          ui.prefs.logLimit.Selected,
 		ShowDebug:         ui.prefs.showDebug.Checked,
 		CheckUpdates:      ui.prefs.checkUpdates.Checked,
@@ -104,7 +107,7 @@ func newSessionConfig(ui *UIWidgets, urls []string, savePath, trimStart, trimEnd
 		TrimStart:   trimStart,
 		TrimEnd:     trimEnd,
 		MaxSpeed:    strings.TrimSpace(ui.prefs.maxSpeed.Text),
-		CookiesPath: strings.TrimSpace(ui.prefs.cookies.Text),
+		Cookies:     cookieLabel(ui.prefs.cookieSource.Selected, ui.prefs.cookieBrowser.Selected, ui.prefs.cookieProfile.Text, strings.TrimSpace(ui.prefs.cookies.Text)),
 
 		SaveLog:            ui.download.saveLog.Checked,
 		Notify:             ui.download.notify.Checked,
@@ -173,6 +176,9 @@ func applyGeneralPrefs(ui *UIWidgets, p AppPreferences) {
 	ui.prefs.maxSpeed.SetText(p.MaxSpeed)
 	ui.prefs.themeMode.SetSelected(p.ThemeMode)
 	ui.prefs.cookies.SetText(p.CookiesPath)
+	ui.prefs.cookieSource.SetSelected(p.CookieSource)
+	ui.prefs.cookieBrowser.SetSelected(p.CookieBrowser)
+	ui.prefs.cookieProfile.SetText(p.CookieProfile)
 }
 
 // applyPostProcessPrefs writes the preferences shown in the Post-Processing

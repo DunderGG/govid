@@ -282,6 +282,7 @@ package "Download Engine" #FFF8F0 {
         +TrimEnd : string
         +MaxSpeed : string
         +CookiesPath : string
+        +CookiesFromBrowser : string
         +EmbedMetadata : bool
         +EmbedThumbnail : bool
         +EmbedChapters : bool
@@ -646,6 +647,9 @@ package "Preference Service" #FFF0F0 {
         +AutoSubtitles : bool
         +KeepHistory : bool
         +CookiesPath : string
+        +CookieSource : string
+        +CookieBrowser : string
+        +CookieProfile : string
         +MaxSpeed : string
         +BatchMode : bool
         +SaveLog : bool
@@ -802,7 +806,8 @@ package "Log Service" #F0F8FF {
         +TrimStart : string
         +TrimEnd : string
         +MaxSpeed : string
-        +CookiesPath : string
+        +Cookies : string
+        +JSRuntime : string
         +EmbedMetadata : bool
         +EmbedThumbnail : bool
         +EmbedChapters : bool

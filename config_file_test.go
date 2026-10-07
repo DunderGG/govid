@@ -60,6 +60,7 @@ func changedPreferences(t *testing.T) AppPreferences {
 	return AppPreferences{
 		SavePrefs: false, SavedPath: t.TempDir(), Format: formatWebM, Quality: quality480p,
 		MaxSpeed: "2M", ThemeMode: themeLight, CookiesPath: cookies, LogLimit: "1000",
+		CookieSource: cookieSourceBrowser, CookieBrowser: browserChrome, CookieProfile: "work",
 		ShowDebug: true, CheckUpdates: false, EmbedMetadata: false, EmbedThumbnail: false, EmbedChapters: true,
 		Subtitles: subtitlesBoth, SubtitleLangs: "de,fr", AutoSubtitles: true, KeepHistory: false,
 		BatchMode: true, SaveLog: true, Notify: true, AutoRetry: true, EnablePostProcess: false,

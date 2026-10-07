@@ -30,6 +30,9 @@ const (
 	prefThemeMode         = "themeMode"
 	prefSavePrefs         = "savePrefs"
 	prefCookiesPath       = "cookiesPath"
+	prefCookieSource      = "cookieSource"
+	prefCookieBrowser     = "cookieBrowser"
+	prefCookieProfile     = "cookieProfile"
 	prefLogLimit          = "logLimit"
 	prefShowDebug         = "showDebug"
 	prefCheckUpdates      = "checkUpdates"
@@ -91,6 +94,7 @@ const (
 	defaultSharpenAmount     = 1.0
 	defaultEnablePostProcess = true
 	defaultGPUBackend        = gpuBackendLabelAuto
+	defaultCookieBrowser     = browserFirefox
 )
 
 // AppPreferences is a plain value struct that mirrors every user preference.
@@ -104,6 +108,9 @@ type AppPreferences struct {
 	MaxSpeed          string
 	ThemeMode         string
 	CookiesPath       string
+	CookieSource      string // one of cookieSourceOptions
+	CookieBrowser     string // one of cookieBrowserOptions
+	CookieProfile     string // the browser profile to read cookies from; "" for the default
 	LogLimit          string
 	ShowDebug         bool   // show yt-dlp [debug] lines in the log view (they always go to the log file)
 	CheckUpdates      bool   // check for newer yt-dlp and GoVid releases on startup
@@ -179,6 +186,9 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		MaxSpeed:          prefSvc.store.String(prefMaxSpeed),
 		ThemeMode:         prefSvc.store.StringWithFallback(prefThemeMode, defaultThemeMode),
 		CookiesPath:       prefSvc.store.String(prefCookiesPath),
+		CookieSource:      prefSvc.store.String(prefCookieSource),
+		CookieBrowser:     prefSvc.store.StringWithFallback(prefCookieBrowser, defaultCookieBrowser),
+		CookieProfile:     prefSvc.store.String(prefCookieProfile),
 		LogLimit:          prefSvc.store.StringWithFallback(prefLogLimit, defaultLogLimit),
 		ShowDebug:         prefSvc.store.Bool(prefShowDebug),
 		CheckUpdates:      prefSvc.store.BoolWithFallback(prefCheckUpdates, defaultCheckUpdates),
@@ -216,9 +226,10 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 	return resolveDefaults(p)
 }
 
-// resolveDefaults fills the save path, format, and quality when they are
-// empty. Unlike the fixed defaults applied in Load, an explicitly stored
-// empty value also falls back, since none of the three is usable empty.
+// resolveDefaults fills the save path, format, quality, and cookie source
+// when they are empty. Unlike the fixed defaults applied in Load, an
+// explicitly stored empty value also falls back, since none of them is
+// usable empty.
 // The save path and format defaults depend on the install location and
 // platform, so they are computed rather than constant.
 func resolveDefaults(p AppPreferences) AppPreferences {
@@ -230,6 +241,14 @@ func resolveDefaults(p AppPreferences) AppPreferences {
 	}
 	if p.Quality == "" {
 		p.Quality = defaultQuality
+	}
+	// Before the Cookies choice existed, a cookies file was used whenever
+	// one was set, so settings from then keep using it.
+	if p.CookieSource == "" {
+		p.CookieSource = cookieSourceNone
+		if p.CookiesPath != "" {
+			p.CookieSource = cookieSourceFile
+		}
 	}
 	return p
 }
@@ -270,6 +289,9 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 	prefSvc.store.SetString(prefMaxSpeed, p.MaxSpeed)
 	prefSvc.store.SetString(prefThemeMode, p.ThemeMode)
 	prefSvc.store.SetString(prefCookiesPath, p.CookiesPath)
+	prefSvc.store.SetString(prefCookieSource, p.CookieSource)
+	prefSvc.store.SetString(prefCookieBrowser, p.CookieBrowser)
+	prefSvc.store.SetString(prefCookieProfile, p.CookieProfile)
 	prefSvc.store.SetString(prefLogLimit, p.LogLimit)
 	prefSvc.store.SetBool(prefShowDebug, p.ShowDebug)
 	prefSvc.store.SetBool(prefCheckUpdates, p.CheckUpdates)
@@ -310,7 +332,7 @@ func (prefSvc *PreferenceService) Save(p AppPreferences) {
 func (prefSvc *PreferenceService) Reset() {
 	for _, key := range []string{
 		prefSavedPath, prefFormat, prefQuality, prefMaxSpeed, prefThemeMode,
-		prefSavePrefs, prefCookiesPath, prefLogLimit, prefShowDebug, prefCheckUpdates,
+		prefSavePrefs, prefCookiesPath, prefCookieSource, prefCookieBrowser, prefCookieProfile, prefLogLimit, prefShowDebug, prefCheckUpdates,
 		prefEmbedMetadata, prefEmbedThumbnail, prefEmbedChapters,
 		prefSubtitles, prefSubtitleLangs, prefAutoSubtitles,
 		prefKeepHistory,

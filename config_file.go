@@ -37,6 +37,9 @@ type AppConfig struct {
 	MaxSpeed          *string  `json:"maxSpeed,omitempty"`
 	ThemeMode         *string  `json:"themeMode,omitempty"`
 	CookiesPath       *string  `json:"cookiesPath,omitempty"`
+	CookieSource      *string  `json:"cookieSource,omitempty"`
+	CookieBrowser     *string  `json:"cookieBrowser,omitempty"`
+	CookieProfile     *string  `json:"cookieProfile,omitempty"`
 	LogLimit          *string  `json:"logLimit,omitempty"`
 	ShowDebug         *bool    `json:"showDebug,omitempty"`
 	CheckUpdates      *bool    `json:"checkUpdates,omitempty"`
@@ -87,6 +90,8 @@ type configRule struct {
 var configRules = map[string]configRule{
 	"SavedPath":        {check: checkFolder, emptyKeeps: true},
 	"CookiesPath":      {check: checkFileOrEmpty},
+	"CookieSource":     {options: func() []string { return cookieSourceOptions }},
+	"CookieBrowser":    {options: func() []string { return cookieBrowserOptions }},
 	"Format":           {options: func() []string { return formatOptions }},
 	"Quality":          {options: func() []string { return qualityOptions }},
 	"ThemeMode":        {options: func() []string { return themeOptions }},

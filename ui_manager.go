@@ -355,7 +355,7 @@ func (manager *UIManager) showConfigHelp() {
 		{"Presets", "A preset is a named set of settings, such as an audio-only setup or a 1080p MP4 setup. Choosing one in the **Preset** dropdown sets the settings it holds and leaves every other setting as it is. GoVid starts with three: **Audio (MP3, metadata + cover)**, **1080p MP4**, and **Archive (MKV, Best, subtitles, chapters)**.\n\n" +
 			"**(modified)** appears beside the dropdown once one of the preset's settings has been changed since it was chosen.\n\n" +
 			"The **⋮** button beside the dropdown offers:\n" +
-			"  * **Save current as preset…** – stores the current values of the groups you tick (format and quality, save folder, speed limit, embedding, subtitles, the main window's toggles, post-processing) under a name. Using an existing name replaces that preset\n" +
+			"  * **Save current as preset…** – stores the current values of the groups you tick (format and quality, save folder, speed limit, embedding, subtitles, the main window's toggles, post-processing, cookies) under a name. Using an existing name replaces that preset\n" +
 			"  * **Manage presets…** – rename or delete presets\n" +
 			"  * **Import presets…** / **Export presets…** – move presets between computers in one file. Imported presets replace presets of the same name; a value that does not work on this computer, such as a save folder that does not exist, is left out and listed"},
 		{"Output Format", "The container format for the downloaded file:\n" +
@@ -399,7 +399,13 @@ func (manager *UIManager) showConfigHelp() {
 			"On Linux the downloads do not apply; install the tools with your package manager."},
 		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
-		{"Cookies File", "Found in **Tools → Preferences**. Path to a `cookies.txt` file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file."},
+		{"Cookies", "Found in **Tools → Preferences**. Cookies are your login: with them, yt-dlp can download age-restricted, members-only, and private videos you can watch when signed in, and get past YouTube's \"Sign in to confirm you're not a bot\" check. Choose where they come from:\n" +
+			"  * **" + cookieSourceNone + "** (default) – no login\n" +
+			"  * **" + cookieSourceFile + "** – a `cookies.txt` file in Mozilla/Netscape format, exported with a browser extension. It stops working when the site logs you out, so export it again then\n" +
+			"  * **" + cookieSourceBrowser + "** – read straight from a browser you are signed in with; optionally name a profile (leave it empty for the default one)\n\n" +
+			"On Windows, **Firefox** works best. Chrome, Edge, and other Chromium browsers lock their cookies while they are open, and encrypt them in a way yt-dlp cannot read (app-bound encryption). When that happens, GoVid says so in the log and suggests closing the browser, using Firefox, or exporting a `cookies.txt` instead. When a site asks you to sign in, or a video is age-restricted, members-only, or private, the log says which setting to use.\n\n" +
+			"⚠️ **Security**: cookies give access to your accounts. GoVid only passes them to yt-dlp, which sends each cookie only to its own site. The session log names only the source (\"Firefox\", \"file set\"), never the file's path or its contents. Never share a cookies file."},
+
 		{"Post-Processing", "Found in **Tools → Post-Processing**. Enhance your downloads using FFmpeg. Most filters trigger a full re-encode.\n\n⚠️ **WebM files** use VP9 encoding which is significantly slower than H.264 — use MKV for faster post-processing."},
 		{"Cancel", "Stops the active download immediately and deletes its partly downloaded files. In batch mode, it skips the current URL and moves on to the next one. While a live stream is recorded, the button reads **Stop recording** and keeps what was recorded."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
@@ -410,6 +416,7 @@ func (manager *UIManager) showConfigHelp() {
 			"* **quality**: " + codeList(qualityOptions) + "\n" +
 			"* **maxSpeed**: a rate with unit, e.g. `50K`, `5M`, `1G`, or `\"\"` for unlimited\n" +
 			"* **cookiesPath**: an existing cookies file, or `\"\"` for none\n" +
+			"* **cookieSource**: " + codeList(cookieSourceOptions) + "; **cookieBrowser**: " + codeList(cookieBrowserOptions) + "; **cookieProfile**: a browser profile name, or `\"\"` for the default\n" +
 			"* **themeMode**: " + codeList(themeOptions) + "\n" +
 			"* **logLimit**: " + codeList(logLimitOptions) + "\n" +
 			"* **subtitles**: " + codeList(subtitleModeOptions) + "\n" +
@@ -486,7 +493,7 @@ func (manager *UIManager) showPreferences() {
 			{Text: "Subtitle Languages", Widget: ui.prefs.subtitleLangs, HintText: "Comma-separated language codes or patterns, e.g. en.*,de (yt-dlp --sub-langs)"},
 			{Text: "Max Download Speed", Widget: ui.prefs.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
 			{Text: "Application Theme", Widget: ui.prefs.themeMode, HintText: "Restart may be required for some changes"},
-			{Text: "Cookies File", Widget: manager.buildCookiesRow(), HintText: "Path to a Mozilla/Netscape-format cookies.txt file"},
+			{Text: "Cookies", Widget: manager.buildCookiesRow(), HintText: "Your login, for age-restricted, members-only, and private videos and YouTube's bot check. On Windows, Firefox works best"},
 		},
 		OnSubmit: manager.submitPreferences,
 	}
@@ -507,9 +514,35 @@ func (manager *UIManager) showPreferences() {
 	manager.prefsWindow.Show()
 }
 
-// buildCookiesRow lays out the cookies-file entry with a browse button that
-// picks a cookie file and a button that clears the entry.
+// buildCookiesRow lays out the Cookies choice (None / From file / From
+// browser) with the controls of the chosen source below it: the cookies
+// file entry, with a browse and a clear button, or the browser and an
+// optional profile name.
 func (manager *UIManager) buildCookiesRow() fyne.CanvasObject {
+	prefs := manager.ui.prefs
+	browserRow := container.NewBorder(nil, nil, fixedWidth(prefs.cookieBrowser, 140), nil, prefs.cookieProfile)
+	fileRow := manager.buildCookiesFileRow()
+	showSource := func(source string) {
+		setVisible(fileRow, source == cookieSourceFile)
+		setVisible(browserRow, source == cookieSourceBrowser)
+	}
+	showSource(prefs.cookieSource.Selected)
+	prefs.cookieSource.OnChanged = showSource
+	return container.NewVBox(prefs.cookieSource, fileRow, browserRow)
+}
+
+// setVisible shows or hides obj.
+func setVisible(obj fyne.CanvasObject, visible bool) {
+	if visible {
+		obj.Show()
+	} else {
+		obj.Hide()
+	}
+}
+
+// buildCookiesFileRow lays out the cookies-file entry with a browse button
+// that picks a cookie file and a button that clears the entry.
+func (manager *UIManager) buildCookiesFileRow() fyne.CanvasObject {
 	cookies := manager.ui.prefs.cookies
 
 	browseBtn := widget.NewButtonWithIcon("", theme.FolderOpenIcon(), func() {

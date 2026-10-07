@@ -24,13 +24,14 @@ import (
 
 // scanResult holds metadata collected while reading a yt-dlp process's output.
 type scanResult struct {
-	sourceExts        []string // file extensions seen in "[download] Destination:" lines
-	wasConverted      bool     // true when [Merger] or [VideoConvertor] appeared in the output
-	hadTransientErr   bool     // true when a recoverable network/rate-limit error was seen in stderr
-	hadExtractorErr   bool     // true when stderr showed an error typical of a site change that a newer yt-dlp may fix
-	hadExpiredLinkErr bool     // true when stderr showed an HTTP 403 or 410 error, which expired format URLs give
-	hadSubtitleErr    bool     // true when stderr said subtitles could not be downloaded, which fails the whole download
-	hadNoJSRuntime    bool     // true when yt-dlp warned that it found no JavaScript runtime for YouTube
+	sourceExts        []string      // file extensions seen in "[download] Destination:" lines
+	wasConverted      bool          // true when [Merger] or [VideoConvertor] appeared in the output
+	hadTransientErr   bool          // true when a recoverable network/rate-limit error was seen in stderr
+	hadExtractorErr   bool          // true when stderr showed an error typical of a site change that a newer yt-dlp may fix
+	hadExpiredLinkErr bool          // true when stderr showed an HTTP 403 or 410 error, which expired format URLs give
+	hadSubtitleErr    bool          // true when stderr said subtitles could not be downloaded, which fails the whole download
+	hadNoJSRuntime    bool          // true when yt-dlp warned that it found no JavaScript runtime for YouTube
+	accessProblem     accessProblem // the first error that cookies caused or would fix (see classifyAccessError)
 }
 
 // expiredLinkErrPatterns are substrings of the errors a site gives for a
@@ -165,6 +166,9 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 			// it falls back from loaded info to the URL.
 			result.hadSubtitleErr = result.hadSubtitleErr || strings.Contains(line, subtitleErrPattern)
 			result.hadNoJSRuntime = result.hadNoJSRuntime || strings.Contains(line, noJSRuntimePattern)
+			if result.accessProblem == accessOK {
+				result.accessProblem = classifyAccessError(line)
+			}
 			var logColor color.Color // nil = default foreground, resolved by the UI
 			switch {
 			case strings.Contains(line, "ERROR:"):

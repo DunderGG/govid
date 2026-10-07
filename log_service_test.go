@@ -279,7 +279,7 @@ func TestWriteSessionConfig(t *testing.T) {
 		"[SYSTEM] Mode: batch=true, url_count=2",
 		"[SYSTEM] Format/quality: MP4 / 1080p",
 		"[SYSTEM] Max speed: (none)",
-		"[SYSTEM] Cookies file: (none)",
+		"[SYSTEM] Cookies: none",
 		`[SYSTEM] URL field (raw): "(empty)"`,
 		"[SYSTEM] URL[1]: https://example.com/a",
 		"[SYSTEM] URL[2]: https://example.com/b",

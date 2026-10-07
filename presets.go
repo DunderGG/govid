@@ -84,6 +84,7 @@ var presetGroups = []presetGroup{
 		"NormalizeAudio", "VividMode", "Denoise", "DenoiseMode", "HDRToSDR", "Deband", "AutoCrop",
 		"Stabilize", "Deinterlace", "NightMode", "UpscaleVideo", "UpscaleTarget", "GPUBackend",
 	}},
+	{label: "Cookies (source, browser, and profile)", fields: []string{"CookieSource", "CookieBrowser", "CookieProfile"}},
 }
 
 // findPreset returns the preset called name.

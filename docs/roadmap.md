@@ -99,7 +99,7 @@ This document outlines planned features, improvements, and known limitations for
 > Support downloading from websites like Twitter, which requires cookies.
 
 - [X] Add a "Cookies File" selector in Preferences to pass `--cookies` to yt-dlp.
-- [ ] Read cookies straight from a browser (`--cookies-from-browser`), with clear messages for the Chrome/Edge cases yt-dlp cannot read on Windows.
+- [x] Read cookies straight from a browser (`--cookies-from-browser`), with clear messages for the Chrome/Edge cases yt-dlp cannot read on Windows. (Preferences → **Cookies**: None / From file / From browser, with Firefox first and an optional profile; `cookieSource`/`cookieBrowser`/`cookieProfile` in `govid.json` and a presets group. A locked database, app-bound encryption, and a missing profile are recognised from the lines the bundled yt-dlp printed, and the bot check, age-restricted, members-only, and private errors now suggest cookies, naming the setting. The session log names only the source.)
 
 ### Video Trimming
 > Allow users to download only a specific segment of a video.
@@ -363,6 +363,7 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Metadata embedding: an MP3 download shows its title, artist, date, and cover in a music player. ([priorities.md](priorities.md) #10)
 - [ ] Subtitles: a real YouTube video downloaded with **Embed** has a selectable subtitle track in a player. ([priorities_2.md](priorities_2.md) #4)
 - [ ] Self-update: a release build one version behind updates itself from a real GitHub release and restarts on the new version. ([priorities_2.md](priorities_2.md) #10)
+- [ ] Cookies: with Firefox signed in to YouTube and Cookies set to From browser → Firefox, an age-restricted video downloads. (The error lines were recorded from the real yt-dlp against this machine's browsers, with a local URL so no cookie left the machine; no download was made with a real login.) ([priorities_3.md](priorities_3.md) #3)
 - [ ] Live streams: record a real YouTube live stream for a few minutes, press **Stop recording**, and play the saved file; try **Record from the start** and a scheduled premiere with **Wait and record**. The recording path was checked against a public live HLS test stream (yt-dlp's generic extractor), not YouTube, which asked this machine to sign in. ([priorities_3.md](priorities_3.md) #2)
 - [ ] Components: on a machine with no JavaScript runtime, the startup notice installs Deno, and the next YouTube download's verbose log shows `JS runtimes: deno-…` and no runtime warning; with `bin/ffmpeg.exe` deleted, Components → FFmpeg → **Install** restores it with `ffprobe.exe`, and post-processing shows a percentage again. The installer and yt-dlp with the installed Deno were checked against the real sources outside the GUI. ([priorities_3.md](priorities_3.md) #1)
 

@@ -100,3 +100,36 @@ const (
 
 // subtitleModeOptions lists the subtitle modes in display order.
 var subtitleModeOptions = []string{subtitlesOff, subtitlesEmbed, subtitlesSRT, subtitlesBoth}
+
+// Where yt-dlp gets cookies from (Preferences "Cookies").
+const (
+	cookieSourceNone    = "None"
+	cookieSourceFile    = "From file"
+	cookieSourceBrowser = "From browser"
+)
+
+// cookieSourceOptions lists the cookie sources in display order.
+var cookieSourceOptions = []string{cookieSourceNone, cookieSourceFile, cookieSourceBrowser}
+
+// Browsers yt-dlp can read cookies from (--cookies-from-browser). yt-dlp's
+// name for each is the label in lower case.
+const (
+	browserFirefox  = "Firefox"
+	browserChrome   = "Chrome"
+	browserEdge     = "Edge"
+	browserBrave    = "Brave"
+	browserChromium = "Chromium"
+	browserOpera    = "Opera"
+	browserVivaldi  = "Vivaldi"
+	browserWhale    = "Whale"
+	browserSafari   = "Safari"
+)
+
+// cookieBrowserOptions lists the browsers in display order. Firefox comes
+// first because on Windows it is the one yt-dlp can always read: Chrome,
+// Edge, and the other Chromium browsers lock their cookies while they run
+// and encrypt them with app-bound encryption.
+var cookieBrowserOptions = []string{
+	browserFirefox, browserChrome, browserEdge, browserBrave, browserChromium,
+	browserOpera, browserVivaldi, browserWhale, browserSafari,
+}
