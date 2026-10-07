@@ -206,6 +206,8 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Add `timeout-minutes` to the job (e.g. 30) and `-timeout` to `go test`, so a hung test or fake tool fails quickly instead of holding the runner for the default 6 hours.
 - [ ] Cancel superseded runs with a `concurrency` group on the branch (`cancel-in-progress: true`), and run `push` only for `main` so a pull request branch isn't tested twice.
 - [ ] Check that `go.mod` and `go.sum` are tidy (`go mod tidy -diff`).
+- [ ] Set `LANG: C.UTF-8` (or `en_US.UTF-8`) for the Ubuntu job. The runner's `C` locale makes Fyne log "Error parsing user locale C" for every test app, which buries the real failures in the test output.
+- [x] Make the tests independent of the platform's default format. (`changedPreferences` in `config_file_test.go` set Format to MKV, which is already the default on Linux, so `TestChangedPreferencesChangesEverySetting` failed only on Ubuntu. It now uses WebM, which is never the default.)
 
 ### Proper Version String
 > Embed a build version for display and update-checking purposes.
