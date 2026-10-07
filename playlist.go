@@ -51,6 +51,14 @@ func (item queueItem) withInfo(info *MediaInfo) queueItem {
 	return item
 }
 
+// displayName is how the item is named to the user: its title, or its URL.
+func (item queueItem) displayName() string {
+	if item.title != "" {
+		return item.title
+	}
+	return item.url
+}
+
 // needsProbe reports whether the item must be probed (again) before it is
 // downloaded at now: a playlist entry has not been probed yet, and an answer
 // older than probeMaxAge holds format URLs that may have expired.

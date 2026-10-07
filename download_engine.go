@@ -77,6 +77,17 @@ type DownloadRequest struct {
 	SubtitleLangs string
 	AutoSubtitles bool
 
+	// Live records a live stream: it has no end, so Run reports its
+	// progress through ProcessCallbacks.OnRecording, and a stop (see
+	// errStopKeep) or a failure keeps what was recorded. LiveFromStart
+	// records it from its beginning (YouTube and Twitch). WaitForVideo
+	// waits for a scheduled stream to start, which ReleaseTime says when
+	// (zero when unknown).
+	Live          bool
+	LiveFromStart bool
+	WaitForVideo  bool
+	ReleaseTime   time.Time
+
 	// InfoJSON is the probe's JSON for URL (see MediaInfo), or nil. When set,
 	// Run has yt-dlp load it instead of extracting the video again.
 	InfoJSON []byte
@@ -224,6 +235,8 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 		args = append(args, "--force-keyframes-at-cuts")
 	}
 
+	args = append(args, liveArgs(req)...)
+
 	embedFlags, thumbnailSkipped := embedArgs(req, extension)
 	args = append(args, embedFlags...)
 	subtitleFlags, subtitlesSkipped := subtitleArgs(req, extension)
@@ -248,6 +261,28 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 		HasSubtitles:     len(subtitleFlags) > 0,
 		SubtitlesSkipped: subtitlesSkipped,
 	}
+}
+
+// waitForVideoRange is how long yt-dlp waits between checks of a scheduled
+// stream, in seconds: it waits until the announced start, but at least a
+// minute and at most five, and then asks the site again.
+const waitForVideoRange = "60-300"
+
+// liveArgs returns the yt-dlp flags for recording a live or scheduled
+// stream. Live HLS is written as MPEG-TS, which stays readable when the
+// recording is stopped by killing yt-dlp; see finishRecording.
+func liveArgs(req DownloadRequest) []string {
+	var args []string
+	if req.Live || req.WaitForVideo {
+		args = append(args, "--hls-use-mpegts")
+	}
+	if req.LiveFromStart {
+		args = append(args, "--live-from-start")
+	}
+	if req.WaitForVideo {
+		args = append(args, "--wait-for-video", waitForVideoRange)
+	}
+	return args
 }
 
 // subtitleArgs returns the yt-dlp flags that fetch subtitles as req asks:
@@ -329,6 +364,12 @@ type ProcessCallbacks struct {
 	// runs with ffmpeg once the download is complete: phaseMerging or
 	// phaseConverting.
 	OnPhase func(phase string)
+	// OnRecording, which may be nil, is called about once a second while a
+	// live stream (DownloadRequest.Live or WaitForVideo) is recorded:
+	// started is false until its first file appears (while yt-dlp waits
+	// for the stream), elapsed counts from then, and size is the bytes
+	// recorded so far.
+	OnRecording func(started bool, elapsed time.Duration, size int64)
 }
 
 // DownloadOptions bundles the runtime options shared by Run and Execute:
@@ -406,7 +447,17 @@ type DownloadResult struct {
 	Extension     string   // e.g. "mp4", "mkv", "mp3"
 	Scan          scanResult
 	Err           error
+	// Stopped is set when yt-dlp was stopped (see errStopKeep), or a live
+	// recording ended with an error, and what it wrote was kept and
+	// finalized anyway. Err is then nil.
+	Stopped bool
 }
+
+// errStopKeep is the cause a download's context is cancelled with to stop
+// it but keep what it wrote, as "Stop recording" does for a live stream:
+// Run then finalizes the files instead of removing them (see
+// context.WithCancelCause).
+var errStopKeep = errors.New("stopped; keeping what was downloaded")
 
 // Run composes BuildArgs, Execute, and FinalizeFiles into the full lifecycle
 // of a single URL: build the yt-dlp command, run it with retry handling, and
@@ -439,46 +490,67 @@ func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, opts
 		cb.OnLog("[SYSTEM] Subtitles are not trimmed: they cover the whole video.", colSystem)
 	}
 
-	result := engine.runArgs(ctx, req.SavePath, built, opts, cb)
+	result := engine.runArgs(ctx, req, built, opts, cb)
 	if req.infoJSONPath != "" && result.Err != nil && ctx.Err() == nil && result.Scan.hadExpiredLinkErr {
 		cb.OnLog("[SYSTEM] The video's download links were refused (expired?); asking the site for new ones.", colWarning)
 		req.infoJSONPath = ""
-		result = engine.runArgs(ctx, req.SavePath, engine.BuildArgs(req), opts, cb)
+		result = engine.runArgs(ctx, req, engine.BuildArgs(req), opts, cb)
 	}
 	// A subtitle that cannot be fetched fails the whole download, so try
 	// once more without subtitles rather than lose the video.
 	if built.HasSubtitles && result.Err != nil && ctx.Err() == nil && result.Scan.hadSubtitleErr {
 		cb.OnLog("[SYSTEM] The subtitles could not be downloaded; downloading the video without them.", colWarning)
 		req.Subtitles = subtitlesOff
-		result = engine.runArgs(ctx, req.SavePath, engine.BuildArgs(req), opts, cb)
+		result = engine.runArgs(ctx, req, engine.BuildArgs(req), opts, cb)
 	}
 	return result
 }
 
 // runArgs runs yt-dlp with built's arguments, then finalizes the files it
 // wrote, or removes them if it failed or was cancelled.
-func (engine *DownloadEngine) runArgs(ctx context.Context, savePath string, built DownloadArgs, opts DownloadOptions, cb ProcessCallbacks) DownloadResult {
+//
+// A run stopped with errStopKeep, and a live recording that ends with an
+// error after recording something, keep their files: they are finalized as
+// for a finished download, and a live recording is then made playable in
+// the chosen container (finishRecording).
+func (engine *DownloadEngine) runArgs(ctx context.Context, req DownloadRequest, built DownloadArgs, opts DownloadOptions, cb ProcessCallbacks) DownloadResult {
+	stopMonitor := engine.monitorRecording(req, built.DownloadID, cb.OnRecording)
 	scan, cmdErr := engine.Execute(ctx, built.Args, opts, cb)
+	stopMonitor()
 
-	var finalPaths, subtitlePaths []string
-	if cmdErr == nil {
-		finalPaths, subtitlePaths = splitSubtitleFiles(engine.FinalizeFiles(savePath, built.DownloadID, cb.OnLog))
-		for _, path := range subtitlePaths {
-			cb.OnLog(fmt.Sprintf("[SYSTEM] Saved subtitles: %s", filepath.Base(path)), colSystem)
-		}
-	} else {
+	result := DownloadResult{Extension: built.Extension, Scan: scan, Err: cmdErr}
+	stopped := errors.Is(context.Cause(ctx), errStopKeep)
+	keep := cmdErr != nil && (stopped || req.Live) && engine.hasFiles(req.SavePath, built.DownloadID)
+	if cmdErr != nil && !keep {
 		// Execute returns only once the process tree is dead, so nothing is
 		// still writing to these files.
-		engine.RemovePartialFiles(savePath, built.DownloadID, cb.OnLog)
+		engine.RemovePartialFiles(req.SavePath, built.DownloadID, cb.OnLog)
+		return result
 	}
 
-	return DownloadResult{
-		FinalPaths:    finalPaths,
-		SubtitlePaths: subtitlePaths,
-		Extension:     built.Extension,
-		Scan:          scan,
-		Err:           cmdErr,
+	if keep {
+		if stopped {
+			cb.OnLog("[SYSTEM] Stopped; keeping what was recorded.", colSystem)
+		} else {
+			cb.OnLog(fmt.Sprintf("[SYSTEM] The recording ended with an error (%v); keeping what was recorded.", cmdErr), colWarning)
+		}
+		result.Err, result.Stopped = nil, true
 	}
+	finalPaths, subtitlePaths := splitSubtitleFiles(engine.FinalizeFiles(req.SavePath, built.DownloadID, cb.OnLog))
+	if keep && req.Live {
+		finalPaths = engine.finishRecording(finalPaths, built.Extension, cb.OnLog)
+	}
+	for _, path := range subtitlePaths {
+		cb.OnLog(fmt.Sprintf("[SYSTEM] Saved subtitles: %s", filepath.Base(path)), colSystem)
+	}
+	result.FinalPaths, result.SubtitlePaths = finalPaths, subtitlePaths
+	return result
+}
+
+// hasFiles reports whether yt-dlp wrote any file under downloadID.
+func (engine *DownloadEngine) hasFiles(savePath, downloadID string) bool {
+	matches, err := filepath.Glob(filepath.Join(savePath, "*"+downloadID+"*"))
+	return err == nil && len(matches) > 0
 }
 
 // subtitleExts are the extensions of the subtitle files yt-dlp writes next

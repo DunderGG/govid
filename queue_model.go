@@ -62,18 +62,25 @@ type queueEntry struct {
 // label is the entry's status as the Queue panel shows it, e.g.
 // "Downloading 42%".
 func (entry queueEntry) label() string {
+	if entry.status == queueDownloading && entry.isLive() {
+		return "Recording"
+	}
 	if entry.status == queueDownloading {
 		return fmt.Sprintf("Downloading %.0f%%", entry.progress*100)
 	}
 	return entry.status.String()
 }
 
+// isLive reports whether the entry is a live or scheduled stream, which is
+// recorded rather than downloaded.
+func (entry queueEntry) isLive() bool {
+	info := entry.item.info
+	return info != nil && (info.IsLive() || info.IsUpcoming())
+}
+
 // name is how the Queue panel names the entry: its title, or its URL.
 func (entry queueEntry) name() string {
-	if entry.item.title != "" {
-		return entry.item.title
-	}
-	return entry.item.url
+	return entry.item.displayName()
 }
 
 // QueueModel is a session's download queue. All methods are safe to call

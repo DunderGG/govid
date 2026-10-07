@@ -320,7 +320,7 @@ func TestRunYtDlpSuccessRecordsHistory(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-download")
 	const url = "https://example.com/v"
 
-	paths := h.app.runYtDlp(context.Background(), h.app.newDownloadRequest(url, h.saveDir, "", ""), queueItem{url: url}, 1, 1)
+	paths := h.app.runYtDlp(context.Background(), h.app.newDownloadRequest(url, h.saveDir, "", ""), queueItem{url: url}, 1, 1, nil)
 
 	want := filepath.Join(h.saveDir, "GoVid_Fake Video.mp4")
 	if !slices.Equal(paths, []string{want}) {
@@ -348,7 +348,7 @@ func TestRunYtDlpSuccessRecordsHistory(t *testing.T) {
 func TestRunYtDlpFailure(t *testing.T) {
 	h := newDownloadHarness(t, "fail")
 
-	paths := h.app.runYtDlp(context.Background(), h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, 1, 1)
+	paths := h.app.runYtDlp(context.Background(), h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, 1, 1, nil)
 
 	if paths != nil {
 		t.Errorf("runYtDlp() = %q, want nil", paths)
@@ -370,7 +370,7 @@ func TestRunYtDlpFailure(t *testing.T) {
 func TestRunYtDlpExtractorErrorSuggestsUpdate(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-extractor-error")
 
-	h.app.runYtDlp(context.Background(), h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, 1, 1)
+	h.app.runYtDlp(context.Background(), h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, 1, 1, nil)
 
 	if !strings.Contains(h.joinedLogs(), ytDlpUpdateHint) {
 		t.Errorf("log missing the update hint:\n%s", h.joinedLogs())
@@ -380,7 +380,7 @@ func TestRunYtDlpExtractorErrorSuggestsUpdate(t *testing.T) {
 func TestRunYtDlpOtherFailureGivesNoUpdateHint(t *testing.T) {
 	h := newDownloadHarness(t, "fail")
 
-	h.app.runYtDlp(context.Background(), h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, 1, 1)
+	h.app.runYtDlp(context.Background(), h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, 1, 1, nil)
 
 	if strings.Contains(h.joinedLogs(), ytDlpUpdateHint) {
 		t.Errorf("log has the update hint for an unrelated error:\n%s", h.joinedLogs())
@@ -397,7 +397,7 @@ func TestRunYtDlpCancel(t *testing.T) {
 		}
 	})
 
-	paths := h.app.runYtDlp(ctx, h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, 1, 1)
+	paths := h.app.runYtDlp(ctx, h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, 1, 1, nil)
 
 	if paths != nil {
 		t.Errorf("runYtDlp() = %q, want nil", paths)

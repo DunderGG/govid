@@ -39,6 +39,13 @@ type MediaInfo struct {
 	ID           string `json:"id"`
 	ExtractorKey string `json:"extractor_key"`
 
+	// LiveStatus is yt-dlp's live_status: "is_live", "is_upcoming" (a
+	// scheduled stream or premiere), "post_live", "was_live", or
+	// "not_live"; "" when the site does not say. ReleaseTimestamp is when
+	// a scheduled stream starts, in Unix seconds; 0 when unknown.
+	LiveStatus       string  `json:"live_status"`
+	ReleaseTimestamp float64 `json:"release_timestamp"`
+
 	// Height is the height of the video the -f selector picked (for merged
 	// streams, the video stream's); 0 when unknown or audio only.
 	Height int `json:"height"`
@@ -175,7 +182,10 @@ func (engine *DownloadEngine) probe(ctx context.Context, args []string) (MediaIn
 // one.
 func (engine *DownloadEngine) probeArgs(req DownloadRequest, singleVideo bool) []string {
 	formatFlag, _, _ := formatSelection(req.Format, req.Quality)
-	args := []string{"-J", "--flat-playlist", "--no-warnings", "-f", formatFlag}
+	// A scheduled stream has no formats yet, which yt-dlp would report as
+	// an error; --ignore-no-formats-error returns its details (live_status,
+	// release_timestamp) instead, so GoVid can offer to wait for it.
+	args := []string{"-J", "--flat-playlist", "--no-warnings", "--ignore-no-formats-error", "-f", formatFlag}
 	if singleVideo {
 		args = append(args, "--no-playlist")
 	}

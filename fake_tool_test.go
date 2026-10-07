@@ -195,6 +195,10 @@ func runFakeTool(mode string, args []string) int {
 		return fakeYtDlpDownload(args)
 	case "ytdlp-mixed":
 		return fakeYtDlpMixed(args)
+	case "ytdlp-live":
+		return fakeYtDlpLive(args)
+	case "ytdlp-upcoming":
+		return fakeYtDlpUpcoming(args)
 	case "ytdlp-no-js-runtime":
 		fmt.Fprintln(os.Stderr, "WARNING: [youtube] No supported JavaScript runtime could be found. Only deno is enabled by default; to use another runtime add  --js-runtimes RUNTIME[:PATH]  to your command/config. YouTube extraction without a JS runtime has been deprecated, and some formats may be missing.")
 		return fakeYtDlpDownload(args)
@@ -371,6 +375,12 @@ func fakeYtDlpProbe(mode, url string, noPlaylist bool) int {
 	case mode == "ytdlp-probe-fail":
 		fmt.Fprintln(os.Stderr, "ERROR: [generic] fake: Unable to download webpage")
 		return 1
+	case mode == "ytdlp-live":
+		fmt.Printf(`{"_type": "video", "id": "fakelive", "extractor_key": "Youtube", "webpage_url": %q, "title": "Fake Live", "live_status": "is_live", "is_live": true}`+"\n", url)
+		return 0
+	case mode == "ytdlp-upcoming":
+		fmt.Printf(`{"_type": "video", "id": "fakepremiere", "extractor_key": "Youtube", "webpage_url": %q, "title": "Fake Premiere", "live_status": "is_upcoming", "release_timestamp": %d}`+"\n", url, time.Now().Add(2*time.Hour).Unix())
+		return 0
 	}
 	recordFakeExtraction()
 	fmt.Printf(`{"_type": "video", "id": "fakevid", "extractor_key": "Fake", "webpage_url": %q, "title": "Fake Video", "duration": 10, "height": %d, "subtitles": {"en": [], "de": []}, "automatic_captions": {"en": [], "fr": []}, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
@@ -554,4 +564,47 @@ func fakeYtDlpMixed(args []string) int {
 	default:
 		return fakeYtDlpDownload(args)
 	}
+}
+
+// fakeYtDlpLive mimics recording a live stream: it writes the output file
+// and keeps adding to it, as yt-dlp's ffmpeg does, until it is killed (or a
+// minute passes).
+func fakeYtDlpLive(args []string) int {
+	path, _ := fakeOutputPath(args)
+	if path == "" {
+		fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: missing -P or -o in %q\n", args)
+		return 2
+	}
+	file, err := os.Create(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: %v\n", err)
+		return 2
+	}
+	defer file.Close()
+	fmt.Println("[download] Destination: " + path)
+	chunk := make([]byte, 64*1024)
+	for range 600 {
+		file.Write(chunk)
+		time.Sleep(100 * time.Millisecond)
+	}
+	return 0
+}
+
+// fakeYtDlpUpcoming mimics a scheduled stream: without --wait-for-video it
+// fails as yt-dlp does; with it, yt-dlp waits, and then this fake records a
+// short stream that ends by itself.
+func fakeYtDlpUpcoming(args []string) int {
+	if argAfter(args, "--wait-for-video") == "" {
+		fmt.Fprintln(os.Stderr, "ERROR: [youtube] fakepremiere: This live event will begin in 2 hours.")
+		return 1
+	}
+	fmt.Println("[wait] Waiting for 00:05:00 - Press Ctrl+C to try now")
+	time.Sleep(1500 * time.Millisecond)
+	path, _ := fakeOutputPath(args)
+	if err := os.WriteFile(path, []byte("recorded premiere"), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: %v\n", err)
+		return 2
+	}
+	fmt.Println("[download] Destination: " + path)
+	return 0
 }

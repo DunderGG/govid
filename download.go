@@ -307,36 +307,55 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 		return nil, false
 	}
 	req := app.newDownloadRequest(item.url, session.savePath, session.trimStart, session.trimEnd)
+	if !app.prepareLive(runCtx, item, &req) {
+		queue.SetStatus(id, queueSkipped)
+		return nil, false
+	}
 	app.reportQualityFit(item, req)
 	app.reportSubtitles(item, req)
 
-	switch app.checkDiskSpace(queueCtx, session, item, queue.HasWaiting(), continueLowSpace) {
-	case spaceSkip:
-		app.appendOutput(fmt.Sprintf("[SYSTEM] Skipped %s: not enough disk space.", item.url), colWarning)
-		queue.SetStatus(id, queueSkipped)
-		return nil, false
-	case spaceStop:
-		app.appendOutput("[SYSTEM] Queue stopped: not enough disk space.", colWarning)
-		app.updateStatus("Status: Stopped (not enough disk space).")
-		app.setStatusIndicator(StatusCanceled)
-		queue.SetStatus(id, queueSkipped)
-		return nil, true
+	// A live stream has no size to check; recordingCallback watches the
+	// free space while it records instead.
+	if !req.Live {
+		switch app.checkDiskSpace(queueCtx, session, item, queue.HasWaiting(), continueLowSpace) {
+		case spaceSkip:
+			app.appendOutput(fmt.Sprintf("[SYSTEM] Skipped %s: not enough disk space.", item.url), colWarning)
+			queue.SetStatus(id, queueSkipped)
+			return nil, false
+		case spaceStop:
+			app.appendOutput("[SYSTEM] Queue stopped: not enough disk space.", colWarning)
+			app.updateStatus("Status: Stopped (not enough disk space).")
+			app.setStatusIndicator(StatusCanceled)
+			queue.SetStatus(id, queueSkipped)
+			return nil, true
+		}
 	}
 
-	if item.info != nil {
+	// A live or scheduled stream is extracted again when it downloads:
+	// its manifest changes, and a scheduled one has no formats yet.
+	if item.info != nil && !req.Live {
 		req.InfoJSON = item.info.raw
 		// The JSON can be large and is not needed again once used.
 		defer func() { item.info.raw = nil }()
 	}
 	queue.SetStatus(id, queueDownloading)
-	paths = app.runYtDlp(runCtx, req, item, position, total)
+	stopRecording := func() {}
+	if req.Live {
+		var release func()
+		runCtx, stopRecording, release = recordingContext(runCtx)
+		defer release()
+		app.SetCancelFunc(stopRecording)
+		app.setRecordingView(true)
+		defer app.setRecordingView(false)
+	}
+	paths = app.runYtDlp(runCtx, req, item, position, total, stopRecording)
 	switch {
+	case len(paths) > 0:
+		queue.SetStatus(id, queueDone)
 	case runCtx.Err() != nil:
 		queue.SetStatus(id, queueSkipped)
-	case paths == nil:
-		queue.SetStatus(id, queueFailed)
 	default:
-		queue.SetStatus(id, queueDone)
+		queue.SetStatus(id, queueFailed)
 	}
 	return paths, false
 }
@@ -448,19 +467,25 @@ func completionNotification(postProcessed bool, fileCount, urlCount int) *fyne.N
 // the list of finalized output file paths on success, or nil on failure or
 // cancellation. Post-processing is the caller's responsibility. index and
 // total indicate the position within a batch (both 1 for single downloads).
-func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, item queueItem, index, total int) []string {
+// For a live recording, stop ends it (keeping it) when the save folder's
+// drive runs low; see recordingCallback.
+func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, item queueItem, index, total int, stop func()) []string {
 	startTime := time.Now()
 
-	dl := app.newDownloadEngine().Run(ctx, req, DownloadOptions{
-		AutoRetry: app.ui.download.autoRetry.Checked,
-		Index:     index,
-		Total:     total,
-	}, ProcessCallbacks{
+	callbacks := ProcessCallbacks{
 		OnLog:      app.appendOutput,
 		OnStatus:   app.updateStatus,
 		OnProgress: app.updateProgress,
 		OnPhase:    app.showDownloadPhase,
-	})
+	}
+	if req.Live {
+		callbacks.OnRecording = app.recordingCallback(req, stop)
+	}
+	dl := app.newDownloadEngine().Run(ctx, req, DownloadOptions{
+		AutoRetry: app.ui.download.autoRetry.Checked,
+		Index:     index,
+		Total:     total,
+	}, callbacks)
 
 	if dl.Err == nil {
 		app.recordHistory(req, item, dl.FinalPaths)
@@ -553,6 +578,15 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 		app.ui.download.cancelBtn.Disable()
 
 		switch {
+		case dl.Stopped:
+			app.logDownloadSummary("RECORDING SAVED", []summaryRow{
+				{"Duration", elapsedStr},
+				{"Recorded", lastSize},
+				{"Files", strconv.Itoa(len(dl.FinalPaths))},
+			}, colSuccess, colSuccessBorder)
+			app.updateStatus("Status: Recording saved.")
+			app.setProgressNow(1)
+			app.setStatusIndicator(StatusSuccess)
 		case dl.Err == nil:
 			app.logDownloadSummary("DOWNLOAD COMPLETE", []summaryRow{
 				{"Duration", elapsedStr},

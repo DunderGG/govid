@@ -269,6 +269,8 @@ package "Download Engine" #FFF8F0 {
         +RemovePartialFiles(savePath, downloadID, onLog)
         -watchOutput(stdout, stderr, cb) : scanResult
         -parseProgress(line, cb)
+        -monitorRecording(req, downloadID, onRecording) : func()
+        -finishRecording(paths, ext, onLog) : []string
     }
 
     class DownloadRequest <<data>> {
@@ -286,6 +288,10 @@ package "Download Engine" #FFF8F0 {
         +Subtitles : string
         +SubtitleLangs : string
         +AutoSubtitles : bool
+        +Live : bool
+        +LiveFromStart : bool
+        +WaitForVideo : bool
+        +ReleaseTime : time.Time
         +InfoJSON : []byte
     }
 
@@ -301,6 +307,7 @@ package "Download Engine" #FFF8F0 {
         +Extension : string
         +Scan : scanResult
         +Err : error
+        +Stopped : bool
     }
 
     class DownloadArgs <<data>> {
@@ -365,11 +372,16 @@ package "Download Engine" #FFF8F0 {
         +Height : int
         +Subtitles : map[string]RawMessage
         +AutomaticCaptions : map[string]RawMessage
+        +LiveStatus : string
+        +ReleaseTimestamp : float64
         -raw : []byte
         -probedAt : time.Time
         --
         +IsPlaylist() : bool
         -isFresh(now) : bool
+        +IsLive() : bool
+        +IsUpcoming() : bool
+        +IsPostLive() : bool
         +EstimatedSize() : (uint64, bool)
     }
 

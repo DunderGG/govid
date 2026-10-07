@@ -103,6 +103,11 @@ func (row *queueRow) show(entry queueEntry, running bool, actions queueActions) 
 	row.down.OnTapped = func() { actions.move(id, 1) }
 	row.remove.OnTapped = func() { actions.remove(id) }
 	row.skip.OnTapped = actions.skip
+	if entry.isLive() {
+		row.skip.SetText("Stop recording")
+	} else {
+		row.skip.SetText("Skip")
+	}
 	row.retry.OnTapped = func() { actions.retry(id) }
 
 	waiting := entry.status == queueWaiting

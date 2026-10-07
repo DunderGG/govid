@@ -110,6 +110,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.onLogLine = dlApp.uiManager.appendLogLine
 	dlApp.askPlaylist = dlApp.uiManager.askPlaylist
 	dlApp.askDuplicate = dlApp.uiManager.askDuplicate
+	dlApp.askLive = dlApp.uiManager.askLive
 	dlApp.freeBytes = freeDiskBytes
 	dlApp.askDiskSpace = dlApp.uiManager.askDiskSpace
 
@@ -117,6 +118,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onStartDownload = dlApp.startDownload
 	dlApp.uiManager.onOpenFolder = dlApp.openDownloadFolder
 	dlApp.uiManager.onRequestCancel = dlApp.RequestCancel
+	dlApp.uiManager.onRecording = dlApp.recording.Load
 	return dlApp
 }
 

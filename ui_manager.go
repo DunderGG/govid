@@ -98,6 +98,7 @@ type UIManager struct {
 	onStartDownload      func()                                                               // begins a download/batch run
 	onOpenFolder         func()                                                               // opens the save destination in the system file manager
 	onRequestCancel      func() bool                                                          // cancels the active download or post-process job
+	onRecording          func() bool                                                          // DownloaderApp.recording.Load: a live stream is being recorded
 	onLoadHistory        func() ([]DownloadHistoryEntry, error)                               // HistoryService.Load
 	onClearHistory       func() error                                                         // HistoryService.Clear
 	onCheckDependencies  func(onWarning func(msg string))                                     // DependencyService.Check
@@ -343,6 +344,13 @@ func (manager *UIManager) showConfigHelp() {
 			"  * The video **downloading** can be skipped (the same as **Cancel**); the queue moves on\n" +
 			"  * A video that **failed** or was **skipped** can be retried; it goes back to the end of the queue\n\n" +
 			"Videos the queue did not get to, because it was stopped, are marked Skipped."},
+		{"Live Streams", "When a URL is a stream that is live now, GoVid asks how to record it:\n" +
+			"  * **Record from now** – records until you press **Stop recording** (the Cancel button, or Skip in the Queue panel) or the stream ends\n" +
+			"  * **Record from the start** (YouTube and Twitch) – records the stream from its beginning\n" +
+			"  * **Skip**\n\n" +
+			"For a scheduled stream or premiere it says when it starts and offers **Wait and record**: GoVid checks every one to five minutes, counting down in the status line, and records once it starts.\n\n" +
+			"While recording, the progress bar moves back and forth and the status shows the time and size recorded so far, e.g. \"Recording 00:12:34 · 410 MiB\". **Stop recording** keeps everything recorded: the file is saved in your chosen format (MKV when that format cannot hold the stream, such as WebM), added to the history, and post-processed like any download. Quitting GoVid while recording keeps the recording too.\n\n" +
+			"A live stream has no known size, so the disk space check is skipped; instead GoVid checks the free space every 30 seconds and stops the recording, keeping it, when less than 1 GB is left. For a stream that has just ended and is still being processed, GoVid warns that only part of it may be available yet."},
 		{"Save Destination", "The folder where the downloaded file will be saved. GoVid remembers this between sessions.\n\nBefore each download, GoVid checks that the folder's drive has room for it (with a 10% margin, and twice that with post-processing, which writes a second copy). If it does not, you can continue anyway or cancel; in a batch you can also skip that video. This includes each video picked from a playlist, which GoVid checks just before downloading it. When the site does not say how big a video is, the check is skipped."},
 		{"Presets", "A preset is a named set of settings, such as an audio-only setup or a 1080p MP4 setup. Choosing one in the **Preset** dropdown sets the settings it holds and leaves every other setting as it is. GoVid starts with three: **Audio (MP3, metadata + cover)**, **1080p MP4**, and **Archive (MKV, Best, subtitles, chapters)**.\n\n" +
 			"**(modified)** appears beside the dropdown once one of the preset's settings has been changed since it was chosen.\n\n" +
@@ -393,7 +401,7 @@ func (manager *UIManager) showConfigHelp() {
 		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
 		{"Cookies File", "Found in **Tools → Preferences**. Path to a `cookies.txt` file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file."},
 		{"Post-Processing", "Found in **Tools → Post-Processing**. Enhance your downloads using FFmpeg. Most filters trigger a full re-encode.\n\n⚠️ **WebM files** use VP9 encoding which is significantly slower than H.264 — use MKV for faster post-processing."},
-		{"Cancel", "Stops the active download immediately and deletes its partly downloaded files. In batch mode, it skips the current URL and moves on to the next one."},
+		{"Cancel", "Stops the active download immediately and deletes its partly downloaded files. In batch mode, it skips the current URL and moves on to the next one. While a live stream is recorded, the button reads **Stop recording** and keeps what was recorded."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
 		{"JSON Configuration", "Every setting can be stored in a JSON file. **Tools → Export settings…** saves all of your current settings, and **Tools → Import settings…** applies a saved file, for example on another computer. A file named `govid.json` in the application folder is applied by **Load from Config** in **Tools → Preferences**.\n\n" +
 			"A key left out of the file leaves that setting unchanged, so a file can hold only the settings you want to set. A value that is not allowed is skipped, and GoVid lists every skipped value.\n\n**Keys and values:**\n" +
@@ -1122,7 +1130,9 @@ func (manager *UIManager) wireActionButtons(themeMode string) {
 	ui.download.cancelBtn.Icon = themedIcon(IconCancel, themeMode)
 	ui.download.cancelBtn.Text = "Cancel"
 	ui.download.cancelBtn.OnTapped = func() {
-		if manager.onRequestCancel() {
+		// Stopping a recording keeps it, and the engine says so.
+		recording := manager.onRecording()
+		if manager.onRequestCancel() && !recording {
 			manager.onLog("Download canceled by user.", colWarning)
 		}
 	}
@@ -1208,7 +1218,7 @@ func (manager *UIManager) buildStatusCard() fyne.CanvasObject {
 	dotContainer := container.New(layout.NewGridWrapLayout(fyne.NewSize(18, 18)), ui.download.statusDot)
 	statusCard := roundedCard("",
 		container.NewVBox(
-			ui.download.progress,
+			container.NewStack(ui.download.progress, ui.download.progressLive),
 			container.NewHBox(dotContainer, ui.download.status),
 		),
 	)

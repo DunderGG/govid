@@ -32,43 +32,45 @@ type UIWidgets struct {
 // DownloadControls holds the widgets that drive a single download or batch
 // run and display its progress and log output.
 type DownloadControls struct {
-	entry       *widget.Entry       // URL input field
-	path        *widget.Entry       // Save directory input field
-	output      *container.Scroll   // Scrollable container for logs
-	logList     *fyne.Container     // Vertical box containing individual log lines
-	progress    *widget.ProgressBar // Visual progress indicator
-	status      *widget.Label       // Short status message (e.g. "Downloading...")
-	format      *widget.Select      // File format selector (MP4, MP3, etc.)
-	quality     *widget.Select      // Maximum resolution selector
-	saveLog     *widget.Check       // Option to persist output to a .txt file
-	notify      *widget.Check       // Option to send a system notification on completion
-	autoRetry   *widget.Check       // Option to automatically retry on transient errors
-	downloadBtn *widget.Button      // Start button for downloads
-	cancelBtn   *widget.Button      // Stop button for active downloads
-	statusDot   *canvas.Circle      // Animated state indicator dot next to the status label
-	trimStart   *widget.Entry       // Optional start time for video trimming (HH:MM:SS)
-	trimEnd     *widget.Entry       // Optional end time for video trimming (HH:MM:SS)
-	batchMode   *widget.Check       // Option to switch URL input to multi-line batch mode
+	entry        *widget.Entry               // URL input field
+	path         *widget.Entry               // Save directory input field
+	output       *container.Scroll           // Scrollable container for logs
+	logList      *fyne.Container             // Vertical box containing individual log lines
+	progress     *widget.ProgressBar         // Visual progress indicator
+	progressLive *widget.ProgressBarInfinite // Shown instead of progress while a live stream is recorded
+	status       *widget.Label               // Short status message (e.g. "Downloading...")
+	format       *widget.Select              // File format selector (MP4, MP3, etc.)
+	quality      *widget.Select              // Maximum resolution selector
+	saveLog      *widget.Check               // Option to persist output to a .txt file
+	notify       *widget.Check               // Option to send a system notification on completion
+	autoRetry    *widget.Check               // Option to automatically retry on transient errors
+	downloadBtn  *widget.Button              // Start button for downloads
+	cancelBtn    *widget.Button              // Stop button for active downloads
+	statusDot    *canvas.Circle              // Animated state indicator dot next to the status label
+	trimStart    *widget.Entry               // Optional start time for video trimming (HH:MM:SS)
+	trimEnd      *widget.Entry               // Optional end time for video trimming (HH:MM:SS)
+	batchMode    *widget.Check               // Option to switch URL input to multi-line batch mode
 }
 
 // NewDownloadControls constructs the main window's download-related widgets.
 func NewDownloadControls() *DownloadControls {
 	return &DownloadControls{
-		entry:       widget.NewEntry(),
-		path:        widget.NewEntry(),
-		format:      widget.NewSelect(formatOptions, nil),
-		quality:     widget.NewSelect(qualityOptions, nil),
-		saveLog:     widget.NewCheck("Save output to log file", nil),
-		notify:      widget.NewCheck("Notify on Completion", nil),
-		autoRetry:   widget.NewCheck("Auto-retry", nil),
-		downloadBtn: widget.NewButtonWithIcon("Download Now!", nil, nil),
-		cancelBtn:   widget.NewButton("", nil),
-		statusDot:   canvas.NewCircle(colDotIdle),
-		progress:    widget.NewProgressBar(),
-		status:      widget.NewLabel("Status: Idle"),
-		trimStart:   widget.NewEntry(),
-		trimEnd:     widget.NewEntry(),
-		batchMode:   widget.NewCheck("Batch Mode", nil),
+		entry:        widget.NewEntry(),
+		path:         widget.NewEntry(),
+		format:       widget.NewSelect(formatOptions, nil),
+		quality:      widget.NewSelect(qualityOptions, nil),
+		saveLog:      widget.NewCheck("Save output to log file", nil),
+		notify:       widget.NewCheck("Notify on Completion", nil),
+		autoRetry:    widget.NewCheck("Auto-retry", nil),
+		downloadBtn:  widget.NewButtonWithIcon("Download Now!", nil, nil),
+		cancelBtn:    widget.NewButton("", nil),
+		statusDot:    canvas.NewCircle(colDotIdle),
+		progress:     widget.NewProgressBar(),
+		progressLive: newHiddenInfiniteBar(),
+		status:       widget.NewLabel("Status: Idle"),
+		trimStart:    widget.NewEntry(),
+		trimEnd:      widget.NewEntry(),
+		batchMode:    widget.NewCheck("Batch Mode", nil),
 	}
 }
 
@@ -281,6 +283,10 @@ type DownloaderApp struct {
 	// uiManager.askDuplicate, replaced in tests.
 	askDuplicate func(ctx context.Context, prompt duplicatePrompt) duplicateDecision
 
+	// askLive asks how to record a live or scheduled stream; set to
+	// uiManager.askLive, replaced in tests.
+	askLive func(ctx context.Context, prompt livePrompt) liveDecision
+
 	// freeBytes returns the free space on the volume holding a folder, and
 	// askDiskSpace asks what to do when a download will not fit; set to
 	// freeDiskBytes and uiManager.askDiskSpace, replaced in tests.
@@ -300,9 +306,19 @@ type DownloaderApp struct {
 	updating      atomic.Bool // true while a GoVid self-update downloads or installs
 	installing    atomic.Bool // true while a tool is being installed into bin/; see installComponent
 	showDebug     atomic.Bool // true to show yt-dlp [debug] lines in the log view; see appendOutput
+	recording     atomic.Bool // true while a live stream is recorded; see setRecordingView
 	keepHistory   atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
 
 	// queue is the running (or last) session's download queue, shown in the
 	// Queue panel; yt-dlp's output readers report download progress to it.
 	queue atomic.Pointer[QueueModel]
+}
+
+// newHiddenInfiniteBar returns a stopped, hidden indeterminate progress bar,
+// shown in place of the normal one while a live stream is recorded.
+func newHiddenInfiniteBar() *widget.ProgressBarInfinite {
+	bar := widget.NewProgressBarInfinite()
+	bar.Stop()
+	bar.Hide()
+	return bar
 }

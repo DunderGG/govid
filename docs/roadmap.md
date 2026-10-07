@@ -69,9 +69,10 @@ This document outlines planned features, improvements, and known limitations for
 ### Live Streams
 > Record live streams and wait for scheduled ones, without losing the recording.
 
-- [ ] Detect live and upcoming videos from the probe's `live_status` and ask how to record (from now, from the start, or wait for a scheduled stream).
-- [ ] Add a "Stop recording" action that keeps the file, finalizes it, and records it in history; today Cancel deletes the recording.
-- [ ] Show elapsed time and size while recording, and stop with a warning when the drive is nearly full.
+- [x] Detect live and upcoming videos from the probe's `live_status` and ask how to record (from now, from the start, or wait for a scheduled stream). (`prepareLive` and the `askLive` prompt in `live.go`/`live_dialog.go`; "from the start" is offered for YouTube and Twitch. The probe passes `--ignore-no-formats-error`, so a scheduled stream reports its start time instead of failing; waiting passes `--wait-for-video 60-300` and counts down in the status line. A `post_live` stream gets a warning.)
+- [x] Add a "Stop recording" action that keeps the file, finalizes it, and records it in history; today Cancel deletes the recording. (`errStopKeep`: a download cancelled with that cause is finalized instead of removed, and `DownloadResult.Stopped` is set. The kept recording, MPEG-TS, is remuxed into the chosen container, or MKV when that cannot hold it. Skipping the item, stopping the session, and quitting keep it too.)
+- [x] Show elapsed time and size while recording, and stop with a warning when the drive is nearly full. (An indeterminate progress bar and "Recording 00:12:34 · 410 MiB"; the up-front disk check is skipped and free space is checked every 30 s instead, stopping below 1 GiB.)
+
 
 ### Presets / Profiles
 > Save common download setups for quick reuse.
@@ -362,6 +363,7 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Metadata embedding: an MP3 download shows its title, artist, date, and cover in a music player. ([priorities.md](priorities.md) #10)
 - [ ] Subtitles: a real YouTube video downloaded with **Embed** has a selectable subtitle track in a player. ([priorities_2.md](priorities_2.md) #4)
 - [ ] Self-update: a release build one version behind updates itself from a real GitHub release and restarts on the new version. ([priorities_2.md](priorities_2.md) #10)
+- [ ] Live streams: record a real YouTube live stream for a few minutes, press **Stop recording**, and play the saved file; try **Record from the start** and a scheduled premiere with **Wait and record**. The recording path was checked against a public live HLS test stream (yt-dlp's generic extractor), not YouTube, which asked this machine to sign in. ([priorities_3.md](priorities_3.md) #2)
 - [ ] Components: on a machine with no JavaScript runtime, the startup notice installs Deno, and the next YouTube download's verbose log shows `JS runtimes: deno-…` and no runtime warning; with `bin/ffmpeg.exe` deleted, Components → FFmpeg → **Install** restores it with `ffprobe.exe`, and post-processing shows a percentage again. The installer and yt-dlp with the installed Deno were checked against the real sources outside the GUI. ([priorities_3.md](priorities_3.md) #1)
 
 ### Release Checklist
