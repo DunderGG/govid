@@ -51,13 +51,14 @@ func TestEveryPreferenceHasAConfigKey(t *testing.T) {
 }
 
 // changedPreferences returns preferences with every field set to a valid
-// value that differs from the defaults.
+// value that differs from the defaults. Format is WebM because the default
+// is MP4 on Windows and macOS but MKV elsewhere (defaultFormat).
 func changedPreferences(t *testing.T) AppPreferences {
 	t.Helper()
 	cookies := filepath.Join(t.TempDir(), "cookies.txt")
 	touch(t, cookies)
 	return AppPreferences{
-		SavePrefs: false, SavedPath: t.TempDir(), Format: formatMKV, Quality: quality480p,
+		SavePrefs: false, SavedPath: t.TempDir(), Format: formatWebM, Quality: quality480p,
 		MaxSpeed: "2M", ThemeMode: themeLight, CookiesPath: cookies, LogLimit: "1000",
 		ShowDebug: true, CheckUpdates: false, EmbedMetadata: false, EmbedThumbnail: false, EmbedChapters: true,
 		Subtitles: subtitlesBoth, SubtitleLangs: "de,fr", AutoSubtitles: true, KeepHistory: false,
