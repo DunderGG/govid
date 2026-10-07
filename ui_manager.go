@@ -56,7 +56,8 @@ type UIManager struct {
 	historyWindow fyne.Window
 	prefsWindow   fyne.Window
 	ppWindow      fyne.Window
-	ui            *UIWidgets // shared widget bag; set by newDownloaderApp after construction
+	compWindow    fyne.Window // Tools → Components
+	ui            *UIWidgets  // shared widget bag; set by newDownloaderApp after construction
 
 	// restoringDefaults suppresses savePreferences while restoreDefaults is
 	// writing default values into the widgets. Only touched on the UI goroutine.
@@ -102,6 +103,9 @@ type UIManager struct {
 	onCheckDependencies  func(onWarning func(msg string))                                     // DependencyService.Check
 	onRunUpdate          func(cb UpdateCallbacks)                                             // DependencyService.RunUpdate
 	onYtDlpVersions      func() (installed, latest string)                                    // DownloaderApp.ytDlpVersions
+	onJSRuntimeLabel     func() string                                                        // DownloaderApp.jsRuntimeLabel
+	onComponents         func() []componentStatus                                             // DownloaderApp.componentStatuses
+	onComponentAction    func(name, action string, onDone func(err error))                    // DownloaderApp.installComponent
 	onCheckGoVidRelease  func() (release Release, newer bool, err error)                      // DownloaderApp.checkGoVidRelease
 	onCanSelfUpdate      func(release Release) bool                                           // DownloaderApp.canSelfUpdate
 	onSelfUpdate         func(release Release)                                                // DownloaderApp.runSelfUpdate
@@ -189,6 +193,7 @@ func (manager *UIManager) createMainMenu() {
 		fyne.NewMenu("File", historyMenu, fyne.NewMenuItemSeparator(), clearLogMenu),
 		fyne.NewMenu("Tools",
 			updateMenu,
+			fyne.NewMenuItem("Components…", manager.showComponents),
 			fyne.NewMenuItem("Check for GoVid updates", manager.checkForGoVidUpdates),
 			fyne.NewMenuItemSeparator(),
 			prefsMenu,
@@ -234,6 +239,15 @@ func (manager *UIManager) confirmYtDlpUpdate() {
 // goroutine and reports progress via UpdateCallbacks. A successful update
 // dismisses the "yt-dlp is out of date" notice.
 func (manager *UIManager) runUpdateInUI() {
+	manager.runUpdateThen(nil)
+}
+
+// runUpdateThen is runUpdateInUI, calling done (when not nil) from the
+// update's goroutine once it has finished, with whether it succeeded.
+func (manager *UIManager) runUpdateThen(done func(ok bool)) {
+	if done == nil {
+		done = func(bool) {}
+	}
 	manager.onLog("[SYSTEM] Starting yt-dlp update...", colSystem)
 	manager.onSetStatusIndicator(StatusActive)
 	manager.onStatus("Status: Updating yt-dlp...")
@@ -243,8 +257,12 @@ func (manager *UIManager) runUpdateInUI() {
 		OnSuccess: func() {
 			manager.onSetStatusIndicator(StatusSuccess)
 			manager.dismissNotice(ytDlpNoticeID)
+			done(true)
 		},
-		OnFailure: func() { manager.onSetStatusIndicator(StatusFailed) },
+		OnFailure: func() {
+			manager.onSetStatusIndicator(StatusFailed)
+			done(false)
+		},
 	})
 }
 
@@ -266,10 +284,13 @@ func (manager *UIManager) showAbout() {
 
 	versionLabel := widget.NewLabelWithStyle("v"+version, fyne.TextAlignCenter, fyne.TextStyle{Monospace: true})
 	ytDlpLabel := widget.NewLabelWithStyle("yt-dlp: checking…", fyne.TextAlignCenter, fyne.TextStyle{Monospace: true})
+	runtimeLabel := widget.NewLabelWithStyle("JS runtime: checking…", fyne.TextAlignCenter, fyne.TextStyle{Monospace: true})
 	go func() {
 		installed, latest := manager.onYtDlpVersions()
+		jsRuntime := manager.onJSRuntimeLabel()
 		fyne.Do(func() {
 			ytDlpLabel.SetText(fmt.Sprintf("yt-dlp %s (latest: %s)", installed, latest))
+			runtimeLabel.SetText("JS runtime: " + jsRuntime)
 		})
 	}()
 	tagline := widget.NewLabelWithStyle("A high-performance video downloader\nbuilt with Go and Fyne.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
@@ -283,6 +304,7 @@ func (manager *UIManager) showAbout() {
 		container.NewCenter(appName),
 		container.NewCenter(versionLabel),
 		container.NewCenter(ytDlpLabel),
+		container.NewCenter(runtimeLabel),
 		container.NewCenter(tagline),
 		widget.NewSeparator(),
 		container.NewCenter(author),
@@ -291,7 +313,7 @@ func (manager *UIManager) showAbout() {
 
 	manager.aboutWindow = fyne.CurrentApp().NewWindow("About GoVid")
 	manager.aboutWindow.SetContent(container.NewPadded(content))
-	manager.aboutWindow.Resize(fyne.NewSize(360, 310))
+	manager.aboutWindow.Resize(fyne.NewSize(360, 340))
 	manager.aboutWindow.SetFixedSize(true)
 	manager.aboutWindow.SetOnClosed(onWindowClosed(&manager.aboutWindow))
 	manager.aboutWindow.Show()
@@ -360,6 +382,13 @@ func (manager *UIManager) showConfigHelp() {
 			"To stop keeping history, untick **Keep download history** in **Tools → Preferences**; GoVid then offers to delete the history kept so far. **Clear History** in the History window deletes it at any time."},
 		{"Debug Output", "Found in **Tools → Preferences**. GoVid runs yt-dlp in verbose mode so the log file has everything needed for a bug report, but the **[debug]** lines are hidden from the Terminal Output panel unless this is checked. The panel also shows only the latest download progress line for each file; the log file keeps them all."},
 		{"Updates", "Found in **Tools → Preferences**. When **Check for updates on startup** is checked, GoVid asks GitHub (at most once a day) whether a newer yt-dlp is available and, if so, shows a notice with an **Update now** button. Sites change often, and an outdated yt-dlp is the most common reason downloads stop working. **Tools → Update yt-dlp** shows the installed and latest versions and updates on demand.\n\nGoVid also tells you when a newer GoVid release is available; **What's new** shows its release notes and a link to the download page. **Tools → Check for GoVid updates** checks right away.\n\nOn Windows, the release notes also offer **Update now**: GoVid downloads the new release, checks it against the SHA-256 published with it, replaces its own program file (keeping the old one until the next start), and restarts. If the download does not match, nothing is changed. Antivirus software or Windows SmartScreen may scan the new GoVid.exe the first time it starts, which can make that start slow or ask you to confirm it. **Update now** is not offered while a download runs, for releases published without a checksum, or for builds you made yourself.\n\nIf the update fails because GoVid's folder cannot be written to (for example under `Program Files`), run GoVid as administrator once, or move it to a folder you own."},
+		{"Components", "**Tools → Components** lists the tools GoVid uses, the version installed and where it was found (the `bin` folder beside GoVid, which takes precedence, or `PATH`), and the latest version:\n" +
+			"  * **yt-dlp** – downloads the videos\n" +
+			"  * **FFmpeg (with ffprobe)** – merges video and audio, converts formats, and post-processes. Installing it also adds ffprobe, which lets post-processing show a percentage\n" +
+			"  * **Deno** – a JavaScript runtime. YouTube makes yt-dlp solve a puzzle in JavaScript before it lists every format; without a runtime, yt-dlp falls back to an older YouTube client that may miss formats and will stop working when YouTube removes it\n\n" +
+			"Each row has one button: **Install** (when the tool is missing, or found only on `PATH`), **Update** (when a newer version exists), or **Reinstall**, which repairs a broken copy. For yt-dlp, **Update** runs `yt-dlp -U`. Every download is checked against the SHA-256 its source publishes (yt-dlp and Deno from their GitHub releases, FFmpeg from gyan.dev), and if anything goes wrong the old tool is kept. Tools cannot be installed while a download runs.\n\n" +
+			"GoVid also looks for Deno, Node.js (22 or newer), or Bun on `PATH`, and uses the first one yt-dlp supports; **Help → About** and the session log say which. When yt-dlp, FFmpeg, or a JavaScript runtime is missing, a notice at startup offers to install it.\n\n" +
+			"On Linux the downloads do not apply; install the tools with your package manager."},
 		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
 		{"Cookies File", "Found in **Tools → Preferences**. Path to a `cookies.txt` file in Mozilla/Netscape format. Required for access to restricted, private, or age-gated videos.\n\n⚠️ **Security Warning**: Cookie files contain sensitive session data. Never share this file."},

@@ -30,6 +30,7 @@ type scanResult struct {
 	hadExtractorErr   bool     // true when stderr showed an error typical of a site change that a newer yt-dlp may fix
 	hadExpiredLinkErr bool     // true when stderr showed an HTTP 403 or 410 error, which expired format URLs give
 	hadSubtitleErr    bool     // true when stderr said subtitles could not be downloaded, which fails the whole download
+	hadNoJSRuntime    bool     // true when yt-dlp warned that it found no JavaScript runtime for YouTube
 }
 
 // expiredLinkErrPatterns are substrings of the errors a site gives for a
@@ -50,6 +51,11 @@ var extractorErrPatterns = []string{
 // subtitleErrPattern starts the error yt-dlp gives when a subtitle file
 // cannot be downloaded (YouTube often answers 429). It fails the download.
 const subtitleErrPattern = "Unable to download video subtitles"
+
+// noJSRuntimePattern starts the warning yt-dlp gives on every YouTube
+// extraction when it has no JavaScript runtime to solve the player
+// challenges with. It then uses a deprecated client that may miss formats.
+const noJSRuntimePattern = "No supported JavaScript runtime"
 
 // transientErrPatterns are substrings that indicate a temporary failure worth retrying.
 var transientErrPatterns = []string{
@@ -158,6 +164,7 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 			// yt-dlp reports this as an ERROR, or inside the WARNING it gives when
 			// it falls back from loaded info to the URL.
 			result.hadSubtitleErr = result.hadSubtitleErr || strings.Contains(line, subtitleErrPattern)
+			result.hadNoJSRuntime = result.hadNoJSRuntime || strings.Contains(line, noJSRuntimePattern)
 			var logColor color.Color // nil = default foreground, resolved by the UI
 			switch {
 			case strings.Contains(line, "ERROR:"):

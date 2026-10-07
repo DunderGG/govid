@@ -303,3 +303,21 @@ func TestIsProgressLine(t *testing.T) {
 		}
 	}
 }
+
+func TestWatchOutputDetectsAMissingJSRuntime(t *testing.T) {
+	// The warning the bundled yt-dlp 2026.03.17 prints on every YouTube
+	// extraction when it has no JavaScript runtime.
+	warning := "WARNING: [youtube] No supported JavaScript runtime could be found. Only deno is enabled by default; to use another runtime add  --js-runtimes RUNTIME[:PATH]  to your command/config. YouTube extraction without a JS runtime has been deprecated, and some formats may be missing."
+	for _, tt := range []struct {
+		stderr string
+		want   bool
+	}{
+		{warning, true},
+		{"[debug] JS runtimes: deno-2.9.7", false},
+	} {
+		result := NewDownloadEngine("", "").watchOutput(strings.NewReader(""), strings.NewReader(tt.stderr+"\n"), newLogCollector().callbacks())
+		if result.hadNoJSRuntime != tt.want {
+			t.Errorf("hadNoJSRuntime = %v for %q, want %v", result.hadNoJSRuntime, tt.stderr, tt.want)
+		}
+	}
+}

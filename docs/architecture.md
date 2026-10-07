@@ -49,7 +49,12 @@ govid/
 ├── queue_model.go          QueueModel — the session's queue: items, per-item status, Next / Move / Remove / Retry
 ├── queue_panel.go          UIManager.showQueue — the collapsible Queue panel above the log
 ├── log_service.go          LogService — session log open/close, error log routing, buffer-limit management
-├── dependency_service.go   DependencyService — binary path resolution, dependency checks, yt-dlp updater
+├── dependency_service.go   DependencyService — binary path resolution, dependency checks, tool versions (Installed), JS runtime discovery (JSRuntime), yt-dlp updater
+├── tool_installer.go       ToolInstaller — installs yt-dlp, FFmpeg + ffprobe, and Deno into bin/: verified download, staged .new → rename swap with rollback
+├── http_fetch.go           httpFetcher — GET with GoVid's User-Agent; text files, and files hashed with SHA-256 as they stream (SelfUpdater, ToolInstaller)
+├── components.go           componentStatuses / installComponent / checkTools — Tools → Components actions, startup "missing tool" notices, FFmpeg filter check
+├── components_window.go    UIManager.showComponents — the Components window (installed / latest / Install · Update · Reinstall)
+
 ├── ui_manager.go           UIManager — main window layout (createUI, createMainMenu), secondary window lifecycle
 │                           (About, Help, History, Prefs, PP), and preference/dependency UI wrapper methods
 ├── gpu_capability.go       GPUCapabilityService — GPU backend capability detection and cache (see docs/gpu-acceleration.md)
@@ -108,6 +113,8 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `depSvc *DependencyService` | Binary path resolution, dependency checks, updater (see §4.9) |
 | `gpuSvc *GPUCapabilityService` | GPU backend capability detection and cache (see §4.11) |
 | `releaseSvc *ReleaseService` | Latest-release lookups for update checks (see §4.12) |
+| `toolInstaller *ToolInstaller` | Installs yt-dlp, FFmpeg, and Deno into `bin/` for Tools → Components (see §4.9) |
+| `installing atomic.Bool` | Set while a tool is being installed; the Download button is disabled and `startDownload` refuses meanwhile |
 | `askPlaylist func(ctx, playlistPrompt) playlistDecision` | Asks which videos of a playlist to download; set to `UIManager.askPlaylist`, stubbed in tests |
 | `freeBytes func(path string) (uint64, error)` | Free space on a folder's volume; `freeDiskBytes`, faked in tests |
 | `askDiskSpace func(ctx, diskSpacePrompt) diskSpaceDecision` | Asks what to do when a download will not fit; set to `UIManager.askDiskSpace`, stubbed in tests |
@@ -141,7 +148,7 @@ Widgets are wired with callbacks in `UIManager.createUI()` and accessed through 
 ### 4.3 `UIManager` — main window and secondary window owner  
 *Defined in:* `ui_manager.go`
 
-Owns the primary window reference (`mainWindow`) plus the five singleton secondary windows (About, Help, History, Preferences, Post-Processing). Calling a `show*` method re-focuses an already-open window rather than opening a duplicate, via the shared `focusOrCreate`/`onWindowClosed` helpers. `UIManager` holds no direct service references — every service access is bridged through injected callbacks (`onLoadHistory`, `onCheckDependencies`, `onSavePreferences`, etc.), wired once in `newDownloaderApp`.
+Owns the primary window reference (`mainWindow`) plus the singleton secondary windows (About, Help, History, Preferences, Post-Processing, Components). Calling a `show*` method re-focuses an already-open window rather than opening a duplicate, via the shared `focusOrCreate`/`onWindowClosed` helpers. `UIManager` holds no direct service references — every service access is bridged through injected callbacks (`onLoadHistory`, `onCheckDependencies`, `onSavePreferences`, etc.), wired once in `newDownloaderApp`.
 
 Beyond the five `show*` methods, `UIManager` also owns:
 - **`createUI()`** — builds the main window layout, split into focused helpers (`buildHeader`, `configureEntryMode`, `wireToggleHandlers`, `wireActionButtons`, `buildInputCard`, `buildStatusCard`, `buildLogPane`, `buildFooter`).
@@ -158,7 +165,7 @@ Beyond the five `show*` methods, `UIManager` also owns:
 ### 4.4 `DownloadEngine` — yt-dlp executor  
 *Defined in:* `download_engine.go`
 
-A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg` and provides four methods:
+A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg`, and the JavaScript runtime yt-dlp uses for YouTube (`JSRuntime`, from `DependencyService.JSRuntime`; `BuildArgs` and `Probe` both pass it as `--js-runtimes name:path`, because both extract the video). It provides these methods:
 
 - **`BuildArgs(DownloadRequest) DownloadArgs`** — pure function; assembles the yt-dlp command-line arguments from a request value struct. No I/O. The format selector comes from `formatSelection(format, quality)`, which `Probe` shares; it also returns the height cap, which is empty for Best and for the audio formats. A capped video is labelled with the height actually downloaded, through the `heightLabel` template field `%(height&_{}p|)s` (nothing when the height is unknown). `embedArgs` adds `--embed-metadata`, `--embed-thumbnail --convert-thumbnails jpg` (except for WebM, which sets `DownloadArgs.ThumbnailSkipped` so `Run` can log why), and `--embed-chapters` from the request's `EmbedMetadata`/`EmbedThumbnail`/`EmbedChapters`. `subtitleArgs` adds `--write-subs [--write-auto-subs] --sub-langs <langs> --convert-subs srt` for every subtitle mode except Off, plus `--embed-subs` for Embed and Both. yt-dlp keeps the subtitle files after embedding when `--write-subs` is given, so Embed adds `--compat-options no-keep-subs` to delete them; `--write-subs` is needed because `--write-auto-subs` alone takes only auto-generated captions. Subtitles embedded in WebM stay WebVTT (`--convert-subs vtt`), the only format WebM holds, and audio formats skip subtitles (`DownloadArgs.SubtitlesSkipped`).
 - **`Probe(ctx, DownloadRequest) (MediaInfo, error)`** — runs `yt-dlp -J --flat-playlist --no-warnings` with the download's `-f` selector and cookies, and without `--no-playlist` (`probe.go`). It returns `MediaInfo{Type, Title, Duration, Entries}`; `IsPlaylist()` is true for `_type == "playlist"`, and each `PlaylistEntry.DownloadURL()` is the video's URL. `--flat-playlist` lists a playlist's entries without extracting them, but a single video is still extracted in full. For a single video, `EstimatedSize()` adds up the `filesize` (or `filesize_approx`) of the requested formats, for the disk space check, and the `MediaInfo` keeps the JSON itself (`raw`) and when it was read (`probedAt`). `ProbeVideo` is the same probe with `--no-playlist`, for playlist entries and "Only this video" links. `isFresh(now)` is false once the answer is older than `probeMaxAge` (30 min), because the format URLs in it expire.
@@ -269,10 +276,18 @@ Owns the `binDir` path (resolved once at construction from the executable locati
 - **`Check(onWarning func(msg string))`** — verifies `yt-dlp` and `ffmpeg` are reachable; calls `onWarning` for each missing tool. Called at startup via `UIManager.checkDependencies()`, a thin delegate to the injected `onCheckDependencies` callback.
 - **`RunUpdate(cb UpdateCallbacks)`** — runs `yt-dlp -U` in a background goroutine and reports lines/success/failure through `UpdateCallbacks`. Called via `UIManager.runUpdateInUI()`, wired to the injected `onRunUpdate` callback. When the update fails and the folder holding yt-dlp cannot be written to (`updateFailureHint`, using `dirWritable` or the test-injected `isWritable`), it explains that and how to fix it; `UpdateCLI` adds the same hint to its error.
 - **`Version(toolName string) (string, error)`** — runs `<tool> --version`; used by the yt-dlp update check (§4.12).
+- **`Installed(toolName string) InstalledTool`** — where the tool was found (`bin/`, which takes precedence, or `PATH`) and the version it reports (`ffmpeg -version`, `<tool> --version`, parsed by `parseToolVersion`); used by the Components window.
+- **`JSRuntime() (JSRuntime, bool)`** — the JavaScript runtime yt-dlp needs to solve YouTube's player challenges (without one it falls back to a deprecated client that may miss formats). It looks for `bin/deno` first, then `deno`, `node`, and `bun` on `PATH`, runs each with `--version`, and takes the first whose version yt-dlp supports (`jsRuntimeRules`, from yt-dlp's EJS wiki: Deno 2.3.0+, Node 22.0.0+, Bun 1.2.11–1.3.14). The search is cached; `ResetJSRuntime` forgets it after Deno is installed, and `JSRuntimeNotes` says why found runtimes were skipped. `JSRuntime.Arg()` is the `--js-runtimes name:path` value; the path is always given, because `bin/` is not on `PATH`.
 
 `UpdateCallbacks` is a bridge struct (`OnLog`, `OnStatus`, `OnSuccess`, `OnFailure`) with no Fyne dependency, following the same pattern as `PPCallbacks` and `ProcessCallbacks`.
 
 `UpdateCLI()` is used by the `--update` CLI flag in `main()`. It updates the same resolved yt-dlp binary as `RunUpdate`, synchronously, with output to stdout.
+
+**Installing tools** (`tool_installer.go`, `components.go`, `components_window.go`). `ToolInstaller` installs the tools in `installableTools` into `bin/`. Each `toolSpec` names the files it puts there and how to find its newest `toolRelease`: yt-dlp's `yt-dlp.exe` and `SHA2-256SUMS` (read by `parseSHA256Sums`) and Deno's `deno-x86_64-pc-windows-msvc.zip` and its `.sha256sum` (PowerShell `Get-FileHash` output, `parseGetFileHash`) from their latest GitHub releases through `ReleaseService` — or, when GitHub's API rate-limits, from `/releases/latest/download/`, with the version taken from where `/releases/latest` redirects — and FFmpeg's essentials ZIP from gyan.dev, whose `release-version` names the version, so the ZIP and its bare-hash `.sha256` (`parseBareHash`) both come from that version's `packages/` folder. `Install` checks that `bin/` is writable, downloads the checksum and then the file into a temporary folder (through `httpFetcher`, hashing as it streams, with progress), refuses a mismatch (`errChecksumMismatch`), writes each file as `<file>.new` (`extractNamed` finds `ffmpeg.exe`/`ffprobe.exe` in the ZIP's versioned `bin/` folder), and `swap`s them in: the old file to `.old`, `.new` into place, then the `.old` files deleted. A failed rename puts every old file back (`restoreSwapped`). `removeOldTools` deletes leftovers at startup.
+
+`DownloaderApp.installComponent` (the Components window's buttons and the notices' **Install**) refuses while a session or another install runs, disables the Download button, shows progress in the status label, and calls `afterInstall`: a new Deno resets the runtime search, a new FFmpeg resets `GPUCapabilityService` (`Reset`) and re-runs detection and `checkFFmpegFilters` (`ffmpeg -filters` must list `zscale` and `tonemap`, which HDR to SDR needs). yt-dlp's **Update** runs `yt-dlp -U` (`UIManager.runUpdateThen`); its **Reinstall** downloads a fresh `yt-dlp.exe`. `componentStatuses` finds each tool's installed and latest version concurrently; `componentStatus.action` picks Install (missing, or only on `PATH`), Update (older than the latest), or Reinstall. Where the downloads do not apply (`canInstallTools`: not Windows), the window only lists versions and says to use the package manager.
+
+At startup `checkTools` shows a notice with **Install** for a missing yt-dlp or FFmpeg and for a missing runtime, and writes the runtime it found to the log file. A download whose output has yt-dlp's "No supported JavaScript runtime" warning (`scanResult.hadNoJSRuntime`) shows the runtime notice too. The runtime appears in About and, as `SessionConfig.JSRuntime`, in the session configuration, which `writeSessionConfig` writes from the session goroutine because finding the runtime may run it.
 
 ---
 
@@ -497,9 +512,11 @@ and finally calls `quit` inside `fyne.Do`.
 | `yt-dlp` | `DownloadEngine.Execute()` | Download video/audio from URLs |
 | `ffmpeg` | `PPEngine.runJob()`, `PPEngine.detectCropFilter()` | Post-processing encode / cropdetect |
 | GitHub REST API | `ReleaseService.Latest()` | Latest yt-dlp and GoVid releases for the update checks (at most once a day at startup; always for the Tools menu check) |
-| `ffprobe` | `PPEngine` probe methods (`pp_engine.go`) | Frame count, duration, and colour-tag queries (optional; `probeColorInfo` falls back to `ffmpeg -i`) |
+| `ffprobe` | `PPEngine` probe methods (`pp_engine.go`) | Frame count, duration, and colour-tag queries (optional; `probeColorInfo` falls back to `ffmpeg -i`). Installed with FFmpeg from Tools → Components |
+| `deno` / `node` / `bun` | yt-dlp, through `--js-runtimes` (`DependencyService.JSRuntime`) | Solving YouTube's player challenges. Deno is installed on demand into `bin/` (Tools → Components) |
+| GitHub releases, gyan.dev | `ToolInstaller` | Downloads of yt-dlp, Deno, and FFmpeg, each checked against its published SHA-256 |
 
-Tools are resolved with `depSvc.Resolve(toolName)`: prefers `./bin/<tool>[.exe]` beside the executable, falls back to `$PATH`. If neither is found, `depSvc.Check()` (called via `uiManager.checkDependencies()` at startup) prints a warning to the log.
+Tools are resolved with `depSvc.Resolve(toolName)`: prefers `./bin/<tool>[.exe]` beside the executable, falls back to `$PATH`. If neither is found, `depSvc.Check()` (called via `uiManager.checkDependencies()` at startup) prints a warning to the log, and `checkTools` shows a notice offering to install it.
 
 ---
 

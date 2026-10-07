@@ -111,7 +111,7 @@ func TestPlaylistEntryDownloadURL(t *testing.T) {
 }
 
 func TestProbeArgs(t *testing.T) {
-	args := probeArgs(DownloadRequest{URL: "https://example.com/v", Format: formatMP4, Quality: quality720p}, false)
+	args := NewDownloadEngine("yt-dlp", "").probeArgs(DownloadRequest{URL: "https://example.com/v", Format: formatMP4, Quality: quality720p}, false)
 	for _, flag := range []string{"-J", "--flat-playlist"} {
 		if !slices.Contains(args, flag) {
 			t.Errorf("probe args %q missing %s", args, flag)

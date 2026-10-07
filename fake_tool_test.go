@@ -8,6 +8,7 @@ package main
 // select the behaviour with useFakeTool, so no real yt-dlp or FFmpeg is needed.
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -78,14 +79,91 @@ func fakeFFmpegSummary() int {
 const fakeToolVersion = "2026.09.01"
 
 func TestMain(m *testing.M) {
-	if mode := os.Getenv(fakeToolEnv); mode != "" {
+	if mode := os.Getenv(fakeToolEnv); mode != "" || fakeRuntimeName() != "" {
 		os.Exit(runFakeTool(mode, os.Args[1:]))
 	}
 	os.Exit(m.Run())
 }
 
+// fakeRuntimeVersionEnv optionally sets the version a fake JavaScript
+// runtime reports, e.g. to make one too old for yt-dlp.
+const fakeRuntimeVersionEnv = "GOVID_FAKE_RUNTIME_VERSION"
+
+// fakeRuntimeName returns "deno", "node", or "bun" when the test binary was
+// installed under one of those names (see installFakeTool), and "" else.
+// Such a copy always acts as that runtime, whatever fakeToolEnv says, since
+// GoVid asks every runtime it finds for its version.
+func fakeRuntimeName() string {
+	name := strings.TrimSuffix(strings.ToLower(filepath.Base(os.Args[0])), ".exe")
+	if slices.Contains([]string{"deno", "node", "bun"}, name) {
+		return name
+	}
+	return ""
+}
+
+// fakeRuntime mimics "<runtime> --version" as deno, node, and bun print it.
+func fakeRuntime(name string, args []string) int {
+	if !slices.Contains(args, "--version") {
+		fmt.Fprintf(os.Stderr, "fake %s: expected --version, got %q\n", name, args)
+		return 4
+	}
+	version := os.Getenv(fakeRuntimeVersionEnv)
+	switch name {
+	case "deno":
+		version = cmp.Or(version, "2.9.7")
+		fmt.Printf("deno %s (stable, release, x86_64-pc-windows-msvc)\nv8 14.1.146.11-rusty\ntypescript 5.9.2\n", version)
+	case "node":
+		fmt.Printf("v%s\n", cmp.Or(version, "24.16.0"))
+	default:
+		fmt.Println(cmp.Or(version, "1.3.0"))
+	}
+	return 0
+}
+
+// fakeArgsEnv optionally names a file the fake tool appends each run's
+// arguments to, one run per line, separated by fakeArgsSep.
+const fakeArgsEnv = "GOVID_FAKE_TOOL_ARGS"
+
+// fakeArgsSep separates the arguments of one run in the fakeArgsEnv file.
+const fakeArgsSep = "\x1f"
+
+// recordFakeArgs appends args to the fakeArgsEnv file, if set.
+func recordFakeArgs(args []string) {
+	path := os.Getenv(fakeArgsEnv)
+	if path == "" {
+		return
+	}
+	if file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintln(file, strings.Join(args, fakeArgsSep))
+		file.Close()
+	}
+}
+
+// useFakeArgs points the fake tool at a fresh argument log and returns a
+// function listing the arguments of every run since.
+func useFakeArgs(t *testing.T) func() [][]string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "fake_tool_args.txt")
+	t.Setenv(fakeArgsEnv, path)
+	return func() [][]string {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		var runs [][]string
+		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+			runs = append(runs, strings.Split(line, fakeArgsSep))
+		}
+		return runs
+	}
+}
+
 // runFakeTool implements the fake tool modes and returns the exit code.
 func runFakeTool(mode string, args []string) int {
+	if name := fakeRuntimeName(); name != "" {
+		return fakeRuntime(name, args)
+	}
+	recordFakeArgs(args)
 	// yt-dlp probes (-J) are answered first and not counted, so tests that
 	// count downloads are not affected by the probe before each one.
 	if slices.Contains(args, "-J") {
@@ -117,6 +195,9 @@ func runFakeTool(mode string, args []string) int {
 		return fakeYtDlpDownload(args)
 	case "ytdlp-mixed":
 		return fakeYtDlpMixed(args)
+	case "ytdlp-no-js-runtime":
+		fmt.Fprintln(os.Stderr, "WARNING: [youtube] No supported JavaScript runtime could be found. Only deno is enabled by default; to use another runtime add  --js-runtimes RUNTIME[:PATH]  to your command/config. YouTube extraction without a JS runtime has been deprecated, and some formats may be missing.")
+		return fakeYtDlpDownload(args)
 	case "ytdlp-subtitles-429":
 		if slices.Contains(args, "--write-subs") {
 			fmt.Fprintln(os.Stderr, "ERROR: Unable to download video subtitles for 'en': HTTP Error 429: Too Many Requests")

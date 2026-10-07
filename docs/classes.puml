@@ -44,6 +44,8 @@ package "Application Core" #F0F4F8 {
         +isRunning : atomic.Bool
         +updating : atomic.Bool
         +selfUpdater : *SelfUpdater
+        +toolInstaller : *ToolInstaller
+        +installing : atomic.Bool
         +showDebug : atomic.Bool
         +keepHistory : atomic.Bool
         +queue : atomic.Pointer[QueueModel]
@@ -255,6 +257,7 @@ package "Download Engine" #FFF8F0 {
     class DownloadEngine <<service>> {
         +YtDlpPath : string
         +FFmpegPath : string
+        +JSRuntime : JSRuntime
         --
         +NewDownloadEngine(ytDlpPath, ffmpegPath) : *DownloadEngine
         +BuildArgs(req DownloadRequest) : DownloadArgs
@@ -320,7 +323,7 @@ package "Download Engine" #FFF8F0 {
     }
 
     class SelfUpdater <<service>> {
-        -client : *http.Client
+        -httpFetcher
         -exePath : string
         -start : func(path) error
         --
@@ -672,6 +675,10 @@ package "Dependency Service" #FFFFF0 {
         +Resolve(toolName string) : string
         +Check(onWarning func(string))
         +Version(toolName string) : (string, error)
+        +Installed(toolName string) : InstalledTool
+        +JSRuntime() : (JSRuntime, bool)
+        +JSRuntimeNotes() : []string
+        +ResetJSRuntime()
         +RunUpdate(cb UpdateCallbacks)
         +UpdateCLI() : error
         -updateFailureHint() : string
@@ -682,6 +689,42 @@ package "Dependency Service" #FFFFF0 {
         +OnStatus : func(msg string)
         +OnSuccess : func()
         +OnFailure : func()
+    }
+
+    class JSRuntime <<data>> {
+        +Name : string
+        +Path : string
+        +Version : string
+        +InBin : bool
+        --
+        +Arg() : string
+        +Label() : string
+    }
+
+    class InstalledTool <<data>> {
+        +Path : string
+        +InBin : bool
+        +Version : string
+    }
+
+    class ToolInstaller <<service>> {
+        -httpFetcher
+        -deps : *DependencyService
+        -releases : *ReleaseService
+        -rename : func(from, to) error
+        --
+        +NewToolInstaller(deps, releases, userAgent) : *ToolInstaller
+        +Latest(ctx, tool toolSpec) : (string, error)
+        +Install(ctx, tool toolSpec, onProgress) : (string, error)
+        -stage(tool, release, download) : []stagedFile
+        -swap(staged) : error
+    }
+
+    class toolSpec <<data>> {
+        -name : string
+        -label : string
+        -files : []string
+        -latest : func(installer, ctx) (toolRelease, error)
     }
 
 }
@@ -846,6 +889,12 @@ interface FynePreferences <<fyne.Preferences>> {
 ' ════════════════════════════════════════════════════════════
 
 DependencyService ..> UpdateCallbacks : RunUpdate bridge
+DependencyService ..> JSRuntime : finds
+ToolInstaller --> DependencyService : bin/ paths
+ToolInstaller --> ReleaseService : GitHub releases
+ToolInstaller ..> toolSpec : installs
+DownloadEngine --> JSRuntime : --js-runtimes
+DownloaderApp *--> ToolInstaller : toolInstaller
 
 ' DownloaderApp composition (owns these fields)
 DownloaderApp *--> UIWidgets       : ui

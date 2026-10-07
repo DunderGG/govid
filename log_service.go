@@ -166,6 +166,7 @@ type SessionConfig struct {
 	TrimEnd     string
 	MaxSpeed    string
 	CookiesPath string
+	JSRuntime   string // the JavaScript runtime yt-dlp uses, e.g. "deno 2.9.7 (bin/)"
 
 	SaveLog            bool
 	Notify             bool
@@ -211,6 +212,9 @@ func (svc *LogService) WriteSessionConfig(cfg SessionConfig, writeFn func(string
 	writeFn(fmt.Sprintf("[SYSTEM] Trim: start=%q, end=%q", cfg.TrimStart, cfg.TrimEnd), colSystem)
 	writeFn(fmt.Sprintf("[SYSTEM] Max speed: %s", maxSpeed), colSystem)
 	writeFn(fmt.Sprintf("[SYSTEM] Cookies file: %s", cookiesPath), colSystem)
+	if cfg.JSRuntime != "" {
+		writeFn(fmt.Sprintf("[SYSTEM] JS runtime: %s", cfg.JSRuntime), colSystem)
+	}
 	writeFn(fmt.Sprintf("[SYSTEM] Runtime toggles: saveLog=%t, notify=%t, autoRetry=%t, postProcess=%t", cfg.SaveLog, cfg.Notify, cfg.AutoRetry, cfg.PostProcessEnabled), colSystem)
 	writeFn(fmt.Sprintf("[SYSTEM] Preferences: savePrefs=%t, logLimit=%s, showDebug=%t, theme=%s", cfg.SavePrefs, cfg.LogLimit, cfg.ShowDebug, cfg.ThemeMode), colSystem)
 	writeFn(fmt.Sprintf("[SYSTEM] Embed: metadata=%t, thumbnail=%t, chapters=%t", cfg.EmbedMetadata, cfg.EmbedThumbnail, cfg.EmbedChapters), colSystem)

@@ -119,11 +119,11 @@ func newTestUpdater(t *testing.T) (updater *SelfUpdater, started *[]string) {
 	}
 	started = new([]string)
 	updater = &SelfUpdater{
-		client:   http.DefaultClient,
-		exePath:  exePath,
-		tempDir:  t.TempDir(),
-		start:    func(path string) error { *started = append(*started, path); return nil },
-		writable: func(string) bool { return true },
+		httpFetcher: httpFetcher{client: http.DefaultClient},
+		exePath:     exePath,
+		tempDir:     t.TempDir(),
+		start:       func(path string) error { *started = append(*started, path); return nil },
+		writable:    func(string) bool { return true },
 	}
 	return updater, started
 }

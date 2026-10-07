@@ -29,6 +29,20 @@ import (
 type DownloadEngine struct {
 	YtDlpPath  string // absolute path to yt-dlp binary
 	FFmpegPath string // absolute path to ffmpeg binary (empty → omit flag)
+
+	// JSRuntime is the JavaScript runtime yt-dlp solves YouTube's player
+	// challenges with; the zero value passes none.
+	JSRuntime JSRuntime
+}
+
+// jsRuntimeArgs returns the --js-runtimes option naming the engine's
+// runtime, or nothing when it has none. Both the probe and the download
+// extract the video, so both pass it.
+func (engine *DownloadEngine) jsRuntimeArgs() []string {
+	if engine.JSRuntime.Path == "" {
+		return nil
+	}
+	return []string{"--js-runtimes", engine.JSRuntime.Arg()}
 }
 
 // NewDownloadEngine returns a DownloadEngine configured with the given binary paths.
@@ -173,6 +187,8 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 			args = append(args, "--ffmpeg-location", engine.FFmpegPath)
 		}
 	}
+
+	args = append(args, engine.jsRuntimeArgs()...)
 
 	if req.MaxSpeed != "" {
 		args = append(args, "--limit-rate", req.MaxSpeed)

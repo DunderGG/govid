@@ -36,6 +36,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Config Support**: Configuration file support via `govid.json` for startup defaults and repeatable workflows.
 - **Log Export**: Option to save download logs to `.txt` files for troubleshooting.
 - **Completion Notifications**: Optional desktop notifications when downloads complete.
+- **Tools and Components**: **Tools → Components** installs, updates, or repairs yt-dlp, FFmpeg (with ffprobe), and Deno in the `bin/` folder, each download checked against its published SHA-256. GoVid passes yt-dlp a JavaScript runtime (Deno, or Node or Bun on `PATH`), which YouTube now needs, and offers to install Deno or any missing tool at startup.
 - **Update Checks**: Warns when the installed `yt-dlp` is out of date and updates it with one click, and tells you when a newer GoVid release is available (also under **Tools → Check for GoVid updates**). On Windows, **Update now** downloads the new release, checks it against its published SHA-256, replaces GoVid, and restarts it.
 - **Dark / Light Theme**: Built-in light and dark themes configurable in Preferences.
 
@@ -44,7 +45,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 You can download the latest pre-compiled executables from the **[Releases Page](https://github.com/DunderGG/govid/releases/latest)**.
 
 1. Download the bundled `.zip` for your operating system.
-2. Extract the zip — `yt-dlp` and `ffmpeg` are included in the `bin/` folder.
+2. Extract the zip — `yt-dlp` and `ffmpeg` are included in the `bin/` folder. GoVid offers to install Deno, the JavaScript runtime YouTube downloads need, on first start (or use **Tools → Components**).
 3. Run `GoVid.exe` (Windows) or `GoVid` (Linux) and start downloading!
 
 ## 🚀 Getting Started
@@ -53,12 +54,13 @@ You can download the latest pre-compiled executables from the **[Releases Page](
 
 > **Using a release build?** The bundled `.zip` from the [Releases Page](https://github.com/DunderGG/govid/releases/latest) already includes `yt-dlp` and `ffmpeg` in a `bin/` folder — no manual installation needed.
 >
-> **Optional:** `ffprobe.exe` is not bundled due to its size (~98MB) but can be placed in the `bin/` folder alongside `ffmpeg.exe` for enhanced metadata support. Download it from [gyan.dev/ffmpeg/builds](https://www.gyan.dev/ffmpeg/builds/) (included in the `ffmpeg-release-essentials.zip`).
+> **Optional:** `ffprobe.exe` is not bundled due to its size (~100 MB). **Tools → Components** → FFmpeg → **Install** or **Update** downloads gyan.dev's essentials build with both `ffmpeg.exe` and `ffprobe.exe`; with ffprobe, post-processing shows a percentage. Deno (the JavaScript runtime YouTube needs) is installed the same way.
 
 If you are building from source, you must have the following tools installed and available in your system's `PATH`:
 
 1.  **[yt-dlp](https://github.com/yt-dlp/yt-dlp)**: The core engine for video downloading.
 2.  **[FFmpeg](https://ffmpeg.org/)**: Required for high-quality video/audio post-processing and conversion.
+    - **A JavaScript runtime** for YouTube: [Deno](https://deno.com/) 2.3 or newer (recommended), or Node.js 22 or newer. GoVid finds it on `PATH`, or installs Deno into `bin/` from **Tools → Components** on Windows.
 3.  **A GCC C compiler**: GoVid uses [Fyne](https://fyne.io/), which requires CGO and a C compiler to build.
     - **Windows**: Install [MSYS2](https://www.msys2.org/), then run `pacman -S mingw-w64-x86_64-gcc` in the MSYS2 shell and add `C:\msys64\mingw64\bin` to your system `PATH`.
     - **Linux**: Install GCC via your package manager, e.g. `sudo apt install gcc` (Debian/Ubuntu) or `sudo dnf install gcc` (Fedora).

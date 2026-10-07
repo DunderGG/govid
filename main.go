@@ -52,6 +52,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	if updater, err := NewSelfUpdater("GoVid/" + version); err == nil {
 		dlApp.selfUpdater = updater
 	}
+	dlApp.toolInstaller = NewToolInstaller(depSvc, dlApp.releaseSvc, "GoVid/"+version)
 
 	// Load saved preferences and apply them to all widgets.
 	dlApp.statusThrottle = newLatestValueThrottle(statusThrottleInterval, dlApp.showStatus)
@@ -94,6 +95,9 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onCheckDependencies = depSvc.Check
 	dlApp.uiManager.onRunUpdate = depSvc.RunUpdate
 	dlApp.uiManager.onYtDlpVersions = dlApp.ytDlpVersions
+	dlApp.uiManager.onJSRuntimeLabel = dlApp.jsRuntimeLabel
+	dlApp.uiManager.onComponents = dlApp.componentStatuses
+	dlApp.uiManager.onComponentAction = dlApp.installComponent
 	dlApp.uiManager.onCheckGoVidRelease = dlApp.checkGoVidRelease
 	dlApp.uiManager.onCanSelfUpdate = dlApp.canSelfUpdate
 	dlApp.uiManager.onSelfUpdate = dlApp.runSelfUpdate
@@ -148,7 +152,9 @@ func main() {
 
 	dlApp.uiManager.createMainMenu()
 	dlApp.uiManager.createUI()
+	removeOldTools(dlApp.depSvc)
 	dlApp.uiManager.checkDependencies()
+	dlApp.checkTools()
 	dlApp.startUpdateChecks(dlApp.prefSvc.Load().CheckUpdates)
 	dlApp.startGPUDetection()
 	dlApp.cleanUpAfterUpdate()

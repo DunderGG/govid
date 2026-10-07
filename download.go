@@ -35,6 +35,10 @@ type downloadSession struct {
 	trimEnd   string
 	vfFilters []string // post-processing video filters; nil when post-processing is off
 	afFilters []string // post-processing audio filters; nil when post-processing is off
+
+	// logConfig is the configuration the session log starts with, written
+	// by the session goroutine; nil when the session is not logged to a file.
+	logConfig *SessionConfig
 }
 
 // hasPostProcess reports whether any post-processing filter is active.
@@ -45,6 +49,10 @@ func (session downloadSession) hasPostProcess() bool {
 // startDownload validates the inputs of a new download session, resets the UI
 // for it, and launches the progress smoother and the session goroutine.
 func (app *DownloaderApp) startDownload() {
+	if app.installing.Load() {
+		dialog.ShowError(fmt.Errorf("a tool is being installed; start the download when it has finished"), app.window)
+		return
+	}
 	session, err := app.readSession()
 	if err != nil {
 		dialog.ShowError(err, app.window)
@@ -53,7 +61,7 @@ func (app *DownloaderApp) startDownload() {
 
 	app.uiManager.savePreferences(session.savePath)
 	app.resetSession()
-	app.openSessionLog(session)
+	session.logConfig = app.openSessionLog(session)
 
 	// queueCtx never expires on its own; stopQueue (wired to Cancel) ends the
 	// whole session. In batch mode each URL gets a child of queueCtx so Cancel
@@ -138,20 +146,33 @@ func (app *DownloaderApp) resetSession() {
 	app.isRunning.Store(true)
 }
 
-// openSessionLog starts the on-disk session log and writes the session
-// configuration header to it, when "Save output to log file" is checked.
-func (app *DownloaderApp) openSessionLog(session downloadSession) {
+// openSessionLog starts the on-disk session log, when "Save output to log
+// file" is checked, and returns the session configuration to write at its
+// top (see writeSessionConfig), or nil when there is no log file. Must be
+// called on the UI thread, since it reads the widgets.
+func (app *DownloaderApp) openSessionLog(session downloadSession) *SessionConfig {
 	if !app.ui.download.saveLog.Checked {
-		return
+		return nil
 	}
 	logPath, err := app.logSvc.OpenSessionLog(session.savePath)
 	if err != nil {
 		app.appendOutput(fmt.Sprintf("[ERROR] Failed to create log file: %v", err), colError)
-		return
+		return nil
 	}
 	app.appendOutput(fmt.Sprintf("[SYSTEM] Logging to: %s", logPath), colSystem)
 	cfg := newSessionConfig(app.ui, session.urls, session.savePath, session.trimStart, session.trimEnd)
-	app.logSvc.WriteSessionConfig(cfg, app.appendOutput)
+	return &cfg
+}
+
+// writeSessionConfig writes the session's configuration to the log, with
+// the JavaScript runtime yt-dlp will use. Finding the runtime may run it,
+// so this happens on the session goroutine.
+func (app *DownloaderApp) writeSessionConfig(cfg *SessionConfig) {
+	if cfg == nil {
+		return
+	}
+	cfg.JSRuntime = app.jsRuntimeLabel()
+	app.logSvc.WriteSessionConfig(*cfg, app.appendOutput)
 }
 
 // runSession checks every URL in the session (expanding playlists into the
@@ -169,6 +190,7 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 	defer app.isRunning.Store(false)
 	defer app.finishSessionUI()
 
+	app.writeSessionConfig(session.logConfig)
 	session.items = app.checkURLs(queueCtx, session)
 	if queueCtx.Err() == nil {
 		session.items = app.skipDownloaded(queueCtx, session.items)
@@ -443,14 +465,19 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, ite
 	if dl.Err == nil {
 		app.recordHistory(req, item, dl.FinalPaths)
 	}
+	if dl.Scan.hadNoJSRuntime {
+		app.showJSRuntimeNotice()
+	}
 	app.reportDownloadResult(ctx, dl, time.Since(startTime))
 	return dl.FinalPaths
 }
 
 // newDownloadEngine returns a DownloadEngine for the resolved yt-dlp and
-// ffmpeg.
+// ffmpeg, and the JavaScript runtime, if there is one.
 func (app *DownloaderApp) newDownloadEngine() *DownloadEngine {
-	return NewDownloadEngine(app.depSvc.Resolve("yt-dlp"), app.depSvc.Resolve("ffmpeg"))
+	engine := NewDownloadEngine(app.depSvc.Resolve("yt-dlp"), app.depSvc.Resolve("ffmpeg"))
+	engine.JSRuntime, _ = app.depSvc.JSRuntime()
+	return engine
 }
 
 // newDownloadRequest gathers the widget state a download of rawURL needs

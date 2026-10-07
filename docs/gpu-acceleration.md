@@ -116,6 +116,8 @@ The binary reports `cuda`, `qsv`, `amf`, `d3d11va`, `d3d12va`, `dxva2`, and `vaa
 
 Checked on 2026-10-06 with `ffmpeg -hide_banner -filters`: the build includes `zscale` (libzimg) and `tonemap`, which the HDR to SDR chain needs, as well as the `libx265` and `libvpx-vp9` encoders used to generate the HDR sample in `testdata/`.
 
+**FFmpeg 9.0.2.** Tools → Components installs gyan.dev's current essentials build, which was `9.0.2-essentials_build-www.gyan.dev` on 2026-10-07. Checked that day with the same commands: it reports the same hardware encoders (`h264`/`hevc`/`av1` for NVENC, QSV, AMF, and VAAPI, plus the Media Foundation `_mf` encoders) and the same `-hwaccels` as 8.1, and still has `zscale` and `tonemap`. After installing FFmpeg, GoVid detects the GPU encoders again and checks for those two filters itself (`checkFFmpegFilters`). Run this inventory again when gyan.dev moves to a new major version.
+
 This confirms that the current package contains the components needed to attempt the three primary Windows pipelines. It does not confirm that any pipeline works on the current or an end user's GPU. Driver and device initialization belong to runtime capability detection.
 
 Windows is currently the only platform with a bundled artifact in this repository. Repeat this inventory and record a platform-specific binary checksum when Linux packages are added.

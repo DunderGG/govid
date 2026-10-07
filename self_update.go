@@ -18,7 +18,6 @@ import (
 	"bufio"
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -97,12 +96,11 @@ func parseSHA256Sums(sums, name string) (string, bool) {
 
 // SelfUpdater replaces the running GoVid with a release's GoVid.exe.
 type SelfUpdater struct {
-	client    *http.Client
-	userAgent string
-	exePath   string                  // the running executable
-	tempDir   string                  // where downloads go; "" for the system temp folder
-	start     func(path string) error // starts the new executable; replaced in tests
-	writable  func(dir string) bool   // dirWritable; replaced in tests
+	httpFetcher
+	exePath  string                  // the running executable
+	tempDir  string                  // where downloads go; "" for the system temp folder
+	start    func(path string) error // starts the new executable; replaced in tests
+	writable func(dir string) bool   // dirWritable; replaced in tests
 }
 
 // NewSelfUpdater returns an updater for the running executable.
@@ -112,11 +110,10 @@ func NewSelfUpdater(userAgent string) (*SelfUpdater, error) {
 		return nil, fmt.Errorf("finding GoVid's own file: %w", err)
 	}
 	return &SelfUpdater{
-		client:    &http.Client{Timeout: updateDownloadTimeout},
-		userAgent: userAgent,
-		exePath:   exePath,
-		start:     startDetached,
-		writable:  dirWritable,
+		httpFetcher: httpFetcher{client: &http.Client{Timeout: updateDownloadTimeout}, userAgent: userAgent},
+		exePath:     exePath,
+		start:       startDetached,
+		writable:    dirWritable,
 	}, nil
 }
 
@@ -164,75 +161,6 @@ func (updater *SelfUpdater) Download(ctx context.Context, release Release, onPro
 		return zipPath, fmt.Errorf("%w (expected %s, got %s)", errChecksumMismatch, want, got)
 	}
 	return zipPath, nil
-}
-
-// get starts a GET request for url and returns the response, which the
-// caller closes, after checking its status.
-func (updater *SelfUpdater) get(ctx context.Context, url string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", updater.userAgent)
-	resp, err := updater.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		return nil, fmt.Errorf("server answered %s", resp.Status)
-	}
-	return resp, nil
-}
-
-// fetchText downloads a small text file.
-func (updater *SelfUpdater) fetchText(ctx context.Context, url string) (string, error) {
-	resp, err := updater.get(ctx, url)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	return string(data), err
-}
-
-// fetchFile downloads url to path and returns the file's SHA-256 in lower
-// case hex.
-func (updater *SelfUpdater) fetchFile(ctx context.Context, url, path string, onProgress func(done, total int64)) (string, error) {
-	resp, err := updater.get(ctx, url)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	file, err := os.Create(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	hash := sha256.New()
-	progress := &progressWriter{total: resp.ContentLength, onProgress: onProgress}
-	if _, err := io.Copy(io.MultiWriter(file, hash, progress), resp.Body); err != nil {
-		return "", err
-	}
-	if err := file.Close(); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
-}
-
-// progressWriter counts the bytes written through it and reports them.
-type progressWriter struct {
-	done, total int64
-	onProgress  func(done, total int64)
-}
-
-func (writer *progressWriter) Write(p []byte) (int, error) {
-	writer.done += int64(len(p))
-	if writer.onProgress != nil {
-		writer.onProgress(writer.done, writer.total)
-	}
-	return len(p), nil
 }
 
 // Install puts the GoVid.exe from zipPath in place of the running

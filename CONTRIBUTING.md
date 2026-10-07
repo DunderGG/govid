@@ -27,8 +27,9 @@ Use these upstream sources:
 - **yt-dlp:** Download `yt-dlp.exe` from the [latest yt-dlp release](https://github.com/yt-dlp/yt-dlp/releases/latest).
 - **FFmpeg and FFprobe for Windows:** Download the release essentials archive from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), then extract `ffmpeg.exe` and, optionally, `ffprobe.exe` from its `bin/` directory.
 - **FFmpeg for Linux and macOS:** Follow the platform links on the [official FFmpeg download page](https://ffmpeg.org/download.html), or use your system package manager.
+- **Deno (JavaScript runtime):** yt-dlp needs one to solve YouTube's player challenges. Install [Deno](https://docs.deno.com/runtime/getting_started/installation/) 2.3 or newer, or put `deno.exe` from the `deno-x86_64-pc-windows-msvc.zip` of its [latest release](https://github.com/denoland/deno/releases/latest) in `bin/`. Node.js 22 or newer on `PATH` works too. GoVid passes the runtime it finds to yt-dlp with `--js-runtimes`, and on Windows **Tools → Components** installs Deno, yt-dlp, and FFmpeg (with ffprobe) into `bin/`.
 
-`ffprobe` is optional. When present beside `ffmpeg`, it improves duration and frame-count metadata used for post-processing progress estimates.
+`ffprobe` is optional. When present beside `ffmpeg`, it improves duration and frame-count metadata used for post-processing progress estimates. Installing FFmpeg from **Tools → Components** adds it.
 
 ## Build and test
 

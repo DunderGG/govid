@@ -275,3 +275,121 @@ func TestDependencyUpdateCLIFailure(t *testing.T) {
 		t.Errorf("exitCodeFromError(%v) = 0, want a failure code", err)
 	}
 }
+
+func TestParseToolVersion(t *testing.T) {
+	tests := []struct {
+		output string
+		want   string
+	}{
+		{"2026.03.17\n", "2026.03.17"},
+		{"ffmpeg version 8.1-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers\nbuilt with gcc 15.2.0", "8.1"},
+		{"ffmpeg version N-118000-g1a2b3c4 Copyright (c) 2000-2026 the FFmpeg developers", "N-118000-g1a2b3c4"},
+		{"deno 2.9.7 (stable, release, x86_64-pc-windows-msvc)\nv8 14.1.146.11-rusty\ntypescript 5.9.2", "2.9.7"},
+		{"v24.16.0\n", "24.16.0"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		if got := parseToolVersion(tt.output); got != tt.want {
+			t.Errorf("parseToolVersion(%q) = %q, want %q", tt.output, got, tt.want)
+		}
+	}
+}
+
+// runtimeDirs returns a DependencyService whose bin/ holds a fake Deno when
+// binDeno is set, with PATH holding fake copies of the runtimes named in
+// onPath.
+func runtimeDirs(t *testing.T, binDeno bool, onPath ...string) *DependencyService {
+	t.Helper()
+	svc := &DependencyService{binDir: t.TempDir()}
+	if binDeno {
+		installFakeTool(t, svc.binDir, "deno")
+	}
+	pathDir := t.TempDir()
+	for _, name := range onPath {
+		installFakeTool(t, pathDir, name)
+	}
+	t.Setenv("PATH", pathDir)
+	return svc
+}
+
+func TestJSRuntimePrefersTheDenoInBin(t *testing.T) {
+	svc := runtimeDirs(t, true, "node", "deno")
+
+	rt, ok := svc.JSRuntime()
+
+	if !ok || rt.Name != "deno" || !rt.InBin || rt.Path != svc.LocalPath("deno") || rt.Version != "2.9.7" {
+		t.Errorf("JSRuntime() = %+v, %v; want the Deno in bin/", rt, ok)
+	}
+	if got := rt.Label(); got != "deno 2.9.7 (bin/)" {
+		t.Errorf("Label() = %q", got)
+	}
+	if got := rt.Arg(); got != "deno:"+svc.LocalPath("deno") {
+		t.Errorf("Arg() = %q", got)
+	}
+}
+
+func TestJSRuntimeFindsNodeOnPath(t *testing.T) {
+	svc := runtimeDirs(t, false, "node")
+
+	rt, ok := svc.JSRuntime()
+
+	if !ok || rt.Name != "node" || rt.InBin || rt.Version != "24.16.0" {
+		t.Errorf("JSRuntime() = %+v, %v; want Node from PATH", rt, ok)
+	}
+}
+
+func TestJSRuntimeSkipsVersionsYtDlpDoesNotSupport(t *testing.T) {
+	tests := []struct {
+		name, version, wantNote string
+	}{
+		{"node", "20.11.0", "node 20.11.0 in PATH is too old for yt-dlp (needs 22.0.0 or newer)"},
+		{"deno", "2.2.0", "deno 2.2.0 in PATH is too old for yt-dlp (needs 2.3.0 or newer)"},
+		{"bun", "1.4.0", "bun 1.4.0 in PATH is too new for yt-dlp (supports up to 1.3.14)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := runtimeDirs(t, false, tt.name)
+			t.Setenv(fakeRuntimeVersionEnv, tt.version)
+
+			rt, ok := svc.JSRuntime()
+
+			if ok {
+				t.Errorf("JSRuntime() = %+v, want none", rt)
+			}
+			if notes := svc.JSRuntimeNotes(); len(notes) != 1 || notes[0] != tt.wantNote {
+				t.Errorf("JSRuntimeNotes() = %q, want %q", notes, tt.wantNote)
+			}
+		})
+	}
+}
+
+func TestJSRuntimeIsCachedUntilReset(t *testing.T) {
+	svc := runtimeDirs(t, false)
+	if _, ok := svc.JSRuntime(); ok {
+		t.Fatal("found a runtime in empty folders")
+	}
+	installFakeTool(t, svc.binDir, "deno")
+
+	if _, ok := svc.JSRuntime(); ok {
+		t.Error("the search was not cached")
+	}
+	svc.ResetJSRuntime()
+	if rt, ok := svc.JSRuntime(); !ok || !rt.InBin {
+		t.Errorf("JSRuntime() after ResetJSRuntime = %+v, %v; want the new Deno", rt, ok)
+	}
+}
+
+func TestDependencyInstalled(t *testing.T) {
+	isolatePath(t)
+	svc := &DependencyService{binDir: t.TempDir()}
+	if tool := svc.Installed("deno"); tool.Found() {
+		t.Errorf("Installed(deno) = %+v, want not found", tool)
+	}
+	installFakeTool(t, svc.binDir, "deno")
+
+	tool := svc.Installed("deno")
+
+	if !tool.Found() || !tool.InBin || tool.Version != "2.9.7" || tool.Source() != "bin/" {
+		t.Errorf("Installed(deno) = %+v, want 2.9.7 in bin/", tool)
+	}
+}

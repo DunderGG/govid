@@ -59,7 +59,7 @@ func TestBuildArgsDefaults(t *testing.T) {
 			t.Errorf("%s = %q, want %q", flag, got, want)
 		}
 	}
-	for _, flag := range []string{"--ffmpeg-location", "--limit-rate", "--cookies", "--download-sections", "--extract-audio"} {
+	for _, flag := range []string{"--ffmpeg-location", "--limit-rate", "--cookies", "--download-sections", "--extract-audio", "--js-runtimes"} {
 		if slices.Contains(args, flag) {
 			t.Errorf("args unexpectedly contain %s: %q", flag, args)
 		}
@@ -821,5 +821,40 @@ func TestBuildArgsEmbedding(t *testing.T) {
 				t.Errorf("last arg = %q, want the URL", last)
 			}
 		})
+	}
+}
+
+func TestBuildArgsAndProbePassTheJSRuntime(t *testing.T) {
+	engine := NewDownloadEngine("yt-dlp", "")
+	engine.JSRuntime = JSRuntime{Name: "deno", Path: filepath.Join("C:", "GoVid", "bin", "deno.exe"), Version: "2.9.7", InBin: true}
+	want := "deno:" + engine.JSRuntime.Path
+	req := DownloadRequest{URL: "https://example.com/v", SavePath: "s", Format: formatMP4, Quality: qualityBest}
+
+	if got := argAfter(engine.BuildArgs(req).Args, "--js-runtimes"); got != want {
+		t.Errorf("BuildArgs --js-runtimes = %q, want %q", got, want)
+	}
+	for _, singleVideo := range []bool{false, true} {
+		if got := argAfter(engine.probeArgs(req, singleVideo), "--js-runtimes"); got != want {
+			t.Errorf("probeArgs(singleVideo=%v) --js-runtimes = %q, want %q", singleVideo, got, want)
+		}
+	}
+}
+
+func TestStartDownloadPassesTheRuntimeItFinds(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	denoPath := installFakeTool(t, h.app.depSvc.binDir, "deno")
+	runs := useFakeArgs(t)
+	h.app.ui.download.entry.SetText("https://example.com/watch?v=1")
+
+	h.startAndWait(t)
+
+	got := runs()
+	if len(got) != 2 {
+		t.Fatalf("yt-dlp ran %d times, want a probe and a download: %q", len(got), got)
+	}
+	for _, args := range got {
+		if value := argAfter(args, "--js-runtimes"); value != "deno:"+denoPath {
+			t.Errorf("--js-runtimes = %q in %q, want deno:%s", value, args, denoPath)
+		}
 	}
 }

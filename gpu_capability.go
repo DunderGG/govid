@@ -121,6 +121,17 @@ func (svc *GPUCapabilityService) Detect(ctx context.Context) map[GPUBackend]Back
 	return svc.cloneCacheLocked()
 }
 
+// Reset points the service at another ffmpeg binary, such as one just
+// installed, and forgets what it detected, so the next Detect probes the
+// new binary.
+func (svc *GPUCapabilityService) Reset(ffmpegPath string) {
+	svc.mu.Lock()
+	defer svc.mu.Unlock()
+	svc.ffmpegPath = ffmpegPath
+	svc.cache = nil
+	svc.detected = false
+}
+
 // cloneCacheLocked returns a copy of the cache so callers cannot mutate the
 // service's internal state. Must be called with svc.mu held.
 func (svc *GPUCapabilityService) cloneCacheLocked() map[GPUBackend]BackendCapability {

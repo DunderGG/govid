@@ -31,10 +31,11 @@ This document outlines planned features, improvements, and known limitations for
 ### YouTube JavaScript Runtime
 > yt-dlp needs a JavaScript runtime (deno, node, bun, or quickjs) to solve YouTube's player challenges. The bundled yt-dlp reports `JS runtimes: none` and falls back to a deprecated client.
 
-- [ ] Find a runtime (`bin/deno.exe`, then deno, node, or bun on `PATH`) and pass it with `--js-runtimes` to the probe and the download.
-- [ ] Offer to install Deno into `bin/` (verified against its published SHA-256), and show a notice when yt-dlp warns that no runtime was found.
-- [ ] Show the runtime and its version in About and the session log.
-- [ ] Add a Tools → Components window that installs, updates, or repairs each tool in `bin/` (yt-dlp, FFmpeg with ffprobe, and Deno), each download verified against its source's published checksum. The startup check offers Install for a missing tool instead of only logging it.
+- [x] Find a runtime (`bin/deno.exe`, then deno, node, or bun on `PATH`) and pass it with `--js-runtimes` to the probe and the download. (`DependencyService.JSRuntime`: each candidate's `--version` is checked against the versions yt-dlp's EJS wiki lists, Deno 2.3.0+, Node 22.0.0+, Bun 1.2.11–1.3.14; the answer is cached. `BuildArgs` and `Probe` pass `--js-runtimes name:path`.)
+- [x] Offer to install Deno into `bin/` (verified against its published SHA-256), and show a notice when yt-dlp warns that no runtime was found. (At startup when none is found, and after a download whose output has yt-dlp's "No supported JavaScript runtime" warning.)
+- [x] Show the runtime and its version in About and the session log.
+- [x] Add a Tools → Components window that installs, updates, or repairs each tool in `bin/` (yt-dlp, FFmpeg with ffprobe, and Deno), each download verified against its source's published checksum. The startup check offers Install for a missing tool instead of only logging it. (`ToolInstaller` in `tool_installer.go`: yt-dlp and Deno from their GitHub releases, falling back to `/releases/latest/download/` links when the API is rate-limited, and FFmpeg's essentials build from gyan.dev; three checksum formats; files go in as `.new` and are swapped in by rename, and a failure puts the old files back. A new FFmpeg re-runs GPU detection and checks for `zscale` and `tonemap`. On Linux the window lists versions and points to the package manager.)
+
 
 ### Self-Updating GoVid
 > Let users update the app itself, not just yt-dlp.
@@ -361,6 +362,7 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Metadata embedding: an MP3 download shows its title, artist, date, and cover in a music player. ([priorities.md](priorities.md) #10)
 - [ ] Subtitles: a real YouTube video downloaded with **Embed** has a selectable subtitle track in a player. ([priorities_2.md](priorities_2.md) #4)
 - [ ] Self-update: a release build one version behind updates itself from a real GitHub release and restarts on the new version. ([priorities_2.md](priorities_2.md) #10)
+- [ ] Components: on a machine with no JavaScript runtime, the startup notice installs Deno, and the next YouTube download's verbose log shows `JS runtimes: deno-…` and no runtime warning; with `bin/ffmpeg.exe` deleted, Components → FFmpeg → **Install** restores it with `ffprobe.exe`, and post-processing shows a percentage again. The installer and yt-dlp with the installed Deno were checked against the real sources outside the GUI. ([priorities_3.md](priorities_3.md) #1)
 
 ### Release Checklist
 > Run with the packaged release before publishing it.
@@ -485,7 +487,7 @@ See the [refactoring roadmap](refactor_roadmap.md) for component-level status an
 ### FFmpeg On-Demand
 > Keep the initial download size small.
 
-- [ ] Offer to download/extract FFmpeg on-demand if missing instead of bundling. (Planned as part of the Components window under YouTube JavaScript Runtime; FFmpeg stays bundled, and the window installs or repairs it.)
+- [x] Offer to download/extract FFmpeg on-demand if missing instead of bundling. (Done as part of Tools → Components under YouTube JavaScript Runtime: FFmpeg stays bundled, and a startup notice or the window installs, updates, or repairs it, with ffprobe.)
 
 ---
 

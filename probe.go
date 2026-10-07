@@ -136,14 +136,14 @@ func (entry PlaylistEntry) DownloadURL() string {
 // It passes the same format selection and cookies as the download, so a
 // single video's info describes the formats the download would fetch.
 func (engine *DownloadEngine) Probe(ctx context.Context, req DownloadRequest) (MediaInfo, error) {
-	return engine.probe(ctx, probeArgs(req, false))
+	return engine.probe(ctx, engine.probeArgs(req, false))
 }
 
 // ProbeVideo is Probe for a URL that names one video, such as a playlist
 // entry, or a watch?v=…&list=… link the user chose "Only this video" for. Like
 // the download, it passes --no-playlist.
 func (engine *DownloadEngine) ProbeVideo(ctx context.Context, req DownloadRequest) (MediaInfo, error) {
-	return engine.probe(ctx, probeArgs(req, true))
+	return engine.probe(ctx, engine.probeArgs(req, true))
 }
 
 // probe runs yt-dlp with args and parses its answer.
@@ -173,12 +173,13 @@ func (engine *DownloadEngine) probe(ctx context.Context, args []string) (MediaIn
 // probeArgs builds the yt-dlp arguments a probe runs with. Without
 // singleVideo it does not pass --no-playlist, so a playlist is reported as
 // one.
-func probeArgs(req DownloadRequest, singleVideo bool) []string {
+func (engine *DownloadEngine) probeArgs(req DownloadRequest, singleVideo bool) []string {
 	formatFlag, _, _ := formatSelection(req.Format, req.Quality)
 	args := []string{"-J", "--flat-playlist", "--no-warnings", "-f", formatFlag}
 	if singleVideo {
 		args = append(args, "--no-playlist")
 	}
+	args = append(args, engine.jsRuntimeArgs()...)
 	if req.CookiesPath != "" {
 		if _, err := os.Stat(req.CookiesPath); err == nil {
 			args = append(args, "--cookies", req.CookiesPath)

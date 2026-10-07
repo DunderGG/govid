@@ -2,21 +2,29 @@
 //
 // Responsibilities:
 //   - DependencyService: resolves bundled binary paths (bin/ beside the exe or
-//     system PATH fallback), checks required tools are available, and runs the
-//     yt-dlp self-update command.
+//     system PATH fallback), checks required tools are available, reports
+//     where each tool was found and its version, and runs the yt-dlp
+//     self-update command.
+//   - JSRuntime: the JavaScript runtime (bin/deno, or deno, node, or bun on
+//     PATH) yt-dlp needs for YouTube's player challenges, found once and
+//     cached.
 //   - UpdateCallbacks: bridges update events back to the UI layer without any
 //     Fyne dependency.
 //   - UpdateCLI for headless --update flag use.
 package main
 
 import (
+	"context"
 	"fmt"
 	"image/color"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 )
 
 // DependencyService resolves bundled binary paths and checks tool availability.
@@ -27,6 +35,10 @@ type DependencyService struct {
 	// isWritable reports whether files can be created in a directory; nil
 	// means dirWritable. Replaced in tests.
 	isWritable func(dir string) bool
+
+	// The JavaScript runtime search, cached; nil until the first search.
+	runtimeMu     sync.Mutex
+	runtimeResult *jsRuntimeResult
 }
 
 // NewDependencyService returns a DependencyService pointed at the bin/
@@ -99,6 +111,248 @@ func (svc *DependencyService) Version(toolName string) (string, error) {
 		return "", fmt.Errorf("%s --version failed: %w", toolName, err)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// toolCommandTimeout bounds how long a version query of a tool may take. A
+// freshly downloaded executable can be slow to start the first time while
+// antivirus software scans it.
+const toolCommandTimeout = 15 * time.Second
+
+// versionPattern finds a dotted version number, e.g. "8.1" in "ffmpeg
+// version 8.1-essentials_build", "2.9.7" in "deno 2.9.7 (stable, …)", or
+// yt-dlp's "2026.03.17".
+var versionPattern = regexp.MustCompile(`\d+(?:\.\d+)+`)
+
+// parseToolVersion returns the version a tool's version output names: the
+// first dotted number on its first line. A line without one, such as a git
+// build of ffmpeg's "ffmpeg version N-118000-gabc Copyright …", gives the
+// word after "version", or else the whole line.
+func parseToolVersion(output string) string {
+	firstLine, _, _ := strings.Cut(strings.TrimSpace(output), "\n")
+	firstLine = strings.TrimSpace(firstLine)
+	if match := versionPattern.FindString(firstLine); match != "" {
+		return match
+	}
+	if _, after, found := strings.Cut(firstLine, "version "); found {
+		if fields := strings.Fields(after); len(fields) > 0 {
+			return fields[0]
+		}
+	}
+	return firstLine
+}
+
+// locate returns the path of toolName and whether it is the one in binDir,
+// which takes precedence over one on PATH. ok is false when neither exists.
+func (svc *DependencyService) locate(toolName string) (path string, inBin, ok bool) {
+	local := svc.LocalPath(toolName)
+	if _, err := os.Stat(local); err == nil {
+		return local, true, true
+	}
+	found, err := exec.LookPath(toolName)
+	if err != nil {
+		return "", false, false
+	}
+	return found, false, true
+}
+
+// versionArgs returns the arguments that make toolName print its version.
+func versionArgs(toolName string) []string {
+	if toolName == "ffmpeg" || toolName == "ffprobe" {
+		return []string{"-version"}
+	}
+	return []string{"--version"}
+}
+
+// runVersion runs the executable at path with toolName's version arguments
+// and returns the version it reports.
+func runVersion(path, toolName string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), toolCommandTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, versionArgs(toolName)...)
+	hideWindow(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("%s %s failed: %w", toolName, strings.Join(versionArgs(toolName), " "), err)
+	}
+	version := parseToolVersion(string(out))
+	if version == "" {
+		return "", fmt.Errorf("%s did not report a version", toolName)
+	}
+	return version, nil
+}
+
+// InstalledTool is where a tool was found and the version it reports.
+type InstalledTool struct {
+	Path    string
+	InBin   bool   // the copy in bin/, rather than one on PATH
+	Version string // "" when it did not say
+}
+
+// Found reports whether the tool was found at all.
+func (tool InstalledTool) Found() bool {
+	return tool.Path != ""
+}
+
+// Source names where the tool was found: "bin/" or "PATH".
+func (tool InstalledTool) Source() string {
+	if tool.InBin {
+		return "bin/"
+	}
+	return "PATH"
+}
+
+// Installed finds toolName (bin/ first, then PATH) and asks it for its
+// version. It runs the tool, so call it off the UI thread.
+func (svc *DependencyService) Installed(toolName string) InstalledTool {
+	path, inBin, ok := svc.locate(toolName)
+	if !ok {
+		return InstalledTool{}
+	}
+	version, _ := runVersion(path, toolName)
+	return InstalledTool{Path: path, InBin: inBin, Version: version}
+}
+
+// ── JavaScript runtime ────────────────────────────────────────────────────────
+
+// JSRuntime is a JavaScript runtime yt-dlp can use to solve YouTube's player
+// challenges. Without one, yt-dlp falls back to a deprecated YouTube client
+// that may miss formats.
+type JSRuntime struct {
+	Name    string // yt-dlp's name for it: "deno", "node", or "bun"
+	Path    string
+	Version string
+	InBin   bool // the Deno in bin/, rather than a runtime on PATH
+}
+
+// Arg returns the value of yt-dlp's --js-runtimes option for the runtime.
+// The path is always given, since bin/ is not on PATH.
+func (rt JSRuntime) Arg() string {
+	return rt.Name + ":" + rt.Path
+}
+
+// Label describes the runtime for the log and the About window, e.g.
+// "deno 2.9.7 (bin/)".
+func (rt JSRuntime) Label() string {
+	return fmt.Sprintf("%s %s (%s)", rt.Name, rt.Version, rt.source())
+}
+
+// source names where the runtime was found: "bin/" or "PATH".
+func (rt JSRuntime) source() string {
+	if rt.InBin {
+		return "bin/"
+	}
+	return "PATH"
+}
+
+// jsRuntimeRule is the range of versions of a runtime yt-dlp supports, from
+// its EJS wiki page (github.com/yt-dlp/yt-dlp/wiki/EJS); max is "" for no
+// upper limit.
+type jsRuntimeRule struct {
+	name, min, max string
+}
+
+// jsRuntimeRules lists the runtimes GoVid looks for, in yt-dlp's order of
+// preference. yt-dlp also supports QuickJS, which is rarely installed and
+// can take minutes per challenge in older versions.
+var jsRuntimeRules = []jsRuntimeRule{
+	{name: "deno", min: "2.3.0"},
+	{name: "node", min: "22.0.0"},
+	{name: "bun", min: "1.2.11", max: "1.3.14"}, // deprecated by yt-dlp
+}
+
+// supports reports whether yt-dlp supports version of the runtime, and if
+// not, why.
+func (rule jsRuntimeRule) supports(version string) (bool, string) {
+	switch {
+	case compareVersions(version, rule.min) < 0:
+		return false, fmt.Sprintf("too old for yt-dlp (needs %s or newer)", rule.min)
+	case rule.max != "" && compareVersions(version, rule.max) > 0:
+		return false, fmt.Sprintf("too new for yt-dlp (supports up to %s)", rule.max)
+	default:
+		return true, ""
+	}
+}
+
+// jsRuntimeResult is the outcome of looking for a runtime.
+type jsRuntimeResult struct {
+	runtime JSRuntime
+	found   bool
+	skipped []string // runtimes that were found but cannot be used, and why
+}
+
+// JSRuntime returns the runtime yt-dlp should use: the Deno in bin/, or
+// else the first supported deno, node, or bun on PATH. ok is false when
+// there is none. The answer is cached; ResetJSRuntime forgets it after a
+// runtime is installed. The first call runs each candidate, so call it off
+// the UI thread.
+func (svc *DependencyService) JSRuntime() (rt JSRuntime, ok bool) {
+	result := svc.jsRuntime()
+	return result.runtime, result.found
+}
+
+// JSRuntimeNotes returns why runtimes that were found cannot be used, e.g.
+// "node 20.11.0 on PATH is too old for yt-dlp (needs 22.0.0 or newer)".
+func (svc *DependencyService) JSRuntimeNotes() []string {
+	return svc.jsRuntime().skipped
+}
+
+// ResetJSRuntime makes the next JSRuntime call look for a runtime again.
+func (svc *DependencyService) ResetJSRuntime() {
+	svc.runtimeMu.Lock()
+	defer svc.runtimeMu.Unlock()
+	svc.runtimeResult = nil
+}
+
+// jsRuntime returns the cached runtime search, searching first if needed.
+func (svc *DependencyService) jsRuntime() jsRuntimeResult {
+	svc.runtimeMu.Lock()
+	defer svc.runtimeMu.Unlock()
+	if svc.runtimeResult == nil {
+		result := svc.findJSRuntime()
+		svc.runtimeResult = &result
+	}
+	return *svc.runtimeResult
+}
+
+// findJSRuntime looks for a supported runtime: bin/deno first, then deno,
+// node, and bun on PATH.
+func (svc *DependencyService) findJSRuntime() jsRuntimeResult {
+	var candidates []JSRuntime
+	if local := svc.LocalPath("deno"); fileExists(local) {
+		candidates = append(candidates, JSRuntime{Name: "deno", Path: local, InBin: true})
+	}
+	for _, rule := range jsRuntimeRules {
+		if path, err := exec.LookPath(rule.name); err == nil {
+			candidates = append(candidates, JSRuntime{Name: rule.name, Path: path})
+		}
+	}
+
+	var result jsRuntimeResult
+	for _, candidate := range candidates {
+		version, err := runVersion(candidate.Path, candidate.Name)
+		if err != nil {
+			result.skipped = append(result.skipped, fmt.Sprintf("%s at %s could not be run: %v", candidate.Name, candidate.Path, err))
+			continue
+		}
+		candidate.Version = version
+		if ok, why := ruleFor(candidate.Name).supports(version); !ok {
+			result.skipped = append(result.skipped, fmt.Sprintf("%s %s in %s is %s", candidate.Name, version, candidate.source(), why))
+			continue
+		}
+		result.runtime, result.found = candidate, true
+		return result
+	}
+	return result
+}
+
+// ruleFor returns the version rule of the runtime called name.
+func ruleFor(name string) jsRuntimeRule {
+	for _, rule := range jsRuntimeRules {
+		if rule.name == name {
+			return rule
+		}
+	}
+	return jsRuntimeRule{name: name}
 }
 
 // ── yt-dlp updater ────────────────────────────────────────────────────────────
