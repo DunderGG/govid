@@ -42,6 +42,9 @@ type MediaInfo struct {
 	// scheduled stream or premiere), "post_live", "was_live", or
 	// "not_live"; "" when the site does not say. ReleaseTimestamp is when
 	// a scheduled stream starts, in Unix seconds; 0 when unknown.
+	// FormatID is the format(s) the -f selector picked, e.g. "137+251".
+	FormatID string `json:"format_id"`
+
 	LiveStatus       string  `json:"live_status"`
 	ReleaseTimestamp float64 `json:"release_timestamp"`
 

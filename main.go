@@ -66,6 +66,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 
 	// Wire history service to both the app and the UIManager's callbacks.
 	dlApp.historySvc = NewHistoryService()
+	dlApp.queueStore = NewQueueStore()
 	dlApp.uiManager.onLoadHistory = dlApp.historySvc.Load
 	dlApp.uiManager.onClearHistory = dlApp.historySvc.Clear
 
@@ -111,6 +112,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.askPlaylist = dlApp.uiManager.askPlaylist
 	dlApp.askDuplicate = dlApp.uiManager.askDuplicate
 	dlApp.askLive = dlApp.uiManager.askLive
+	dlApp.askRestoreQueue = dlApp.uiManager.askRestoreQueue
 	dlApp.freeBytes = freeDiskBytes
 	dlApp.askDiskSpace = dlApp.uiManager.askDiskSpace
 
@@ -119,6 +121,9 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onOpenFolder = dlApp.openDownloadFolder
 	dlApp.uiManager.onRequestCancel = dlApp.RequestCancel
 	dlApp.uiManager.onRecording = dlApp.recording.Load
+	dlApp.uiManager.onPauseResume = dlApp.pauseOrResume
+	dlApp.uiManager.onPause = func() { dlApp.requestPause() }
+	dlApp.uiManager.onDiscardPaused = dlApp.discardPausedItem
 	return dlApp
 }
 
@@ -160,6 +165,7 @@ func main() {
 	dlApp.startUpdateChecks(dlApp.prefSvc.Load().CheckUpdates)
 	dlApp.startGPUDetection()
 	dlApp.cleanUpAfterUpdate()
+	dlApp.offerQueueRestore()
 
 	// Show a confirmation dialog if a download or post-processing job is
 	// active. Quitting then stops the job and waits for it to clean up.

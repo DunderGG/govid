@@ -36,6 +36,18 @@ type queueItem struct {
 	title     string
 	videoID   string
 	extractor string
+
+	// downloadID names the item's files while they download (see
+	// newDownloadID); it is given once, when the item is queued, so a
+	// retry or a resume continues the same partial files.
+	downloadID string
+	// formatID is the format(s) the last probe picked, e.g. "137+251", to
+	// tell when a resumed item's formats have changed.
+	formatID string
+	// request is the download settings the item downloads with: the
+	// session's, taken when it was queued, or those saved with it in
+	// queue.json. nil until the session queues it (see withRequest).
+	request *DownloadRequest
 }
 
 // withInfo returns the item with the probe's answer about it.
@@ -47,6 +59,9 @@ func (item queueItem) withInfo(info *MediaInfo) queueItem {
 	}
 	if info.ID != "" {
 		item.videoID, item.extractor = info.ID, info.ExtractorKey
+	}
+	if info.FormatID != "" {
+		item.formatID = info.FormatID
 	}
 	return item
 }
@@ -100,7 +115,9 @@ func (app *DownloaderApp) checkURLs(ctx context.Context, session downloadSession
 			app.updateStatus("Status: Checking URL…")
 		}
 
-		info, err := engine.Probe(ctx, app.newDownloadRequest(rawURL, session.savePath, session.trimStart, session.trimEnd))
+		req := session.request
+		req.URL = rawURL
+		info, err := engine.Probe(ctx, req)
 		switch {
 		case ctx.Err() != nil:
 			return nil
@@ -161,7 +178,7 @@ func (app *DownloaderApp) expandPlaylist(ctx context.Context, rawURL string, inf
 // URL without a size check. ctx is the item's own context, so Cancel stops
 // the probe too; the item is returned unchanged when ctx is cancelled.
 // position and total place the item in the queue, for the status label.
-func (app *DownloaderApp) checkItem(ctx context.Context, session downloadSession, item queueItem, position, total int) queueItem {
+func (app *DownloaderApp) checkItem(ctx context.Context, item queueItem, position, total int) queueItem {
 	if !item.needsProbe(time.Now()) {
 		return item
 	}
@@ -174,8 +191,7 @@ func (app *DownloaderApp) checkItem(ctx context.Context, session downloadSession
 		app.updateStatus("Status: Checking URL…")
 	}
 
-	req := app.newDownloadRequest(item.url, session.savePath, session.trimStart, session.trimEnd)
-	info, err := app.newDownloadEngine().ProbeVideo(ctx, req)
+	info, err := app.newDownloadEngine().ProbeVideo(ctx, item.downloadRequest())
 	switch {
 	case ctx.Err() != nil:
 		return item
@@ -186,6 +202,9 @@ func (app *DownloaderApp) checkItem(ctx context.Context, session downloadSession
 		// --no-playlist should rule this out; download the URL as it is.
 		item.info, item.probeFailed = nil, true
 	default:
+		if item.formatID != "" && info.FormatID != "" && info.FormatID != item.formatID {
+			app.appendOutput(fmt.Sprintf("[SYSTEM] %s now picks other formats (%s, was %s); a partial download of the old ones starts again.", item.displayName(), info.FormatID, item.formatID), colSystem)
+		}
 		item = item.withInfo(&info)
 	}
 	return item

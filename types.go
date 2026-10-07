@@ -46,6 +46,7 @@ type DownloadControls struct {
 	autoRetry    *widget.Check               // Option to automatically retry on transient errors
 	downloadBtn  *widget.Button              // Start button for downloads
 	cancelBtn    *widget.Button              // Stop button for active downloads
+	pauseBtn     *widget.Button              // Pauses the running download, or resumes paused ones
 	statusDot    *canvas.Circle              // Animated state indicator dot next to the status label
 	trimStart    *widget.Entry               // Optional start time for video trimming (HH:MM:SS)
 	trimEnd      *widget.Entry               // Optional end time for video trimming (HH:MM:SS)
@@ -64,6 +65,7 @@ func NewDownloadControls() *DownloadControls {
 		autoRetry:    widget.NewCheck("Auto-retry", nil),
 		downloadBtn:  widget.NewButtonWithIcon("Download Now!", nil, nil),
 		cancelBtn:    widget.NewButton("", nil),
+		pauseBtn:     newDisabledButton("Pause"),
 		statusDot:    canvas.NewCircle(colDotIdle),
 		progress:     widget.NewProgressBar(),
 		progressLive: newHiddenInfiniteBar(),
@@ -269,9 +271,10 @@ type DownloaderApp struct {
 	ui            *UIWidgets            // The graphical interface components
 	stats         *DownloadStats        // Statistics tracked during a session
 	logSvc        *LogService           // Session log, error log, and buffer-limit management
-	cancelMu      sync.Mutex            // Guards cancelFn and stopFn updates and reads
+	cancelMu      sync.Mutex            // Guards cancelFn, stopFn, and pauseFn updates and reads
 	cancelFn      context.CancelFunc    // Function used to signal yt-dlp to stop; in batch mode it skips only the current item
 	stopFn        context.CancelFunc    // Stops the whole session, including the rest of a batch queue
+	pauseFn       func()                // Pauses the running download (see setPauseFunc); nil when none can be paused
 	sessions      sync.WaitGroup        // Counts running sessions so Shutdown can wait for them to finish
 	stopPulse     chan struct{}         // Closed to stop the status dot pulse goroutine
 	pulseDone     chan struct{}         // Closed by the pulse goroutine when it exits
@@ -296,6 +299,11 @@ type DownloaderApp struct {
 	// uiManager.askLive, replaced in tests.
 	askLive func(ctx context.Context, prompt livePrompt) liveDecision
 
+	// askRestoreQueue asks whether to resume the downloads saved when GoVid
+	// last quit; set to uiManager.askRestoreQueue, replaced in tests.
+	askRestoreQueue func(count int, answer func(resume bool))
+	queueStore      *QueueStore // queue.json: the queue kept when GoVid quits
+
 	// freeBytes returns the free space on the volume holding a folder, and
 	// askDiskSpace asks what to do when a download will not fit; set to
 	// freeDiskBytes and uiManager.askDiskSpace, replaced in tests.
@@ -310,13 +318,15 @@ type DownloaderApp struct {
 	// sessionFailed is set when any download or post-processing job in the
 	// session fails, so the download button offers "Retry" when it ends.
 	// Post-processing workers set it concurrently.
-	sessionFailed atomic.Bool
-	isRunning     atomic.Bool // true while a download or post-processing session is active
-	updating      atomic.Bool // true while a GoVid self-update downloads or installs
-	installing    atomic.Bool // true while a tool is being installed into bin/; see installComponent
-	showDebug     atomic.Bool // true to show yt-dlp [debug] lines in the log view; see appendOutput
-	recording     atomic.Bool // true while a live stream is recorded; see setRecordingView
-	keepHistory   atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
+	sessionFailed  atomic.Bool
+	isRunning      atomic.Bool // true while a download or post-processing session is active
+	updating       atomic.Bool // true while a GoVid self-update downloads or installs
+	installing     atomic.Bool // true while a tool is being installed into bin/; see installComponent
+	showDebug      atomic.Bool // true to show yt-dlp [debug] lines in the log view; see appendOutput
+	recording      atomic.Bool // true while a live stream is recorded; see setRecordingView
+	quitting       atomic.Bool // true once Shutdown has begun: a stopped download is paused and the queue saved
+	awaitingResume atomic.Bool // true while the queue waits with only paused items left; see waitForResume
+	keepHistory    atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
 
 	// queue is the running (or last) session's download queue, shown in the
 	// Queue panel; yt-dlp's output readers report download progress to it.
@@ -330,4 +340,11 @@ func newHiddenInfiniteBar() *widget.ProgressBarInfinite {
 	bar.Stop()
 	bar.Hide()
 	return bar
+}
+
+// newDisabledButton returns a button with label that starts disabled.
+func newDisabledButton(label string) *widget.Button {
+	button := widget.NewButton(label, nil)
+	button.Disable()
+	return button
 }

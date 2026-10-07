@@ -43,6 +43,7 @@ func newDownloadHarness(t *testing.T, mode string) *downloadHarness {
 	installFakeTool(t, binDir, "yt-dlp")
 	app.depSvc = &DependencyService{binDir: binDir}
 	app.historySvc = &HistoryService{filePath: filepath.Join(t.TempDir(), historyFileName)}
+	app.queueStore = &QueueStore{filePath: filepath.Join(t.TempDir(), queueFileName)}
 	app.uiManager.onLoadHistory = app.historySvc.Load
 	app.uiManager.onClearHistory = app.historySvc.Clear
 	// The test driver runs fyne.Do on the calling goroutine instead of the
@@ -320,7 +321,7 @@ func TestRunYtDlpSuccessRecordsHistory(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-download")
 	const url = "https://example.com/v"
 
-	paths := h.app.runYtDlp(context.Background(), h.app.newDownloadRequest(url, h.saveDir, "", ""), queueItem{url: url}, 1, 1, nil)
+	paths, _ := h.app.runYtDlp(context.Background(), h.app.newDownloadRequest(url, h.saveDir, "", ""), queueItem{url: url}, 1, 1, nil)
 
 	want := filepath.Join(h.saveDir, "GoVid_Fake Video.mp4")
 	if !slices.Equal(paths, []string{want}) {
@@ -348,7 +349,7 @@ func TestRunYtDlpSuccessRecordsHistory(t *testing.T) {
 func TestRunYtDlpFailure(t *testing.T) {
 	h := newDownloadHarness(t, "fail")
 
-	paths := h.app.runYtDlp(context.Background(), h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, 1, 1, nil)
+	paths, _ := h.app.runYtDlp(context.Background(), h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, 1, 1, nil)
 
 	if paths != nil {
 		t.Errorf("runYtDlp() = %q, want nil", paths)
@@ -397,7 +398,7 @@ func TestRunYtDlpCancel(t *testing.T) {
 		}
 	})
 
-	paths := h.app.runYtDlp(ctx, h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, 1, 1, nil)
+	paths, _ := h.app.runYtDlp(ctx, h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, 1, 1, nil)
 
 	if paths != nil {
 		t.Errorf("runYtDlp() = %q, want nil", paths)
@@ -419,7 +420,7 @@ func TestRunYtDlpCancel(t *testing.T) {
 	}
 }
 
-func TestShutdownStopsWholeBatchAndQuits(t *testing.T) {
+func TestShutdownPausesTheBatchAndSavesTheQueue(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-hang")
 	h.app.ui.download.batchMode.SetChecked(true)
 	h.app.ui.download.entry.SetText("https://example.com/a\nhttps://example.com/b")
@@ -447,8 +448,19 @@ func TestShutdownStopsWholeBatchAndQuits(t *testing.T) {
 	if h.runs() != 1 {
 		t.Errorf("yt-dlp started %d times, want 1 (the rest of the queue abandoned)", h.runs())
 	}
-	if files := h.savedFiles(t); len(files) != 0 {
-		t.Errorf("saved files = %q, want the partial file removed before quitting", files)
+	files := h.savedFiles(t)
+	if len(files) != 1 {
+		t.Fatalf("saved files = %q, want the partial file kept to resume", files)
+	}
+	saved, err := h.app.queueStore.Load()
+	if err != nil || len(saved) != 2 {
+		t.Fatalf("saved queue = %+v, %v; want both items", saved, err)
+	}
+	if saved[0].Status != savedPaused || saved[1].Status != savedWaiting || saved[1].URL != "https://example.com/b" {
+		t.Errorf("saved queue = %+v, want a paused, b waiting", saved)
+	}
+	if !strings.Contains(files[0], saved[0].DownloadID) || saved[0].Request.Format != formatMP4 {
+		t.Errorf("saved item %+v does not match the partial file %s", saved[0], files[0])
 	}
 }
 

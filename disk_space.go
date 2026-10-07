@@ -109,12 +109,13 @@ func existingDir(path string) string {
 }
 
 // checkDiskSpace decides whether to download item, given the size the probe
-// estimated and the free space in the save folder. moreQueued says whether
+// estimated (scaled to req's trim range, and doubled when postProcess will
+// write a second copy) and the free space in req's save folder. moreQueued says whether
 // other items wait after it, so Skip and "continue for all" apply. With too
 // little space it asks the user, unless they already chose to continue for
 // the whole session (*continueAll). An unknown size, or free space that
 // cannot be measured, skips the check, and the log says so.
-func (app *DownloaderApp) checkDiskSpace(ctx context.Context, session downloadSession, item queueItem, moreQueued bool, continueAll *bool) diskSpaceDecision {
+func (app *DownloaderApp) checkDiskSpace(ctx context.Context, req DownloadRequest, postProcess bool, item queueItem, moreQueued bool, continueAll *bool) diskSpaceDecision {
 	estimate, known := uint64(0), false
 	if item.info != nil {
 		estimate, known = item.info.EstimatedSize()
@@ -124,15 +125,15 @@ func (app *DownloaderApp) checkDiskSpace(ctx context.Context, session downloadSe
 		return spaceProceed
 	}
 	if item.info.Duration > 0 {
-		estimate = uint64(float64(estimate) * trimFraction(item.info.Duration, session.trimStart, session.trimEnd))
+		estimate = uint64(float64(estimate) * trimFraction(item.info.Duration, req.TrimStart, req.TrimEnd))
 	}
 
-	free, err := app.freeBytes(existingDir(session.savePath))
+	free, err := app.freeBytes(existingDir(req.SavePath))
 	if err != nil {
 		app.appendOutput(fmt.Sprintf("[SYSTEM] Could not check free disk space (%v); skipping the check.", err), colWarning)
 		return spaceProceed
 	}
-	needed := diskSpaceNeeded(estimate, session.hasPostProcess())
+	needed := diskSpaceNeeded(estimate, postProcess)
 	if free >= needed {
 		return spaceProceed
 	}

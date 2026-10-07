@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -79,6 +80,11 @@ type DownloadRequest struct {
 	Subtitles     string
 	SubtitleLangs string
 	AutoSubtitles bool
+
+	// DownloadID is the token in the names of the files yt-dlp writes (see
+	// newDownloadID); "" makes BuildArgs create one. A queued item keeps
+	// its own, so its partial files can be continued.
+	DownloadID string
 
 	// Live records a live stream: it has no end, so Run reports its
 	// progress through ProcessCallbacks.OnRecording, and a stop (see
@@ -182,7 +188,12 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 
 	// Embed a unique token into the filename while yt-dlp is running so it never
 	// conflicts with existing files mid-download. Stripped on finalization.
-	downloadID := fmt.Sprintf("GOVID%d", time.Now().UnixNano())
+	// A queued item keeps its own (req.DownloadID), so a retry or a resume
+	// writes the same names and yt-dlp can continue its partial files.
+	downloadID := req.DownloadID
+	if downloadID == "" {
+		downloadID = newDownloadID()
+	}
 
 	outputTemplate := "GoVid_%(title)s" + qualitySuffix + "_" + downloadID + ".%(ext)s"
 	hasTrim := req.TrimStart != "" || req.TrimEnd != ""
@@ -190,8 +201,16 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 		outputTemplate = "GoVid_%(title)s" + qualitySuffix + "_TRIM_" + downloadID + ".%(ext)s"
 	}
 
+	// yt-dlp writes .part files and continues them, so an interrupted
+	// download resumes where it stopped. A live recording cannot be
+	// resumed, and must be written under its final name so that stopping it
+	// leaves a file to keep (see finishRecording).
+	partFlag := "--continue"
+	if req.Live {
+		partFlag = "--no-part"
+	}
 	args := []string{
-		"--newline", "--progress", "--verbose", "--no-part", "--no-continue", "--no-playlist",
+		"--newline", "--progress", "--verbose", partFlag, "--no-playlist",
 		"-f", formatFlag, "-P", req.SavePath, "-o", outputTemplate,
 	}
 
@@ -450,6 +469,9 @@ type DownloadResult struct {
 	// recording ended with an error, and what it wrote was kept and
 	// finalized anyway. Err is then nil.
 	Stopped bool
+	// Paused is set when the download was paused (see errPaused): its
+	// partial files are kept for a later run to continue. Err is then nil.
+	Paused bool
 }
 
 // errStopKeep is the cause a download's context is cancelled with to stop
@@ -457,6 +479,38 @@ type DownloadResult struct {
 // Run then finalizes the files instead of removing them (see
 // context.WithCancelCause).
 var errStopKeep = errors.New("stopped; keeping what was downloaded")
+
+// errPaused is the cause a download's context is cancelled with to pause
+// it: Run neither removes nor finalizes its partial files, so a later run
+// with the same DownloadID continues them (DownloadResult.Paused).
+var errPaused = errors.New("paused")
+
+// lastDownloadID is the number in the newest download ID; see
+// newDownloadID.
+var lastDownloadID atomic.Int64
+
+// newDownloadID returns a token for the names of a download's files,
+// "GOVID" and a number: the time in nanoseconds, made larger than every
+// earlier ID, so items queued in the same instant still differ.
+func newDownloadID() string {
+	for {
+		previous := lastDownloadID.Load()
+		next := max(time.Now().UnixNano(), previous+1)
+		if lastDownloadID.CompareAndSwap(previous, next) {
+			return fmt.Sprintf("GOVID%d", next)
+		}
+	}
+}
+
+// isPartialFile reports whether path is one of the files yt-dlp keeps while
+// a download is unfinished: a .part file, a fragment (.part-Frag3), its
+// fragment state (.ytdl), or a merge in progress (.temp.mp4). They are
+// left for yt-dlp to continue, and never taken for a finished download.
+func isPartialFile(path string) bool {
+	name := strings.ToLower(filepath.Base(path))
+	return strings.HasSuffix(name, ".part") || strings.Contains(name, ".part-frag") ||
+		strings.HasSuffix(name, ".ytdl") || strings.HasSuffix(name, ".temp") || strings.Contains(name, ".temp.")
+}
 
 // Run composes BuildArgs, Execute, and FinalizeFiles into the full lifecycle
 // of a single URL: build the yt-dlp command, run it with retry handling, and
@@ -518,6 +572,11 @@ func (engine *DownloadEngine) runArgs(ctx context.Context, req DownloadRequest, 
 	stopMonitor()
 
 	result := DownloadResult{Extension: built.Extension, Scan: scan, Err: cmdErr}
+	if cmdErr != nil && errors.Is(context.Cause(ctx), errPaused) {
+		cb.OnLog("[SYSTEM] Paused; the partial download is kept and continues when resumed.", colSystem)
+		result.Err, result.Paused = nil, true
+		return result
+	}
 	stopped := errors.Is(context.Cause(ctx), errStopKeep)
 	keep := cmdErr != nil && (stopped || req.Live) && engine.hasFiles(req.SavePath, built.DownloadID)
 	if cmdErr != nil && !keep {
@@ -536,6 +595,9 @@ func (engine *DownloadEngine) runArgs(ctx context.Context, req DownloadRequest, 
 		result.Err, result.Stopped = nil, true
 	}
 	finalPaths, subtitlePaths := splitSubtitleFiles(engine.FinalizeFiles(req.SavePath, built.DownloadID, cb.OnLog))
+	// What FinalizeFiles left are partial files yt-dlp no longer needs,
+	// such as a format an earlier, interrupted run had started.
+	engine.RemovePartialFiles(req.SavePath, built.DownloadID, cb.OnLog)
 	if keep && req.Live {
 		finalPaths = engine.finishRecording(finalPaths, built.Extension, cb.OnLog)
 	}
@@ -594,8 +656,9 @@ func saveInfoJSON(infoJSON []byte, onLog func(line string, col color.Color)) (pa
 	return file.Name(), remove
 }
 
-// FinalizeFiles finds all files written by yt-dlp under the given downloadID
-// token, strips the token from their names, and renames them to their final
+// FinalizeFiles finds all finished files written by yt-dlp under the given
+// downloadID token (not its partial files, see isPartialFile), strips the
+// token from their names, and renames them to their final
 // conflict-free paths using uniquePath. It returns the list of final paths so
 // callers can apply further post-processing.
 func (engine *DownloadEngine) FinalizeFiles(savePath, downloadID string, onLog func(line string, col color.Color)) []string {
@@ -606,6 +669,9 @@ func (engine *DownloadEngine) FinalizeFiles(savePath, downloadID string, onLog f
 	}
 	var finalPaths []string
 	for _, tmpPath := range matches {
+		if isPartialFile(tmpPath) {
+			continue
+		}
 		cleanBase := strings.Replace(filepath.Base(tmpPath), "_"+downloadID, "", 1)
 		cleanPath := filepath.Join(savePath, cleanBase)
 		finalPath := uniquePath(cleanPath)
@@ -635,9 +701,9 @@ const (
 )
 
 // RemovePartialFiles deletes every file yt-dlp wrote under the downloadID
-// token, for a download that failed or was cancelled. Because yt-dlp runs
-// with --no-part, these are incomplete media files under their final-looking
-// names. Each removal, and each file that could not be removed, is logged.
+// token, for a download that failed or was cancelled: its .part and
+// fragment files, and any media it finished before it stopped. Each
+// removal, and each file that could not be removed, is logged.
 func (engine *DownloadEngine) RemovePartialFiles(savePath, downloadID string, onLog func(line string, col color.Color)) {
 	matches, err := filepath.Glob(filepath.Join(savePath, "*"+downloadID+"*"))
 	if err != nil {

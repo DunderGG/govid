@@ -301,22 +301,6 @@ func (app *DownloaderApp) prepareLive(ctx context.Context, item queueItem, req *
 	return true
 }
 
-// recordingContext returns the context a live recording runs under, and a
-// stop function that ends the recording but keeps it (errStopKeep). The
-// recording also stops, keeping what it has, when parent is cancelled, so
-// skipping the item or stopping the session (quitting) never loses a
-// recording. Call release once the recording has finished.
-func recordingContext(parent context.Context) (ctx context.Context, stop, release func()) {
-	ctx, cancel := context.WithCancelCause(context.WithoutCancel(parent))
-	stop = func() { cancel(errStopKeep) }
-	unhook := context.AfterFunc(parent, stop)
-	release = func() {
-		unhook()
-		cancel(nil)
-	}
-	return ctx, stop, release
-}
-
 // liveStatusText is the status label while a stream is recorded or waited
 // for: "Recording 00:12:34 · 410.0 MiB", "Stream starts in 01:59:58;
 // waiting to record…", or, past its start (or with none announced),

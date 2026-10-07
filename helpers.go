@@ -79,9 +79,12 @@ func (app *DownloaderApp) StopSession() {
 const shutdownTimeout = 5 * time.Second
 
 // Shutdown stops any running session and, off the UI thread, waits up to
-// shutdownTimeout for it to kill its processes and remove its partial files.
+// shutdownTimeout for it to kill its processes. A download it stops is
+// paused rather than cancelled, and the queue's waiting and paused items
+// are saved to resume at the next start (see finishQueue).
 // It then closes the session log and calls quit on the UI thread.
 func (app *DownloaderApp) Shutdown(quit func()) {
+	app.quitting.Store(true)
 	app.StopSession()
 	app.updateStatus("Status: Stopping…")
 	app.setStatusIndicator(StatusCanceled)

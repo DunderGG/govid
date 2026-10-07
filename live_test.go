@@ -133,20 +133,36 @@ func TestRecordingRemuxPlan(t *testing.T) {
 	}
 }
 
-func TestRecordingContextKeepsTheRecordingWhenTheSessionStops(t *testing.T) {
-	session, stopSession := context.WithCancel(context.Background())
-	ctx, _, release := recordingContext(session)
-	defer release()
-
-	stopSession()
-
-	select {
-	case <-ctx.Done():
-	case <-time.After(5 * time.Second):
-		t.Fatal("the recording did not stop with the session")
+func TestDownloadContextCauseWhenTheSessionStops(t *testing.T) {
+	tests := []struct {
+		name     string
+		live     bool
+		quitting bool
+		want     error
+	}{
+		{"a recording is kept", true, false, errStopKeep},
+		{"a download is cancelled", false, false, context.Canceled},
+		{"quitting pauses a download", false, true, errPaused},
 	}
-	if !errors.Is(context.Cause(ctx), errStopKeep) {
-		t.Errorf("cause = %v, want errStopKeep so the recording is kept", context.Cause(ctx))
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := &DownloaderApp{}
+			app.quitting.Store(tt.quitting)
+			session, stopSession := context.WithCancel(context.Background())
+			ctx, _, release := app.downloadContext(session, tt.live)
+			defer release()
+
+			stopSession()
+
+			select {
+			case <-ctx.Done():
+			case <-time.After(5 * time.Second):
+				t.Fatal("the download did not stop with the session")
+			}
+			if !errors.Is(context.Cause(ctx), tt.want) {
+				t.Errorf("cause = %v, want %v", context.Cause(ctx), tt.want)
+			}
+		})
 	}
 }
 

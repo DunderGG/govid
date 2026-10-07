@@ -37,10 +37,13 @@ type queuePanel struct {
 
 // queueActions are what a queue row's buttons do.
 type queueActions struct {
-	move   func(id, delta int)
-	remove func(id int)
-	skip   func()
-	retry  func(id int)
+	move    func(id, delta int)
+	remove  func(id int)
+	skip    func()
+	retry   func(id int)
+	pause   func()
+	resume  func(id int)
+	discard func(id int) // removes a paused item and its partial files
 }
 
 // queueRow is one item of the Queue panel.
@@ -53,6 +56,8 @@ type queueRow struct {
 	remove *widget.Button
 	skip   *widget.Button
 	retry  *widget.Button
+	pause  *widget.Button
+	resume *widget.Button
 }
 
 // newQueueRow returns an empty row for the list to fill with show.
@@ -65,6 +70,8 @@ func newQueueRow() *queueRow {
 		remove: widget.NewButtonWithIcon("", theme.DeleteIcon(), nil),
 		skip:   widget.NewButtonWithIcon("Skip", theme.MediaSkipNextIcon(), nil),
 		retry:  widget.NewButtonWithIcon("Retry", theme.ViewRefreshIcon(), nil),
+		pause:  widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), nil),
+		resume: widget.NewButtonWithIcon("Resume", theme.MediaPlayIcon(), nil),
 	}
 	row.title.Truncation = fyne.TextTruncateEllipsis
 	row.ExtendBaseWidget(row)
@@ -74,7 +81,7 @@ func newQueueRow() *queueRow {
 // CreateRenderer lays the row out: status, title, then the buttons.
 func (row *queueRow) CreateRenderer() fyne.WidgetRenderer {
 	status := fixedWidth(row.status, 160)
-	buttons := container.NewHBox(row.up, row.down, row.remove, row.skip, row.retry)
+	buttons := container.NewHBox(row.up, row.down, row.remove, row.pause, row.resume, row.skip, row.retry)
 	return widget.NewSimpleRenderer(container.NewBorder(nil, nil, status, buttons, row.title))
 }
 
@@ -102,6 +109,11 @@ func (row *queueRow) show(entry queueEntry, running bool, actions queueActions) 
 	row.up.OnTapped = func() { actions.move(id, -1) }
 	row.down.OnTapped = func() { actions.move(id, 1) }
 	row.remove.OnTapped = func() { actions.remove(id) }
+	if entry.status == queuePaused {
+		row.remove.OnTapped = func() { actions.discard(id) }
+	}
+	row.pause.OnTapped = actions.pause
+	row.resume.OnTapped = func() { actions.resume(id) }
 	row.skip.OnTapped = actions.skip
 	if entry.isLive() {
 		row.skip.SetText("Stop recording")
@@ -113,8 +125,10 @@ func (row *queueRow) show(entry queueEntry, running bool, actions queueActions) 
 	waiting := entry.status == queueWaiting
 	active := entry.status == queueChecking || entry.status == queueDownloading
 	retryable := running && (entry.status == queueFailed || entry.status == queueSkipped)
+	paused := running && entry.status == queuePaused
 	for button, visible := range map[*widget.Button]bool{
-		row.up: waiting, row.down: waiting, row.remove: waiting,
+		row.up: waiting, row.down: waiting, row.remove: waiting || paused,
+		row.pause: entry.status == queueDownloading && !entry.isLive(), row.resume: paused,
 		row.skip: active, row.retry: retryable,
 	} {
 		if visible {
@@ -169,6 +183,12 @@ func (manager *UIManager) buildQueuePanel(open bool) *queuePanel {
 		move:   func(id, delta int) { manager.queueAction(func(queue *QueueModel) { queue.Move(id, delta) }) },
 		remove: func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Remove(id) }) },
 		retry:  func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Retry(id) }) },
+		resume: func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Resume(id) }) },
+		pause:  func() { manager.onPause() },
+		discard: func(id int) {
+			manager.onDiscardPaused(id)
+			manager.refreshQueue()
+		},
 		skip: func() {
 			if manager.onRequestCancel() {
 				manager.onLog("Download skipped by user.", colWarning)

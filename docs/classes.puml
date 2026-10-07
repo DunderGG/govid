@@ -49,6 +49,9 @@ package "Application Core" #F0F4F8 {
         +showDebug : atomic.Bool
         +keepHistory : atomic.Bool
         +queue : atomic.Pointer[QueueModel]
+        +quitting : atomic.Bool
+        +queueStore : *QueueStore
+        -pauseFn : func()
         --
         +SetCancelFunc(cancel context.CancelFunc)
         +RequestCancel() : bool
@@ -283,6 +286,7 @@ package "Download Engine" #FFF8F0 {
         +MaxSpeed : string
         +CookiesPath : string
         +CookiesFromBrowser : string
+        +DownloadID : string
         +EmbedMetadata : bool
         +EmbedThumbnail : bool
         +EmbedChapters : bool
@@ -309,6 +313,7 @@ package "Download Engine" #FFF8F0 {
         +Scan : scanResult
         +Err : error
         +Stopped : bool
+        +Paused : bool
     }
 
     class DownloadArgs <<data>> {
@@ -340,6 +345,15 @@ package "Download Engine" #FFF8F0 {
         +Install(zipPath) : error
     }
 
+    class QueueStore <<service>> {
+        -filePath : string
+        --
+        +NewQueueStore() : *QueueStore
+        +Load() : ([]savedQueueItem, error)
+        +Save(items []savedQueueItem) : error
+        +Clear() : error
+    }
+
     class Preset <<data>> {
         +Name : string
         +Settings : AppConfig
@@ -352,6 +366,11 @@ package "Download Engine" #FFF8F0 {
         --
         +NewQueueModel(items []queueItem) : *QueueModel
         +Next() : (id, queueItem, bool)
+        +Resume(id) : bool
+        +ResumeAll() : bool
+        +RemovePaused(id) : (queueItem, bool)
+        +HasPaused() : bool
+        +Changed() : <-chan struct{}
         +SetItem(id, item)
         +SetStatus(id, status)
         +SetActiveProgress(progress)
@@ -912,6 +931,7 @@ ToolInstaller --> ReleaseService : GitHub releases
 ToolInstaller ..> toolSpec : installs
 DownloadEngine --> JSRuntime : --js-runtimes
 DownloaderApp *--> ToolInstaller : toolInstaller
+DownloaderApp *--> QueueStore : queueStore
 
 ' DownloaderApp composition (owns these fields)
 DownloaderApp *--> UIWidgets       : ui

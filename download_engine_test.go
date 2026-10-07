@@ -45,7 +45,7 @@ func TestBuildArgsDefaults(t *testing.T) {
 	if got, want := argAfter(args, "-o"), "GoVid_%(title)s_"+built.DownloadID+".%(ext)s"; got != want {
 		t.Errorf("-o = %q, want %q", got, want)
 	}
-	for _, flag := range []string{"--newline", "--no-part", "--no-continue", "--no-playlist"} {
+	for _, flag := range []string{"--newline", "--continue", "--no-playlist"} {
 		if !slices.Contains(args, flag) {
 			t.Errorf("args missing %s: %q", flag, args)
 		}

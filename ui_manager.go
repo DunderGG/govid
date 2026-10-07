@@ -99,6 +99,9 @@ type UIManager struct {
 	onOpenFolder         func()                                                               // opens the save destination in the system file manager
 	onRequestCancel      func() bool                                                          // cancels the active download or post-process job
 	onRecording          func() bool                                                          // DownloaderApp.recording.Load: a live stream is being recorded
+	onPauseResume        func()                                                               // DownloaderApp.pauseOrResume: the main window's Pause / Resume button
+	onPause              func()                                                               // DownloaderApp.requestPause: a queue row's Pause
+	onDiscardPaused      func(id int)                                                         // DownloaderApp.discardPausedItem: a paused row's Remove
 	onLoadHistory        func() ([]DownloadHistoryEntry, error)                               // HistoryService.Load
 	onClearHistory       func() error                                                         // HistoryService.Clear
 	onCheckDependencies  func(onWarning func(msg string))                                     // DependencyService.Check
@@ -339,11 +342,15 @@ func (manager *UIManager) showConfigHelp() {
 			"  * **Drop onto the window** – a `.txt` list, or an internet shortcut (`.url`). A link dragged straight from a browser is not received on Windows; drag it to the desktop first, then drop the shortcut that makes\n\n" +
 			"In Batch Mode, lines starting with `#` are comments and are not downloaded."},
 		{"Playlists", "Before downloading, GoVid checks each URL. When one is a playlist, it shows the playlist's title, number of videos, and total length, and asks which videos to download:\n  * Leave the range blank and click **Download** to get them all\n  * Enter a range such as `1-10`, `5-`, or `3,5,8` to get only those\n  * For a link to one video inside a playlist (`watch?v=…&list=…`), **Only this video** is the default\n\nEach chosen video becomes its own item in the queue, with its own progress, Cancel, and history entry."},
-		{"Queue", "When a session has more than one video (Batch Mode, or videos picked from a playlist), the **Queue** panel above Terminal Output lists them with their status: Waiting, Checking, Downloading with its percentage, Post-processing, Done, Failed, or Skipped. Its title counts progress, e.g. \"7 of 20 done, 1 failed\". Click the title to fold the panel away.\n\nWhile the queue runs:\n" +
+		{"Queue", "When a session has more than one video (Batch Mode, or videos picked from a playlist), the **Queue** panel above Terminal Output lists them with their status: Waiting, Checking, Downloading with its percentage, Paused, Post-processing, Done, Failed, or Skipped. Its title counts progress, e.g. \"7 of 20 done, 1 failed\". Click the title to fold the panel away.\n\nWhile the queue runs:\n" +
 			"  * **Waiting** videos can be moved up or down (the order is the download order) or removed\n" +
-			"  * The video **downloading** can be skipped (the same as **Cancel**); the queue moves on\n" +
+			"  * The video **downloading** can be paused or skipped (the same as **Cancel**); the queue moves on\n" +
+			"  * A **paused** video can be resumed (it goes first among the waiting ones and continues where it stopped) or removed, which deletes what it had downloaded\n" +
 			"  * A video that **failed** or was **skipped** can be retried; it goes back to the end of the queue\n\n" +
 			"Videos the queue did not get to, because it was stopped, are marked Skipped."},
+		{"Pause and Resume", "**Pause** (beside Cancel, and on the downloading row of the Queue panel) stops the download but keeps what it has downloaded so far; the queue moves on to the next video. When only paused videos are left, the button reads **Resume**, which continues them all from where they stopped. **Cancel** or **Skip** still deletes the partly downloaded files.\n\n" +
+			"Interrupted downloads also continue rather than start over: an automatic retry after a network error, a **Retry** of a failed or skipped video in the same session, and downloads GoVid was closed during. When you close GoVid with videos waiting or paused (including the one downloading), it saves them, and at the next start asks whether to **Resume** them or **Discard** them, which deletes their partial files. A resumed video is checked again first; if the site now offers different formats, its partial download starts over, and the log says so.\n\n" +
+			"Live recordings cannot be paused; see **Live Streams**."},
 		{"Live Streams", "When a URL is a stream that is live now, GoVid asks how to record it:\n" +
 			"  * **Record from now** – records until you press **Stop recording** (the Cancel button, or Skip in the Queue panel) or the stream ends\n" +
 			"  * **Record from the start** (YouTube and Twitch) – records the stream from its beginning\n" +
@@ -407,7 +414,7 @@ func (manager *UIManager) showConfigHelp() {
 			"⚠️ **Security**: cookies give access to your accounts. GoVid only passes them to yt-dlp, which sends each cookie only to its own site. The session log names only the source (\"Firefox\", \"file set\"), never the file's path or its contents. Never share a cookies file."},
 
 		{"Post-Processing", "Found in **Tools → Post-Processing**. Enhance your downloads using FFmpeg. Most filters trigger a full re-encode.\n\n⚠️ **WebM files** use VP9 encoding which is significantly slower than H.264 — use MKV for faster post-processing."},
-		{"Cancel", "Stops the active download immediately and deletes its partly downloaded files. In batch mode, it skips the current URL and moves on to the next one. While a live stream is recorded, the button reads **Stop recording** and keeps what was recorded."},
+		{"Cancel", "Stops the active download immediately and deletes its partly downloaded files (use **Pause** to keep them). In batch mode, it skips the current URL and moves on to the next one. While a live stream is recorded, the button reads **Stop recording** and keeps what was recorded."},
 		{"Open Folder", "Opens your chosen save destination in the system file manager."},
 		{"JSON Configuration", "Every setting can be stored in a JSON file. **Tools → Export settings…** saves all of your current settings, and **Tools → Import settings…** applies a saved file, for example on another computer. A file named `govid.json` in the application folder is applied by **Load from Config** in **Tools → Preferences**.\n\n" +
 			"A key left out of the file leaves that setting unchanged, so a file can hold only the settings you want to set. A value that is not allowed is skipped, and GoVid lists every skipped value.\n\n**Keys and values:**\n" +
@@ -1169,6 +1176,12 @@ func (manager *UIManager) wireActionButtons(themeMode string) {
 			manager.onLog("Download canceled by user.", colWarning)
 		}
 	}
+
+	// The Pause button reads "Resume" while the queue holds only paused
+	// downloads; DownloaderApp.setPauseControl keeps it current.
+	ui.download.pauseBtn.Icon = theme.MediaPauseIcon()
+	ui.download.pauseBtn.OnTapped = manager.onPauseResume
+	ui.download.pauseBtn.Refresh()
 }
 
 // buildInputCard assembles the "Specify the source and destination" card:
@@ -1237,7 +1250,7 @@ func (manager *UIManager) buildInputCard(themeMode string) fyne.CanvasObject {
 				),
 			),
 			container.NewHBox(ui.download.saveLog, ui.download.notify, ui.download.autoRetry, ui.postProcess.enablePostProcess),
-			container.NewGridWithColumns(3, ui.download.downloadBtn, openFolderBtn, ui.download.cancelBtn),
+			container.NewGridWithColumns(4, ui.download.downloadBtn, openFolderBtn, ui.download.pauseBtn, ui.download.cancelBtn),
 		),
 	)
 	return container.NewBorder(nil, nil, accentBar(), nil, inputCard)

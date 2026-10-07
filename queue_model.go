@@ -27,6 +27,7 @@ const (
 	queueDone
 	queueFailed
 	queueSkipped
+	queuePaused // stopped with its partial files kept, until it is resumed
 )
 
 // String returns the status as the Queue panel shows it.
@@ -46,6 +47,8 @@ func (status queueStatus) String() string {
 		return "Failed"
 	case queueSkipped:
 		return "Skipped"
+	case queuePaused:
+		return "Paused"
 	default:
 		return "Unknown"
 	}
@@ -94,12 +97,20 @@ type QueueModel struct {
 	// OnChanged is called after every change; set it before the queue is
 	// shared. It must not block.
 	OnChanged func()
+
+	// changed receives a value (without blocking) after every change; see
+	// Changed.
+	changed chan struct{}
 }
 
-// NewQueueModel returns a queue of items, all waiting.
+// NewQueueModel returns a queue of items, all waiting. Each item without a
+// download ID gets one (see newDownloadID), which it keeps for good.
 func NewQueueModel(items []queueItem) *QueueModel {
-	queue := &QueueModel{}
+	queue := &QueueModel{changed: make(chan struct{}, 1)}
 	for _, item := range items {
+		if item.downloadID == "" {
+			item.downloadID = newDownloadID()
+		}
 		queue.entries = append(queue.entries, &queueEntry{id: queue.nextID, item: item})
 		queue.nextID++
 	}
@@ -112,10 +123,17 @@ func (queue *QueueModel) change(fn func() bool) bool {
 	queue.mu.Lock()
 	changed := fn()
 	queue.mu.Unlock()
-	if changed && queue.OnChanged != nil {
+	if !changed {
+		return false
+	}
+	select {
+	case queue.changed <- struct{}{}:
+	default:
+	}
+	if queue.OnChanged != nil {
 		queue.OnChanged()
 	}
-	return changed
+	return true
 }
 
 // find returns the entry with id, or nil. Call it with the lock held.
@@ -270,6 +288,71 @@ func (queue *QueueModel) Retry(id int) bool {
 	})
 }
 
+// Changed returns a channel that receives a value after the queue changes,
+// so a goroutine can wait for an item to be resumed. Several changes may
+// arrive as one value.
+func (queue *QueueModel) Changed() <-chan struct{} {
+	return queue.changed
+}
+
+// HasPaused reports whether any item is paused.
+func (queue *QueueModel) HasPaused() bool {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	return slices.ContainsFunc(queue.entries, func(entry *queueEntry) bool { return entry.status == queuePaused })
+}
+
+// Resume puts a paused item back to waiting, ahead of every other waiting
+// item, so it runs next, and reports whether it did.
+func (queue *QueueModel) Resume(id int) bool {
+	return queue.change(func() bool {
+		index := slices.IndexFunc(queue.entries, func(entry *queueEntry) bool { return entry.id == id })
+		if index < 0 || queue.entries[index].status != queuePaused {
+			return false
+		}
+		entry := queue.entries[index]
+		entry.status, entry.progress = queueWaiting, 0
+		rest := slices.Delete(queue.entries, index, index+1)
+		front := slices.IndexFunc(rest, func(other *queueEntry) bool { return other.status == queueWaiting })
+		if front < 0 {
+			front = len(rest)
+		}
+		queue.entries = slices.Insert(rest, front, entry)
+		return true
+	})
+}
+
+// ResumeAll resumes every paused item, keeping their order, and reports
+// whether there were any.
+func (queue *QueueModel) ResumeAll() bool {
+	var paused []int
+	for _, entry := range queue.Snapshot() {
+		if entry.status == queuePaused {
+			paused = append(paused, entry.id)
+		}
+	}
+	// Resuming puts each item first, so resume the last one first.
+	for _, id := range slices.Backward(paused) {
+		queue.Resume(id)
+	}
+	return len(paused) > 0
+}
+
+// RemovePaused takes a paused item out of the queue and returns it, so its
+// partial files can be deleted.
+func (queue *QueueModel) RemovePaused(id int) (item queueItem, ok bool) {
+	queue.change(func() bool {
+		index := slices.IndexFunc(queue.entries, func(entry *queueEntry) bool { return entry.id == id })
+		if index < 0 || queue.entries[index].status != queuePaused {
+			return false
+		}
+		item, ok = queue.entries[index].item, true
+		queue.entries = slices.Delete(queue.entries, index, index+1)
+		return true
+	})
+	return item, ok
+}
+
 // Snapshot returns a copy of every entry, in queue order.
 func (queue *QueueModel) Snapshot() []queueEntry {
 	queue.mu.Lock()
@@ -295,6 +378,9 @@ func (queue *QueueModel) Summary() string {
 	}
 	if n := counts[queueSkipped]; n > 0 {
 		summary += fmt.Sprintf(", %d skipped", n)
+	}
+	if n := counts[queuePaused]; n > 0 {
+		summary += fmt.Sprintf(", %d paused", n)
 	}
 	return summary
 }

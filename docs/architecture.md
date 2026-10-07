@@ -48,6 +48,8 @@ govid/
 ├── duplicates.go           skipDownloaded / askDuplicate — "Already downloaded" check before a session downloads
 ├── queue_model.go          QueueModel — the session's queue: items, per-item status, Next / Move / Remove / Retry
 ├── queue_panel.go          UIManager.showQueue — the collapsible Queue panel above the log
+├── pause_resume.go         downloadContext (Pause / Cancel / quit causes), Pause/Resume button, waitForResume, finishQueue, offerQueueRestore / resumeQueue
+├── queue_store.go          QueueStore — queue.json: the waiting and paused items saved when GoVid quits
 ├── log_service.go          LogService — session log open/close, error log routing, buffer-limit management
 ├── dependency_service.go   DependencyService — binary path resolution, dependency checks, tool versions (Installed), JS runtime discovery (JSRuntime), yt-dlp updater
 ├── tool_installer.go       ToolInstaller — installs yt-dlp, FFmpeg + ffprobe, and Deno into bin/: verified download, staged .new → rename swap with rollback
@@ -71,7 +73,7 @@ govid/
 ├── cookies.go             cookieArgs (--cookies-from-browser / --cookies), cookieLabel (log names only the source), classifyAccessError / accessHint (cookie failures, sign-in errors)
 ├── subtitles.go            matchSubLangs / reportSubtitles — which subtitle languages a video has and which are downloaded
 ├── disk_space.go           checkDiskSpace — free-space check before each queued item; the "Low disk space" prompt
-├── live.go                 Live and scheduled streams: MediaInfo.IsLive/IsUpcoming, prepareLive, recordingContext (Stop keeps), monitorRecording, finishRecording (remux), recording view and free-space watch
+├── live.go                 Live and scheduled streams: MediaInfo.IsLive/IsUpcoming, prepareLive, monitorRecording, finishRecording (remux), recording view and free-space watch
 ├── live_dialog.go          UIManager.askLive — Record from now / from the start / Skip, or Wait and record / Skip
 ├── postprocess.go          PostProcessSettings, buildPostProcessFilters / applyFFmpegFilters — value struct + thin UI wrapper; shared format/scan helpers
 ├── logscanner.go           DownloadEngine.watchOutput / parseProgress — yt-dlp stdout/stderr parsing goroutines
@@ -123,6 +125,10 @@ The central type. It holds pointers to every service and is the sole owner of th
 | `askDiskSpace func(ctx, diskSpacePrompt) diskSpaceDecision` | Asks what to do when a download will not fit; set to `UIManager.askDiskSpace`, stubbed in tests |
 | `askLive func(ctx, livePrompt) liveDecision` | Asks how to record a live or scheduled stream; set to `UIManager.askLive`, stubbed in tests |
 | `recording atomic.Bool` | Set while a live stream is recorded (`setRecordingView`); the Cancel button then reads "Stop recording" and does not log a cancel |
+| `pauseFn func()` | Pauses the running download (`setPauseFunc`, guarded by `cancelMu`); nil when none can be paused |
+| `quitting atomic.Bool` | Set by `Shutdown`: a download it stops is paused and the queue saved |
+| `queueStore *QueueStore` | `queue.json` (see §7, Pause and resume) |
+| `askRestoreQueue func(count, answer)` | Asks whether to resume the saved queue; set to `UIManager.askRestoreQueue`, stubbed in tests |
 | `stats *DownloadStats` | Real-time download metrics for progress smoothing |
 | `statusThrottle *latestValueThrottle[string]` | Rate-limits status label updates to one per 150 ms and skips repeats; `updateStatus` goes through it (`throttle.go`) |
 | `cancelMu sync.Mutex` | Guards access to the active cancellation callbacks (`cancelFn`, `stopFn`) |
@@ -176,7 +182,7 @@ A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg`, and t
 - **`Probe(ctx, DownloadRequest) (MediaInfo, error)`** — runs `yt-dlp -J --flat-playlist --no-warnings` with the download's `-f` selector and cookies, and without `--no-playlist` (`probe.go`). It returns `MediaInfo{Type, Title, Duration, Entries}`; `IsPlaylist()` is true for `_type == "playlist"`, and each `PlaylistEntry.DownloadURL()` is the video's URL. `--flat-playlist` lists a playlist's entries without extracting them, but a single video is still extracted in full. For a single video, `EstimatedSize()` adds up the `filesize` (or `filesize_approx`) of the requested formats, for the disk space check, and the `MediaInfo` keeps the JSON itself (`raw`) and when it was read (`probedAt`). `ProbeVideo` is the same probe with `--no-playlist`, for playlist entries and "Only this video" links. `isFresh(now)` is false once the answer is older than `probeMaxAge` (30 min), because the format URLs in it expire.
 - **`Execute(ctx, args []string, opts DownloadOptions, ProcessCallbacks) (scanResult, error)`** — starts the process, streams stdout/stderr through its own private `watchOutput` method (defined in `logscanner.go`), and retries on transient errors with 1 s / 5 s / 30 s back-off when `opts.AutoRetry` is set.
 - **`FinalizeFiles(savePath, downloadID string, onLog func(string, color.Color)) []string`** — globs the temp files written under `downloadID`, strips the token, and renames each to its final conflict-free name via the private `uniquePath` helper. Reports rename events through `onLog` rather than touching the UI directly.
-- **`RemovePartialFiles(savePath, downloadID string, onLog func(string, color.Color))`** — deletes every file written under `downloadID` after a failed or cancelled download (yt-dlp runs with `--no-part`, so these are incomplete media files), retrying briefly while Windows still holds a lock, and logs each removal.
+- **`RemovePartialFiles(savePath, downloadID string, onLog func(string, color.Color))`** — deletes every file written under `downloadID` after a failed or cancelled download (its `.part` and fragment files, and any media it finished first), and after a successful one the partial files `FinalizeFiles` left (an earlier run's format, say), retrying briefly while Windows still holds a lock, and logs each removal.
 - **`Run(ctx, req DownloadRequest, opts DownloadOptions, ProcessCallbacks) DownloadResult`** — composes the methods above into the full lifecycle of a single URL download: `FinalizeFiles` on success, `RemovePartialFiles` on failure or cancellation. When `req.InfoJSON` holds the probe's JSON, `saveInfoJSON` writes it to a temporary `govid-*.info.json` (in the temp folder, so `FinalizeFiles` cannot pick it up), `BuildArgs` passes `--load-info-json <file>` instead of the URL, and the file is removed when `Run` returns. yt-dlp runs format selection again on the loaded info, so `-f`, cookies, `--download-sections`, and the embed flags all still apply, and the video is extracted once per download instead of twice. If that run fails with HTTP 403 or 410 (`scanResult.hadExpiredLinkErr`: the format URLs expired or were issued to another IP address), `Run` repeats it once from the URL. A subtitle that cannot be downloaded (YouTube often answers 429) fails the whole yt-dlp run, so when `scanResult.hadSubtitleErr` is set `Run` repeats it once without subtitles and says so. `splitSubtitleFiles` moves the subtitle files `FinalizeFiles` renamed into `DownloadResult.SubtitlePaths`, so `FinalPaths`, which post-processing and history use, holds only media. Reads no UI state; `DownloaderApp.runYtDlp` builds the `DownloadRequest` and `DownloadOptions` from widget values, calls `Run`, then handles history recording and the UI completion report from the returned `DownloadResult{FinalPaths, Extension, Scan, Err}`.
 
 **Stopped, keep the output.** A download whose context is cancelled with the cause `errStopKeep` (`context.WithCancelCause`) is stopped but kept: `runArgs` skips `RemovePartialFiles`, runs `FinalizeFiles`, and returns `DownloadResult.Stopped` with `Err` nil, so history and post-processing treat it as finished. A live recording (`req.Live`) that ends with an error after writing something is kept the same way. For a kept live recording, `finishRecording` (`live.go`) then remuxes what yt-dlp left into the chosen container with ffmpeg, without re-encoding (`recordingRemuxArgs`; MP3 is re-encoded). yt-dlp writes live HLS as MPEG-TS (`--hls-use-mpegts`), which stays readable when the process tree is killed, but under the target's extension; it fixes that itself (`FixupM3u8`) only when a stream ends normally. A recording made `--live-from-start` can leave a video and an audio file, which are merged. A container that cannot hold the codecs (WebM for H.264) falls back to MKV, and a single file ffmpeg cannot remux at all is kept as `.ts`. While a live or scheduled stream runs, `monitorRecording` reports through the optional `ProcessCallbacks.OnRecording(started, elapsed, size)` once a second, measuring the files under the download ID. `liveArgs` adds `--hls-use-mpegts`, `--live-from-start`, and `--wait-for-video 60-300` from `req.Live`, `LiveFromStart`, and `WaitForVideo`. The probe passes `--ignore-no-formats-error`, because a scheduled stream has no formats yet and yt-dlp would otherwise fail instead of reporting its `live_status` and `release_timestamp` (`MediaInfo.LiveStatus`, `ReleaseTimestamp`).
@@ -460,7 +466,7 @@ func classify(err error) Category {
 | Post-process worker pool | `PPEngine.ApplyFilters()`; GPU jobs additionally wait on `gpuSem` (capacity 2) | same context |
 | Recording monitor | `DownloadEngine.monitorRecording()` while a live or scheduled stream runs; reports once a second through `OnRecording` | the function it returns, called as soon as `Execute` returns |
 
-The session's queue is a `QueueModel` (`queue_model.go`): the items plus each one's status (Waiting, Checking, Downloading with its progress, Post-processing, Done, Failed, Skipped), behind a mutex. `runQueue` does not index a slice; it asks `Next()` for the first waiting item each time, so the Queue panel (`queue_panel.go`) can remove or move waiting items and put failed or skipped ones back at the end (`Retry`) while the queue runs. Moves only swap neighbouring waiting items, so finished and running items keep their place. `DownloaderApp.queue` (an `atomic.Pointer`) lets `updateProgress` report download progress to the downloading row. The model's `OnChanged` goes through a `latestValueThrottle`, so the panel is redrawn at most every 150 ms. The panel is a collapsible card above the log, titled with `Summary()` ("Queue — 7 of 20 done, 1 failed"), shown while the queue holds more than one item. Its rows offer Move up / Move down / Remove while waiting, Skip (the per-item cancel, as the Cancel button) while running, and Retry for failed or skipped items while the session runs. Items not reached when the queue stops are marked Skipped. Pause/resume and saving the queue across restarts are not implemented: pausing would need `.part` files and `--continue`, which conflict with `--no-part --no-continue`.
+The session's queue is a `QueueModel` (`queue_model.go`): the items plus each one's status (Waiting, Checking, Downloading with its progress, Post-processing, Done, Failed, Skipped), behind a mutex. `runQueue` does not index a slice; it asks `Next()` for the first waiting item each time, so the Queue panel (`queue_panel.go`) can remove or move waiting items and put failed or skipped ones back at the end (`Retry`) while the queue runs. Moves only swap neighbouring waiting items, so finished and running items keep their place. `DownloaderApp.queue` (an `atomic.Pointer`) lets `updateProgress` report download progress to the downloading row. The model's `OnChanged` goes through a `latestValueThrottle`, so the panel is redrawn at most every 150 ms. The panel is a collapsible card above the log, titled with `Summary()` ("Queue — 7 of 20 done, 1 failed"), shown while the queue holds more than one item. Its rows offer Move up / Move down / Remove while waiting, Skip (the per-item cancel, as the Cancel button) while running, and Retry for failed or skipped items while the session runs. Items not reached when the queue stops are marked Skipped. Paused items and saving the queue across restarts are described under **Pause and resume** below.
 
 The download queue itself is sequential. Before it starts, `checkURLs` probes
 each URL under `queueCtx` (so Cancel stops the probes) and builds
@@ -486,7 +492,7 @@ unknown size, for example when the probe failed or the site lists no sizes,
 skips the check and logs that it did. Post-processing runs afterward over the collected successful paths and
 can process multiple files concurrently.
 
-**Live streams:** after `checkItem`, `prepareLive` looks at the probe's `live_status`. A stream that is live, or scheduled (`is_upcoming`), is put to the user through `askLive` (blocking the session goroutine like the other prompts); `post_live` only logs a warning. A recording skips `checkDiskSpace` and the probe's info JSON (its manifest changes, and a scheduled stream has no formats yet). It runs under `recordingContext`: a context derived from `context.WithoutCancel` of the item's context, cancelled with `errStopKeep` either by its own stop function (which `SetCancelFunc` hands to the Cancel button and the Queue panel's row, both reading "Stop recording") or, through `context.AfterFunc`, when the item's or session's context is cancelled. So skipping the item, stopping the session, and quitting all keep the recording. `setRecordingView` swaps the progress bar for a `ProgressBarInfinite` meanwhile. `recordingCallback` shows "Recording 00:12:34 · 410 MiB" (or the countdown to a scheduled start) and every `liveSpaceCheckInterval` (30 s) checks `freeBytes`, stopping the recording, keeping it, below `liveMinFreeBytes` (1 GiB).
+**Live streams:** after `checkItem`, `prepareLive` looks at the probe's `live_status`. A stream that is live, or scheduled (`is_upcoming`), is put to the user through `askLive` (blocking the session goroutine like the other prompts); `post_live` only logs a warning. A recording skips `checkDiskSpace` and the probe's info JSON (its manifest changes, and a scheduled stream has no formats yet). It runs under `downloadContext` (see **Pause and resume**): a context derived from `context.WithoutCancel` of the item's context, cancelled with `errStopKeep` either by its stop function (which `SetCancelFunc` hands to the Cancel button and the Queue panel's row, both reading "Stop recording") or, through `context.AfterFunc`, when the item's or session's context is cancelled. So skipping the item, stopping the session, and quitting all keep the recording. `setRecordingView` swaps the progress bar for a `ProgressBarInfinite` meanwhile. `recordingCallback` shows "Recording 00:12:34 · 410 MiB" (or the countdown to a scheduled start) and every `liveSpaceCheckInterval` (30 s) checks `freeBytes`, stopping the recording, keeping it, below `liveMinFreeBytes` (1 GiB).
 
 **Process trees:** yt-dlp, ffmpeg, and ffprobe are started through
 `newToolCommand` (`process.go`), which sets `cmd.Cancel` to kill the whole
@@ -494,12 +500,42 @@ process tree (`taskkill /T` on Windows, the process group on Unix) and
 `cmd.WaitDelay` so `Wait` cannot hang on pipes a surviving grandchild holds.
 This matters because yt-dlp runs its own ffmpeg for merging and trimming.
 
+**Pause and resume** (`pause_resume.go`, `queue_store.go`). yt-dlp runs with
+`--continue` and writes `.part` files (a live recording keeps `--no-part`, so a
+stopped recording is not left as a `.part` file). Each queue item gets a download
+ID once, in `NewQueueModel` (`newDownloadID`, strictly increasing), and its own
+`request`: a copy of the settings `readSession` read from the widgets once
+(`downloadSession.request`, `queueItem.withRequest`). So a retry, an auto-retry,
+a resume, and a restored item write the same names, and yt-dlp continues their
+partial files; `FinalizeFiles` skips those (`isPartialFile`). Each download runs
+under `downloadContext`, derived with `context.WithoutCancel` from the item's
+context: **Pause** (`setPauseFunc` → `requestPause`, the main window's Pause
+button and the Queue panel's row) cancels it with `errPaused`, so `runArgs` keeps
+the partial files and returns `DownloadResult.Paused`, and the item becomes
+`queuePaused`. When the item's or session's context ends, `context.AfterFunc`
+cancels it plainly (removing the files), or with `errPaused` when `quitting`.
+With only paused items left, `runQueue` blocks in `waitForResume` on
+`QueueModel.Changed()` (the button reads Resume and calls `ResumeAll`; `Resume`
+puts an item first among the waiting). `finishQueue` then settles the queue:
+when quitting, `saveQueue` writes the waiting and paused items (the one
+downloading counts as paused) to `queue.json` beside the history
+(`QueueStore`; `savedQueueItem` keeps the URL, title, IDs, status, and the
+settings, not cookies or the probe JSON); otherwise waiting items are marked
+Skipped and paused ones discarded, their partial files removed. At the next
+start `offerQueueRestore` asks through `askRestoreQueue`; Resume calls
+`resumeQueue`, which starts a `restored` session with those items (no URL check;
+each is probed again, and `checkItem` logs when the probe's `format_id` differs
+from the saved one, since that stream starts over), and Discard deletes their
+partial files. A paused item keeps its probe JSON, so resuming it in the same
+session does not extract it again.
+
 **Shutdown:** closing the window during a session asks for confirmation, then
 calls `DownloaderApp.Shutdown(quit)`. It calls `StopSession` (which cancels
 `queueCtx`, unlike the Cancel button that only skips the current batch item),
 shows "Stopping…", waits off the UI thread for the `sessions` wait group (up to
-`shutdownTimeout`, 5 s) so partial files are removed, closes the session log,
-and finally calls `quit` inside `fyne.Do`.
+`shutdownTimeout`, 5 s), closes the session log, and finally calls `quit`
+inside `fyne.Do`. It first sets `quitting`, so the running download is paused
+rather than cancelled and the queue is saved (see **Pause and resume**).
 
 **UI thread rule:** every widget mutation must run inside `fyne.Do(func() { … })` when called from a non-main goroutine. Fyne panics on direct cross-thread access.
 
@@ -513,6 +549,7 @@ and finally calls `quit` inside `fyne.Do`.
 | Session log | `<save dir>/GoVid_log_YYYY-MM-DD.txt` | Plain text | `LogService` |
 | Error log | `<save dir>/GoVid_errors_YYYY-MM-DD.txt` | Plain text | `LogService` |
 | Download history | `<exe dir>/download_history.json` | JSON array | `HistoryService` |
+| Saved queue | `<exe dir>/queue.json` (only after quitting with downloads waiting or paused) | JSON object | `QueueStore` |
 | Latest-release cache | Fyne app data (`latestRelease:<owner>/<repo>` keys) | JSON in the Fyne KV store | `ReleaseService` |
 | Override config | `<cwd>/govid.json`, or any file picked in Tools → Import settings… | JSON object | `PreferenceService` (`LoadFromFile` / `MergeConfig`; `ExportConfig` / `WriteConfigFile` for Tools → Export settings…); `AppConfig` is defined in `config_file.go` |
 

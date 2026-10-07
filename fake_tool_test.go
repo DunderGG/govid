@@ -198,6 +198,8 @@ func runFakeTool(mode string, args []string) int {
 	case "ytdlp-cookies-locked", "ytdlp-bot-check":
 		fmt.Fprintln(os.Stderr, fakeAccessErrors[mode])
 		return 1
+	case "ytdlp-resumable":
+		return fakeYtDlpResumable(args)
 	case "ytdlp-live":
 		return fakeYtDlpLive(args)
 	case "ytdlp-upcoming":
@@ -390,7 +392,7 @@ func fakeYtDlpProbe(mode, url string, noPlaylist bool) int {
 		return 0
 	}
 	recordFakeExtraction()
-	fmt.Printf(`{"_type": "video", "id": "fakevid", "extractor_key": "Fake", "webpage_url": %q, "title": "Fake Video", "duration": 10, "height": %d, "subtitles": {"en": [], "de": []}, "automatic_captions": {"en": [], "fr": []}, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
+	fmt.Printf(`{"_type": "video", "id": "fakevid", "extractor_key": "Fake", "webpage_url": %q, "title": "Fake Video", "format_id": "fake-v+fake-a", "duration": 10, "height": %d, "subtitles": {"en": [], "de": []}, "automatic_captions": {"en": [], "fr": []}, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
 		url, fakeVideoHeight, fakeVideoSize-1024*1024, 1024*1024)
 	return 0
 }
@@ -622,4 +624,45 @@ func fakeYtDlpUpcoming(args []string) int {
 var fakeAccessErrors = map[string]string{
 	"ytdlp-cookies-locked": "ERROR: Could not copy Chrome cookie database. See  https://github.com/yt-dlp/yt-dlp/issues/7271  for more info",
 	"ytdlp-bot-check":      "ERROR: [youtube] jNQXAC9IVRw: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  for how to manually pass cookies.",
+}
+
+// fakeResumableChunks is how many 1 MiB chunks the "ytdlp-resumable" mode
+// downloads in all.
+const fakeResumableChunks = 10
+
+// fakeYtDlpResumable mimics yt-dlp downloading with .part files: it needs
+// --continue, writes <name>.part a chunk at a time with progress lines,
+// continues an existing .part file from its size (saying so, as yt-dlp
+// does), and renames it when complete.
+func fakeYtDlpResumable(args []string) int {
+	if !slices.Contains(args, "--continue") {
+		fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: expected --continue, got %q\n", args)
+		return 2
+	}
+	path, _ := fakeOutputPath(args)
+	part := path + ".part"
+	const chunk = 1024 * 1024
+	done := int64(0)
+	if info, err := os.Stat(part); err == nil {
+		done = info.Size()
+		fmt.Printf("[download] Resuming download at byte %d\n", done)
+	}
+	fmt.Println("[download] Destination: " + path)
+	file, err := os.OpenFile(part, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: %v\n", err)
+		return 2
+	}
+	for done < fakeResumableChunks*chunk {
+		file.Write(make([]byte, chunk))
+		done += chunk
+		fmt.Printf("[download] %5.1f%% of   10.00MiB at    5.00MiB/s ETA 00:01\n", float64(done)*100/(fakeResumableChunks*chunk))
+		time.Sleep(60 * time.Millisecond)
+	}
+	file.Close()
+	if err := os.Rename(part, path); err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: fake yt-dlp: %v\n", err)
+		return 2
+	}
+	return 0
 }

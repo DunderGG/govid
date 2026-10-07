@@ -36,6 +36,13 @@ type downloadSession struct {
 	vfFilters []string // post-processing video filters; nil when post-processing is off
 	afFilters []string // post-processing audio filters; nil when post-processing is off
 
+	// request is the download settings the session starts with, read from
+	// the widgets once; each queued item gets a copy (see withRequest).
+	request DownloadRequest
+	// restored is set for a session resuming the items saved in queue.json:
+	// items is already the queue, so the URLs are not checked again.
+	restored bool
+
 	// logConfig is the configuration the session log starts with, written
 	// by the session goroutine; nil when the session is not logged to a file.
 	logConfig *SessionConfig
@@ -60,6 +67,13 @@ func (app *DownloaderApp) startDownload() {
 	}
 
 	app.uiManager.savePreferences(session.savePath)
+	app.startSession(session)
+}
+
+// startSession resets the UI for session, opens its log, and launches the
+// progress smoother and the session goroutine. Must be called on the UI
+// thread.
+func (app *DownloaderApp) startSession(session downloadSession) {
 	app.resetSession()
 	session.logConfig = app.openSessionLog(session)
 
@@ -98,6 +112,7 @@ func (app *DownloaderApp) readSession() (downloadSession, error) {
 		return downloadSession{}, fmt.Errorf("invalid trim time format — use HH:MM:SS, MM:SS, or plain seconds")
 	}
 
+	session.request = app.newDownloadRequest("", session.savePath, session.trimStart, session.trimEnd)
 	// Build the filters once: they are the same for every URL in the session.
 	if app.ui.postProcess.enablePostProcess.Checked {
 		session.vfFilters, session.afFilters = buildPostProcessFilters(newPostProcessSettings(app.ui))
@@ -191,9 +206,14 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 	defer app.finishSessionUI()
 
 	app.writeSessionConfig(session.logConfig)
-	session.items = app.checkURLs(queueCtx, session)
-	if queueCtx.Err() == nil {
-		session.items = app.skipDownloaded(queueCtx, session.items)
+	if !session.restored {
+		session.items = app.checkURLs(queueCtx, session)
+		if queueCtx.Err() == nil {
+			session.items = app.skipDownloaded(queueCtx, session.items)
+		}
+	}
+	for i := range session.items {
+		session.items[i] = session.items[i].withRequest(session.request)
 	}
 	switch {
 	case queueCtx.Err() != nil:
@@ -208,6 +228,7 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 	app.queue.Store(queue)
 	app.uiManager.showQueue(queue)
 	finalPaths := app.runQueue(queueCtx, session, queue)
+	app.finishQueue(queue)
 
 	switch {
 	case queueCtx.Err() != nil || len(finalPaths) == 0:
@@ -246,8 +267,9 @@ func (app *DownloaderApp) finishSessionUI() {
 // runQueue downloads the queue's items one after another, always taking the
 // first waiting one (so the Queue panel can remove, reorder, and retry
 // items while it runs), until none is waiting, the session is cancelled, or
-// the user stops it for lack of disk space. Items it did not get to are
-// marked skipped. It returns the finalized paths of every successful
+// the user stops it for lack of disk space. While only paused items are
+// left it waits for one to be resumed (see waitForResume). What is left
+// when it stops is settled by finishQueue. It returns the finalized paths of every successful
 // download so post-processing can run over all of them at once.
 func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSession, queue *QueueModel) []string {
 	// A queue that starts with several items is a batch: each item gets its
@@ -262,7 +284,11 @@ func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSes
 	for queueCtx.Err() == nil {
 		id, item, ok := queue.Next()
 		if !ok {
-			break
+			if !queue.HasPaused() {
+				break
+			}
+			app.waitForResume(queueCtx, queue)
+			continue
 		}
 		paths, stop := app.downloadItem(queueCtx, session, queue, id, item, batch, &continueLowSpace)
 		finalPaths = append(finalPaths, paths...)
@@ -270,7 +296,6 @@ func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSes
 			break
 		}
 	}
-	queue.MarkAll(queueWaiting, queueSkipped)
 	return finalPaths
 }
 
@@ -298,7 +323,7 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 	app.stats.reset()
 	fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
 
-	item = app.checkItem(runCtx, session, item, position, total)
+	item = app.checkItem(runCtx, item, position, total)
 	queue.SetItem(id, item)
 	if runCtx.Err() != nil {
 		app.updateStatus("Status: Canceled.")
@@ -306,7 +331,7 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 		queue.SetStatus(id, queueSkipped)
 		return nil, false
 	}
-	req := app.newDownloadRequest(item.url, session.savePath, session.trimStart, session.trimEnd)
+	req := item.downloadRequest()
 	if !app.prepareLive(runCtx, item, &req) {
 		queue.SetStatus(id, queueSkipped)
 		return nil, false
@@ -317,7 +342,7 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 	// A live stream has no size to check; recordingCallback watches the
 	// free space while it records instead.
 	if !req.Live {
-		switch app.checkDiskSpace(queueCtx, session, item, queue.HasWaiting(), continueLowSpace) {
+		switch app.checkDiskSpace(queueCtx, req, session.hasPostProcess(), item, queue.HasWaiting(), continueLowSpace) {
 		case spaceSkip:
 			app.appendOutput(fmt.Sprintf("[SYSTEM] Skipped %s: not enough disk space.", item.url), colWarning)
 			queue.SetStatus(id, queueSkipped)
@@ -335,24 +360,31 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 	// its manifest changes, and a scheduled one has no formats yet.
 	if item.info != nil && !req.Live {
 		req.InfoJSON = item.info.raw
-		// The JSON can be large and is not needed again once used.
-		defer func() { item.info.raw = nil }()
 	}
 	queue.SetStatus(id, queueDownloading)
-	stopRecording := func() {}
+	downloadCtx, stopDownload, release := app.downloadContext(runCtx, req.Live)
+	defer release()
+	stopRecording := func() { stopDownload(errStopKeep) }
 	if req.Live {
-		var release func()
-		runCtx, stopRecording, release = recordingContext(runCtx)
-		defer release()
 		app.SetCancelFunc(stopRecording)
 		app.setRecordingView(true)
 		defer app.setRecordingView(false)
+	} else {
+		app.setPauseFunc(func() { stopDownload(errPaused) })
+		defer app.setPauseFunc(nil)
 	}
-	paths = app.runYtDlp(runCtx, req, item, position, total, stopRecording)
+	paths, paused := app.runYtDlp(downloadCtx, req, item, position, total, stopRecording)
+	// The JSON can be large and is not needed again once used, unless the
+	// download was paused: resuming it within probeMaxAge reuses it.
+	if item.info != nil && !paused {
+		item.info.raw = nil
+	}
 	switch {
+	case paused:
+		queue.SetStatus(id, queuePaused)
 	case len(paths) > 0:
 		queue.SetStatus(id, queueDone)
-	case runCtx.Err() != nil:
+	case downloadCtx.Err() != nil:
 		queue.SetStatus(id, queueSkipped)
 	default:
 		queue.SetStatus(id, queueFailed)
@@ -464,12 +496,12 @@ func completionNotification(postProcessed bool, fileCount, urlCount int) *fyne.N
 // then handles app-specific side effects: history recording (with what item
 // says about the video), the completion/failure report in the log, and
 // system notifications. It returns
-// the list of finalized output file paths on success, or nil on failure or
-// cancellation. Post-processing is the caller's responsibility. index and
+// the list of finalized output file paths on success, or nil on failure,
+// cancellation, or a pause (paused is then true). Post-processing is the caller's responsibility. index and
 // total indicate the position within a batch (both 1 for single downloads).
 // For a live recording, stop ends it (keeping it) when the save folder's
 // drive runs low; see recordingCallback.
-func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, item queueItem, index, total int, stop func()) []string {
+func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, item queueItem, index, total int, stop func()) (paths []string, paused bool) {
 	startTime := time.Now()
 
 	callbacks := ProcessCallbacks{
@@ -487,14 +519,14 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, ite
 		Total:     total,
 	}, callbacks)
 
-	if dl.Err == nil {
+	if dl.Err == nil && !dl.Paused {
 		app.recordHistory(req, item, dl.FinalPaths)
 	}
 	if dl.Scan.hadNoJSRuntime {
 		app.showJSRuntimeNotice()
 	}
 	app.reportDownloadResult(ctx, dl, time.Since(startTime), failureHints(dl.Scan, req))
-	return dl.FinalPaths
+	return dl.FinalPaths, dl.Paused
 }
 
 // newDownloadEngine returns a DownloadEngine for the resolved yt-dlp and
@@ -588,6 +620,13 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 		app.ui.download.cancelBtn.Disable()
 
 		switch {
+		case dl.Paused:
+			app.logDownloadSummary("DOWNLOAD PAUSED", []summaryRow{
+				{"Runtime", elapsedStr},
+				{"Downloaded", lastSize},
+			}, colWarning, colAbortedBorder)
+			app.updateStatus("Status: Paused.")
+			app.setStatusIndicator(StatusCanceled)
 		case dl.Stopped:
 			app.logDownloadSummary("RECORDING SAVED", []summaryRow{
 				{"Duration", elapsedStr},
