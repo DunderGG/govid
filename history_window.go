@@ -232,6 +232,7 @@ func (manager *UIManager) showHistory() {
 	manager.historyWindow.SetContent(container.NewPadded(content))
 	manager.historyWindow.Resize(fyne.NewSize(900, 520))
 	manager.historyWindow.SetOnClosed(onWindowClosed(&manager.historyWindow))
+	closeOnEscape(manager.historyWindow)
 	manager.historyWindow.Show()
 }
 

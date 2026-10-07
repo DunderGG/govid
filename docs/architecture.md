@@ -90,8 +90,9 @@ govid/
 ├── diagnostics.go          Help → Copy diagnostics (diagnosticsReport, anonymizer), the Debug Output heartbeat (UI round trip, goroutines, tools running), trackTool, markLoop
 │
 ├── ── Assets / Platform ───────────────────────────────────────────
-├── theme.go                darkTheme and lightTheme (implement fyne.Theme)
+├── theme.go                darkTheme, lightTheme, and systemTheme (implement fyne.Theme); resolveThemeMode
 ├── icons.go                SVG icon registry; themedIcon() helper
+├── shortcuts.go            Keyboard shortcuts: menu items and canvas shortcuts (Ctrl+Enter, Ctrl+O, Ctrl+L, Ctrl+Shift+V, Ctrl+H, Ctrl+,), F1, closeOnEscape
 ├── embedded_icon.go        Bundled app icon (resourceAppiconPng)
 ├── process.go              newToolCommand — starts yt-dlp/FFmpeg so cancelling kills the whole process tree
 ├── sys_windows.go          Windows-only: hide console windows; kill process trees with taskkill /T; freeDiskBytes (GetDiskFreeSpaceEx)
@@ -323,7 +324,9 @@ At startup `checkTools` shows a notice with **Install** for a missing yt-dlp or 
 ### 4.10 `darkTheme` / `lightTheme`  
 *Defined in:* `theme.go`
 
-Both implement `fyne.Theme`. `darkTheme` is the default; `lightTheme` is applied when the user selects "Light" in Preferences. The active theme is stored as a preference and applied at startup before the window is created.
+`darkTheme`, `lightTheme`, and `systemTheme` implement `fyne.Theme`. `systemTheme`, the default for new installs ("System"), passes each `Color(name, variant)` call to the light or dark theme by the variant Fyne passes in, which on Windows follows the "apps use light theme" setting; its sizes, fonts, and icons follow the current variant (`systemVariant`). `resolveThemeMode` turns "System" into the variant showing, for `themedIcon`. `UIManager.followSystemTheme` listens to Fyne's settings and rebuilds the main window when the variant changes while the theme is System, because the window's own colours and icons are chosen when it is built. The active theme is stored as a preference and applied at startup before the window is created; saved Dark and Light choices are kept.
+
+**Shortcuts** (`shortcuts.go`). The main window's shortcuts are `desktop.CustomShortcut`s with `KeyModifierShortcutDefault`, set on File, Tools, and Help menu items, which Fyne runs before the focused widget sees the keys (so Ctrl+Enter works in the URL field), and added to the canvas (`registerShortcuts`). Keys without a modifier are never shortcuts to Fyne and go to the focused widget, or to the canvas's typed-key handler when nothing has the focus: F1 opens the guide from there, and `closeOnEscape` makes Esc close About, the guide, Preferences, Post-Processing, History, and Components.
 
 ---
 

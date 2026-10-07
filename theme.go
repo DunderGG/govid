@@ -1,8 +1,9 @@
 // theme.go — Custom Fyne theme implementations for GoVid.
 //
-// Provides two themes selectable from the Preferences window:
-//   - darkTheme:  dark background with a cyan accent and tighter padding.
-//   - lightTheme: light background with the same cyan accent.
+// Provides the themes selectable from the Preferences window:
+//   - darkTheme:   dark background with a cyan accent and tighter padding.
+//   - lightTheme:  light background with the same cyan accent.
+//   - systemTheme: one or the other, following the operating system.
 //
 // Both themes share the accentCyan colour constant to keep the palette
 // consistent regardless of which theme is active.
@@ -170,12 +171,72 @@ func (t *lightTheme) Size(name fyne.ThemeSizeName) float32 {
 	return theme.DefaultTheme().Size(name)
 }
 
-// applyTheme installs the GoVid theme matching mode (themeLight or themeDark) on
-// app. Any value other than themeLight falls back to the dark theme.
+// systemTheme follows the operating system: it is the light theme when
+// Fyne asks for the light variant (on Windows, the "apps use light theme"
+// setting), and the dark theme otherwise.
+type systemTheme struct{}
+
+var _ fyne.Theme = (*systemTheme)(nil)
+
+// forVariant returns the theme for variant.
+func (t *systemTheme) forVariant(variant fyne.ThemeVariant) fyne.Theme {
+	if variant == theme.VariantLight {
+		return &lightTheme{}
+	}
+	return &darkTheme{}
+}
+
+// current returns the theme for the variant the system uses now.
+func (t *systemTheme) current() fyne.Theme {
+	return t.forVariant(systemVariant())
+}
+
+func (t *systemTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
+	return t.forVariant(variant).Color(name, variant)
+}
+
+func (t *systemTheme) Font(style fyne.TextStyle) fyne.Resource {
+	return t.current().Font(style)
+}
+
+func (t *systemTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
+	return t.current().Icon(name)
+}
+
+func (t *systemTheme) Size(name fyne.ThemeSizeName) float32 {
+	return t.current().Size(name)
+}
+
+// systemVariant returns the light or dark variant the system uses now.
+func systemVariant() fyne.ThemeVariant {
+	if app := fyne.CurrentApp(); app != nil {
+		return app.Settings().ThemeVariant()
+	}
+	return theme.VariantDark
+}
+
+// resolveThemeMode returns the theme mode actually showing: themeLight or
+// themeDark, with themeSystem resolved to the system's variant.
+func resolveThemeMode(mode string) string {
+	switch mode {
+	case themeLight:
+		return themeLight
+	case themeSystem:
+		if systemVariant() == theme.VariantLight {
+			return themeLight
+		}
+	}
+	return themeDark
+}
+
+// applyTheme installs the GoVid theme matching mode (themeSystem, themeLight,
+// or themeDark) on app. Any other value falls back to the dark theme.
 func applyTheme(app fyne.App, mode string) {
 	switch mode {
 	case themeLight:
 		app.Settings().SetTheme(&lightTheme{})
+	case themeSystem:
+		app.Settings().SetTheme(&systemTheme{})
 	default:
 		app.Settings().SetTheme(&darkTheme{})
 	}

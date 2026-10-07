@@ -47,6 +47,7 @@ func (manager *UIManager) showComponents() {
 	window.SetContent(container.NewPadded(container.NewVBox(intro, widget.NewSeparator(), rows, widget.NewSeparator(), note)))
 	window.Resize(fyne.NewSize(componentsWindowWidth, 0))
 	window.SetOnClosed(onWindowClosed(&manager.compWindow))
+	closeOnEscape(window)
 	window.Show()
 	manager.loadComponents(window, rows)
 }

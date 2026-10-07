@@ -79,7 +79,7 @@ const legacyPrefSmoothMotion = "upscale"
 // Named so they can be used for both Load fallbacks and UI resets without
 // scattering magic literals throughout the codebase.
 const (
-	defaultThemeMode         = themeDark
+	defaultThemeMode         = themeSystem
 	defaultQuality           = qualityBest
 	defaultSavePrefs         = true
 	defaultCheckUpdates      = true

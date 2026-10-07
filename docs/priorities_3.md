@@ -367,9 +367,16 @@ Tests: `TestPortableModeNeverTouchesTheUserProfileStore` (settings and presets e
 
 ---
 
-## 9. Follow the OS theme, and keyboard shortcuts
+## 9. ✅ Follow the OS theme, and keyboard shortcuts
 
 **Roadmap:** UI & UX → Dark / Light Mode Toggle ("Default to the OS system theme"), and Technical Improvements → UX Improvements ("hotkeys").
+
+**Status: Done in code** (new file [shortcuts.go](../shortcuts.go)); the hand check of switching Windows between light and dark is still to do.
+- **System theme.** `themeOptions` is System / Dark / Light, and System is the default for new installs; a saved Dark or Light is kept. `systemTheme` passes each `Color(name, variant)` call to the light or dark theme by the variant Fyne passes in; sizes, fonts, and icons follow `Settings().ThemeVariant()`. `resolveThemeMode` gives `themedIcon` the variant showing. Fyne repaints its widgets when Windows switches, but the window's own colours and icons are chosen when it is built, so `followSystemTheme` rebuilds the window when the variant changes while the theme is System. `configRules` picked up the new option from `options.go` with no change.
+- **Shortcuts.** Ctrl+Enter (download, only while the Download button can be pressed), Ctrl+O (open the save folder), Ctrl+L (load URLs from a file), Ctrl+Shift+V (paste URLs), Ctrl+H (History), Ctrl+, (Preferences), and F1 (the guide), all `KeyModifierShortcutDefault`. They are shown on menu items, including new File items (Download, Paste URLs, Load URLs from file…, Open save folder). Reading Fyne 2.7's GLFW driver showed two things that shaped this. A main-menu item's shortcut runs before the focused widget sees the keys, so these work while typing in the URL field. A key without a modifier is never a shortcut, though, and goes to the focused widget, which is where Fyne's Entry ignores it; only when nothing has the focus does it reach the window. So F1 and Esc (which closes About, the guide, Preferences, Post-Processing, History, and Components) work when no text field has the cursor, and the guide says so. The shortcuts are also added to the window's canvas, which is how the tests trigger them.
+- The guide lists the shortcuts.
+
+Tests: `TestShortcutsOpenTheirWindows` (Ctrl+H, Ctrl+, and F1 open their windows, and Esc closes each), `TestEscClosesTheOtherWindows`, `TestShortcutsActOnTheMainWindow` (Ctrl+O, Ctrl+Shift+V, Ctrl+L, and Ctrl+Enter, which downloads), `TestDownloadShortcutWaitsForTheButton`, `TestMenusShowTheShortcuts`, `TestSystemThemeFollowsTheVariant`, and `TestSystemIsTheDefaultThemeForNewInstallsOnly`, all through the Fyne test driver.
 
 **Problem.** GoVid always starts dark, even on a light Windows desktop. Nothing in the app can be done from the keyboard.
 

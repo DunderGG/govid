@@ -44,14 +44,16 @@ const (
 // qualityOptions lists the quality caps in display order.
 var qualityOptions = []string{qualityBest, quality1080p, quality720p, quality480p, quality360p}
 
-// Application themes (Preferences "Application Theme").
+// Application themes (Preferences "Application Theme"). System follows the
+// operating system's light or dark setting.
 const (
-	themeDark  = "Dark"
-	themeLight = "Light"
+	themeSystem = "System"
+	themeDark   = "Dark"
+	themeLight  = "Light"
 )
 
 // themeOptions lists the themes in display order.
-var themeOptions = []string{themeDark, themeLight}
+var themeOptions = []string{themeSystem, themeDark, themeLight}
 
 // logLimitUnlimited is the Log Buffer Limit option that disables trimming.
 const logLimitUnlimited = "Unlimited"

@@ -38,6 +38,7 @@ type DownloadControls struct {
 	logList      *fyne.Container             // Vertical box containing individual log lines
 	progress     *widget.ProgressBar         // Visual progress indicator
 	progressLive *widget.ProgressBarInfinite // Shown instead of progress while a live stream is recorded
+	progressBox  *fyne.Container             // Holds progress; hidden while a live stream is recorded (see setRecordingView)
 	status       *widget.Label               // Short status message (e.g. "Downloading...")
 	format       *widget.Select              // File format selector (MP4, MP3, etc.)
 	quality      *widget.Select              // Maximum resolution selector

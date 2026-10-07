@@ -169,6 +169,7 @@ func main() {
 
 	dlApp.uiManager.createMainMenu()
 	dlApp.uiManager.createUI()
+	dlApp.uiManager.followSystemTheme(mainApp.Settings())
 	dlApp.reportSettingsLocation()
 	removeOldTools(dlApp.depSvc)
 	dlApp.uiManager.checkDependencies()

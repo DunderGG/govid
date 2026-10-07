@@ -45,7 +45,7 @@ Why GoVid: a native GUI focused on speed, batch workflows, and quality controls 
 - **Completion Notifications**: Optional desktop notifications when downloads complete.
 - **Tools and Components**: **Tools → Components** installs, updates, or repairs yt-dlp, FFmpeg (with ffprobe), and Deno in the `bin/` folder, each download checked against its published SHA-256. GoVid passes yt-dlp a JavaScript runtime (Deno, or Node or Bun on `PATH`), which YouTube now needs, and offers to install Deno or any missing tool at startup.
 - **Update Checks**: Warns when the installed `yt-dlp` is out of date and updates it with one click, and tells you when a newer GoVid release is available (also under **Tools → Check for GoVid updates**). On Windows, **Update now** downloads the new release, checks it against its published SHA-256, replaces GoVid, and restarts it.
-- **Dark / Light Theme**: Built-in light and dark themes configurable in Preferences.
+- **Themes and Shortcuts**: A System theme (the default) follows Windows' light or dark setting, or choose Dark or Light. Keyboard shortcuts: Ctrl+Enter download, Ctrl+O open the save folder, Ctrl+L load URLs from a file, Ctrl+Shift+V paste URLs, Ctrl+H History, Ctrl+, Preferences, F1 the guide, Esc to close a window.
 
 ## 📥 Download
 
@@ -149,7 +149,7 @@ A key left out of the file leaves that setting unchanged, so a file can hold jus
 | `cookieProfile` | The browser profile to read cookies from; `""` for the default profile (`""`) |
 | `simultaneousDownloads` | `1`, `2`, `3`: videos downloaded at the same time (`1`) |
 | `preferredCodec` | `Any`, `H.264`, `VP9`, `AV1`: the video codec downloads prefer, even over a higher resolution in another codec (`Any`) |
-| `themeMode` | `Dark`, `Light` (`Dark`) |
+| `themeMode` | `System`, `Dark`, `Light` (`System` for new installs) |
 | `logLimit` | `100`, `200`, `500`, `1000`, `5000`, `Unlimited` (`200`) |
 | `savePrefs` | `true` or `false`: remember settings between sessions (`true`) |
 | `showDebug`, `checkUpdates` | `true` or `false`: show yt-dlp's debug lines (`false`); check for updates at startup (`true`) |

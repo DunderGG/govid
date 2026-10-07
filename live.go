@@ -379,7 +379,7 @@ func (app *DownloaderApp) setRecordingView(recording bool) {
 	fyne.Do(func() {
 		controls := app.ui.download
 		if recording {
-			controls.progress.Hide()
+			controls.progressBox.Hide()
 			controls.progressLive.Show()
 			controls.progressLive.Start()
 			controls.cancelBtn.SetText("Stop recording")
@@ -387,7 +387,7 @@ func (app *DownloaderApp) setRecordingView(recording bool) {
 		}
 		controls.progressLive.Stop()
 		controls.progressLive.Hide()
-		controls.progress.Show()
+		controls.progressBox.Show()
 		controls.cancelBtn.SetText("Cancel")
 	})
 }

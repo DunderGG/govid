@@ -157,7 +157,7 @@ This document outlines planned features, improvements, and known limitations for
 
 - [X] Add a "Theme" option in the Tools menu or a toggle button in the header.
 - [X] Persist the theme preference using `fyne.CurrentApp().Preferences()`.
-- [ ] Default to the OS system theme, but allow override.
+- [x] Default to the OS system theme, but allow override. (A **System** theme, the default for new installs, follows Windows' "apps use light theme" setting through the variant Fyne passes in (`systemTheme` in `theme.go`), and the window rebuilds when the system switches; Dark and Light still override it, and saved choices are kept.)
 
 ### Drag-and-Drop Support
 > Streamline adding URLs to the application.
@@ -227,7 +227,7 @@ This document outlines planned features, improvements, and known limitations for
 
 ### UX Improvements
 - [x] Prevent duplicate application windows (Preferences, About, Help, Post-Processing).
-- [ ] Add hotkeys for the UI, like escape to close windows or ctrl-o to open folder.
+- [x] Add hotkeys for the UI, like escape to close windows or ctrl-o to open folder. (`shortcuts.go`: Ctrl+Enter download, Ctrl+O open the save folder, Ctrl+L load URLs from a file, Ctrl+Shift+V paste URLs, Ctrl+H History, Ctrl+, Preferences, F1 the guide, Esc closes About, Guide, Preferences, Post-Processing, History, and Components. They are shown on new File menu items. F1 and Esc work when no text field has the cursor: Fyne gives keys without a modifier to the focused field.)
 - [x] Add a button to each history entry to quickly re-add to URL field, or other actions. (The History window is now a searchable list; each row has Re-add, Show in folder, and Copy URL, and rows whose file is gone are greyed out.)
 
 ### Automatic "Best-Fit" Quality

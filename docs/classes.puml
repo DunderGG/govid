@@ -937,6 +937,11 @@ package "Theming" #FFFFF0 {
         +Size()
     }
 
+    class systemTheme <<theme>> {
+        +Color(name, variant) : color.Color
+        -forVariant(variant) : fyne.Theme
+    }
+
     class lightTheme <<theme>> {
         +Color()
         +Font()

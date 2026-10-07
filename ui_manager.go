@@ -181,9 +181,12 @@ func parseURL(rawURL string) *url.URL {
 
 // createMainMenu builds the application's top-level menu bar.
 func (manager *UIManager) createMainMenu() {
-	historyMenu := fyne.NewMenuItem("History", func() {
-		manager.showHistory()
-	})
+	// withShortcut returns a menu item that shows shortcut beside its label.
+	withShortcut := func(label string, shortcut fyne.Shortcut, action func()) *fyne.MenuItem {
+		item := fyne.NewMenuItem(label, action)
+		item.Shortcut = shortcut
+		return item
+	}
 
 	clearLogMenu := fyne.NewMenuItem("Clear Terminal Output", func() {
 		manager.clearTerminalOutput()
@@ -191,35 +194,42 @@ func (manager *UIManager) createMainMenu() {
 
 	updateMenu := fyne.NewMenuItem("Update yt-dlp", manager.confirmYtDlpUpdate)
 
-	prefsMenu := fyne.NewMenuItem("Preferences", func() {
-		manager.showPreferences()
-	})
-
-	configHelpMenu := fyne.NewMenuItem("GoVid Guide", func() {
-		manager.showConfigHelp()
-	})
-
 	aboutMenu := fyne.NewMenuItem("About GoVid", func() {
 		manager.showAbout()
 	})
 
 	mainMenu := fyne.NewMainMenu(
-		fyne.NewMenu("File", historyMenu, fyne.NewMenuItemSeparator(), clearLogMenu),
+		fyne.NewMenu("File",
+			withShortcut("Download", shortcutDownload, manager.startDownloadFromKeyboard),
+			withShortcut("Paste URLs", shortcutPasteURLs, manager.pasteURLs),
+			withShortcut("Load URLs from file…", shortcutLoadFile, manager.showLoadURLFile),
+			withShortcut("Open save folder", shortcutOpenFolder, func() { manager.onOpenFolder() }),
+			fyne.NewMenuItemSeparator(),
+			withShortcut("History", shortcutHistory, manager.showHistory),
+			fyne.NewMenuItemSeparator(),
+			clearLogMenu,
+		),
 		fyne.NewMenu("Tools",
 			updateMenu,
 			fyne.NewMenuItem("Components…", manager.showComponents),
 			fyne.NewMenuItem("Check for GoVid updates", manager.checkForGoVidUpdates),
 			fyne.NewMenuItemSeparator(),
-			prefsMenu,
+			withShortcut("Preferences", shortcutPreferences, manager.showPreferences),
 			fyne.NewMenuItem("Import settings…", manager.showImportSettings),
 			fyne.NewMenuItem("Export settings…", manager.showExportSettings),
 			fyne.NewMenuItem("Post-Processing", func() {
 				manager.showPostProcessing()
 			}),
 		),
-		fyne.NewMenu("Help", configHelpMenu, fyne.NewMenuItem("Copy diagnostics", func() { manager.onCopyDiagnostics() }), fyne.NewMenuItemSeparator(), aboutMenu),
+		fyne.NewMenu("Help",
+			withShortcut("GoVid Guide", shortcutGuide, manager.showConfigHelp),
+			fyne.NewMenuItem("Copy diagnostics", func() { manager.onCopyDiagnostics() }),
+			fyne.NewMenuItemSeparator(),
+			aboutMenu,
+		),
 	)
 	manager.mainWindow.SetMainMenu(mainMenu)
+	manager.registerShortcuts()
 }
 
 // checkDependencies verifies that the external tools — yt-dlp, ffmpeg, and
@@ -330,6 +340,7 @@ func (manager *UIManager) showAbout() {
 	manager.aboutWindow.Resize(fyne.NewSize(360, 340))
 	manager.aboutWindow.SetFixedSize(true)
 	manager.aboutWindow.SetOnClosed(onWindowClosed(&manager.aboutWindow))
+	closeOnEscape(manager.aboutWindow)
 	manager.aboutWindow.Show()
 }
 
@@ -427,6 +438,16 @@ func (manager *UIManager) showConfigHelp() {
 			"  * **Beside GoVid.exe, always**: `download_history.json` (history), `queue.json` (downloads saved when you quit), and the `bin` folder (yt-dlp, FFmpeg, Deno)\n" +
 			"  * **Beside GoVid.exe in Portable Mode, else in your user profile**: settings, presets, and the cached update checks\n" +
 			"  * **In the save folder**: the log files"},
+		{"Keyboard Shortcuts", "  * **Ctrl+Enter** – start the download (as **Download Now!**)\n" +
+			"  * **Ctrl+O** – open the save folder\n" +
+			"  * **Ctrl+L** – load URLs from a file\n" +
+			"  * **Ctrl+Shift+V** – paste URLs (as the paste button)\n" +
+			"  * **Ctrl+H** – History\n" +
+			"  * **Ctrl+,** – Preferences\n" +
+			"  * **F1** – this guide\n" +
+			"  * **Esc** – close About, this guide, Preferences, Post-Processing, History, or Components\n\n" +
+			"The Ctrl shortcuts work everywhere in the main window, also while typing in the URL field; the menus show them too. **F1** and **Esc** work when no text field has the cursor: click outside the field first (on macOS, use Cmd instead of Ctrl)."},
+		{"Application Theme", "Found in **Tools → Preferences**. **System** (the default) follows your computer: light when Windows is set to light apps, dark otherwise, and GoVid switches along with it. **Dark** and **Light** keep that look whatever the system uses."},
 		{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
 		{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
 		{"Cookies", "Found in **Tools → Preferences**. Cookies are your login: with them, yt-dlp can download age-restricted, members-only, and private videos you can watch when signed in, and get past YouTube's \"Sign in to confirm you're not a bot\" check. Choose where they come from:\n" +
@@ -490,6 +511,7 @@ func (manager *UIManager) showConfigHelp() {
 	manager.helpWindow.SetContent(container.NewPadded(scroll))
 	manager.helpWindow.Resize(fyne.NewSize(550, 500))
 	manager.helpWindow.SetOnClosed(onWindowClosed(&manager.helpWindow))
+	closeOnEscape(manager.helpWindow)
 	manager.helpWindow.Show()
 }
 
@@ -540,7 +562,7 @@ func (manager *UIManager) showPreferences() {
 			{Text: "Preferred Video Codec", Widget: fixedWidth(ui.prefs.preferredCodec, 120), HintText: "Pick this codec when a video offers it, even over a higher resolution in another (H.264 plays everywhere)"},
 			{Text: "Simultaneous Downloads", Widget: fixedWidth(ui.prefs.simultaneous, 80), HintText: "Videos downloaded at once. More than 1 makes YouTube's \"confirm you're not a bot\" check more likely"},
 			{Text: "Max Download Speed", Widget: ui.prefs.maxSpeed, HintText: "Limits download rate (e.g. 50K, 5M, 10G)"},
-			{Text: "Application Theme", Widget: ui.prefs.themeMode, HintText: "Restart may be required for some changes"},
+			{Text: "Application Theme", Widget: ui.prefs.themeMode, HintText: "System follows your computer's light or dark setting"},
 			{Text: "Cookies", Widget: manager.buildCookiesRow(), HintText: "Your login, for age-restricted, members-only, and private videos and YouTube's bot check. On Windows, Firefox works best"},
 		},
 		OnSubmit: manager.submitPreferences,
@@ -559,6 +581,7 @@ func (manager *UIManager) showPreferences() {
 	)))
 	manager.prefsWindow.Resize(fyne.NewSize(520, 560))
 	manager.prefsWindow.SetOnClosed(onWindowClosed(&manager.prefsWindow))
+	closeOnEscape(manager.prefsWindow)
 	manager.prefsWindow.Show()
 }
 
@@ -816,6 +839,7 @@ func (manager *UIManager) showPostProcessing() {
 	manager.ppWindow.Resize(fyne.NewSize(680, 580))
 	manager.ppWindow.SetFixedSize(false)
 	manager.ppWindow.SetOnClosed(onWindowClosed(&manager.ppWindow))
+	closeOnEscape(manager.ppWindow)
 	manager.ppWindow.Show()
 }
 
@@ -1303,11 +1327,18 @@ func (manager *UIManager) buildInputCard(themeMode string) fyne.CanvasObject {
 func (manager *UIManager) buildStatusCard() fyne.CanvasObject {
 	ui := manager.ui
 
+	// The recording view hides progressBox, not the bar inside it, which
+	// the progress smoother updates from its own goroutine.
+	ui.download.progressBox = container.NewStack(ui.download.progress)
+	if manager.onRecording != nil && manager.onRecording() {
+		ui.download.progressBox.Hide()
+	}
+
 	// Wrap the status dot in a fixed-size container so the circle renders at 18×18.
 	dotContainer := container.New(layout.NewGridWrapLayout(fyne.NewSize(18, 18)), ui.download.statusDot)
 	statusCard := roundedCard("",
 		container.NewVBox(
-			container.NewStack(ui.download.progress, ui.download.progressLive),
+			container.NewStack(ui.download.progressBox, ui.download.progressLive),
 			container.NewHBox(dotContainer, ui.download.status),
 		),
 	)
@@ -1488,4 +1519,23 @@ func (manager *UIManager) pendingLogLines() int {
 	manager.logMu.Lock()
 	defer manager.logMu.Unlock()
 	return len(manager.pendingLog)
+}
+
+// followSystemTheme rebuilds the main window when the operating system
+// switches between light and dark while the theme is System: Fyne repaints
+// its widgets itself, but the window's own colours and icons are chosen
+// when it is built.
+func (manager *UIManager) followSystemTheme(settings fyne.Settings) {
+	var mu sync.Mutex
+	last := settings.ThemeVariant()
+	settings.AddListener(func(changed fyne.Settings) {
+		mu.Lock()
+		variant := changed.ThemeVariant()
+		switched := variant != last
+		last = variant
+		mu.Unlock()
+		if switched && manager.onLoadPreferences().ThemeMode == themeSystem {
+			fyne.Do(manager.createUI)
+		}
+	})
 }
