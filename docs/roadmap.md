@@ -28,6 +28,14 @@ This document outlines planned features, improvements, and known limitations for
 - [x] Add an "Update yt-dlp" option in the Tools menu.
 - [x] Add a `--update` CLI flag for headless / scripted use.
 
+### YouTube JavaScript Runtime
+> yt-dlp needs a JavaScript runtime (deno, node, bun, or quickjs) to solve YouTube's player challenges. The bundled yt-dlp reports `JS runtimes: none` and falls back to a deprecated client.
+
+- [ ] Find a runtime (`bin/deno.exe`, then deno, node, or bun on `PATH`) and pass it with `--js-runtimes` to the probe and the download.
+- [ ] Offer to install Deno into `bin/` (verified against its published SHA-256), and show a notice when yt-dlp warns that no runtime was found.
+- [ ] Show the runtime and its version in About and the session log.
+- [ ] Add a Tools → Components window that installs, updates, or repairs each tool in `bin/` (yt-dlp, FFmpeg with ffprobe, and Deno), each download verified against its source's published checksum. The startup check offers Install for a missing tool instead of only logging it.
+
 ### Self-Updating GoVid
 > Let users update the app itself, not just yt-dlp.
 
@@ -55,6 +63,14 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Add pause, resume, cancel, retry, and reordering for queued downloads. (Partly done: the Queue panel (`queue_panel.go`, backed by `QueueModel`) removes and reorders waiting items, skips the running one, and retries failed or skipped ones while the queue runs. Pause/resume is still open: it needs yt-dlp's `.part` files and `--continue`, which conflict with today's `--no-part --no-continue`, plus partial-file cleanup that understands them.)
 - [ ] Show per-item status, ETA, and completion state in the queue list. (Partly done: each row shows Waiting, Checking, Downloading with its percentage, Post-processing, Done, Failed, or Skipped, and the panel title counts progress, e.g. "7 of 20 done, 1 failed". No per-item ETA yet.)
 - [ ] Preserve queued items after app restarts if the user chooses to save the session.
+- [ ] Download several queue items at once (a "Simultaneous downloads" setting, 1–3), with shared state such as file renames and history writes made safe for parallel use.
+
+### Live Streams
+> Record live streams and wait for scheduled ones, without losing the recording.
+
+- [ ] Detect live and upcoming videos from the probe's `live_status` and ask how to record (from now, from the start, or wait for a scheduled stream).
+- [ ] Add a "Stop recording" action that keeps the file, finalizes it, and records it in history; today Cancel deletes the recording.
+- [ ] Show elapsed time and size while recording, and stop with a warning when the drive is nearly full.
 
 ### Presets / Profiles
 > Save common download setups for quick reuse.
@@ -81,6 +97,7 @@ This document outlines planned features, improvements, and known limitations for
 > Support downloading from websites like Twitter, which requires cookies.
 
 - [X] Add a "Cookies File" selector in Preferences to pass `--cookies` to yt-dlp.
+- [ ] Read cookies straight from a browser (`--cookies-from-browser`), with clear messages for the Chrome/Edge cases yt-dlp cannot read on Windows.
 
 ### Video Trimming
 > Allow users to download only a specific segment of a video.
@@ -279,15 +296,15 @@ This document outlines planned features, improvements, and known limitations for
 ### Window Management Boilerplate
 > Eliminate repeated singleton-window guard patterns across ui.go.
 
-- [ ] Extract the `focusOrCreate` guard (`if app.xWindow != nil { RequestFocus; return }`) into a reusable helper — repeated ~4 times.
-- [ ] Extract `SetOnClosed(func() { app.xWindow = nil })` into a shared helper to remove identical closures on every dialog window.
+- [x] Extract the `focusOrCreate` guard (`if app.xWindow != nil { RequestFocus; return }`) into a reusable helper — repeated ~4 times. (`focusOrCreate` in `ui_manager.go`, used by About, Help, Preferences, Post-Processing, and History.)
+- [x] Extract `SetOnClosed(func() { app.xWindow = nil })` into a shared helper to remove identical closures on every dialog window. (`onWindowClosed` in `ui_manager.go`, used by the same five windows.)
 
 ### Named Constants for Magic Numbers
 > Replace unexplained numeric literals with self-documenting names.
 
 - [ ] Define constants for dialog window sizes (`prefsWindowWidth`, `postProcessWindowHeight`, etc.) currently scattered across ui.go.
-- [ ] Define constants for post-processing load thresholds (e.g. `loadLightThreshold = 15`, `loadModerateThreshold = 35`) in postprocess.go.
-- [ ] Define constants for per-filter processing cost values (e.g. `costSmoothMotionFast`, `costDenoiseHQ`) in postprocess.go.
+- [x] Define constants for post-processing load thresholds (e.g. `loadLightThreshold = 15`, `loadModerateThreshold = 35`) in postprocess.go. (`loadThresholdLight`/`Moderate`/`Heavy`/`VeryHeavy` = 20/50/80/120, plus `loadBlockThresholds` for the block indicator.)
+- [x] Define constants for per-filter processing cost values (e.g. `costSmoothMotionFast`, `costDenoiseHQ`) in postprocess.go. (16 `cost*` constants.)
 - [X] Replace the `1<<31 - 1` unlimited sentinel in `parseLogLimit` with `math.MaxInt32` for clarity.
 
 ### SVG Icon Deduplication
@@ -298,9 +315,9 @@ This document outlines planned features, improvements, and known limitations for
 ### Split Long Functions
 > Break up functions that mix multiple concerns into focused sub-functions.
 
-- [ ] Split `runYtDlp()` (~180 lines) into `buildYtDlpArgs()` and `parseYtDlpOutput()` in download.go.
-- [ ] Split `createUI()` (~560 lines) into `createInputCard()`, `createStatusCard()`, and `createLogSection()` in ui.go.
-- [ ] Split `startDownload()` into `validateDownloadInputs()` and `initializeDownloadSession()` in download.go.
+- [x] Split `runYtDlp()` (~180 lines) into `buildYtDlpArgs()` and `parseYtDlpOutput()` in download.go. (Done differently: argument building is `DownloadEngine.BuildArgs` and output parsing is `watchOutput` in `logscanner.go`; `runYtDlp` is now a ~20-line wrapper around `DownloadEngine.Run`.)
+- [x] Split `createUI()` (~560 lines) into `createInputCard()`, `createStatusCard()`, and `createLogSection()` in ui.go. (`createUI` moved to `UIManager` and is composed of nine `build*`/`wire*` helpers, including `buildInputCard`, `buildStatusCard`, and `buildLogPane`.)
+- [x] Split `startDownload()` into `validateDownloadInputs()` and `initializeDownloadSession()` in download.go. (`startDownload` delegates to `readSession`, which validates the inputs, and `runSession`.)
 
 ### Naming Consistency
 > Align naming conventions across the codebase.
@@ -316,7 +333,48 @@ This document outlines planned features, improvements, and known limitations for
 ### Deduplicate Status Indicator Animation
 > The pulsing goroutines for "active" and "processing" states are nearly identical.
 
-- [ ] Extract a `pulseColor(stopCh chan struct{}, baseColor color.RGBA)` helper in helpers.go and reuse it for both animation states.
+- [x] Extract a `pulseColor(stopCh chan struct{}, baseColor color.RGBA)` helper in helpers.go and reuse it for both animation states. (`startStatusPulse(base color.RGBA)` in `helpers.go`, used for both the active and the processing state.)
+
+---
+
+## 🧪 Testing
+> Checks the unit tests can't do: real sites, real players, real hardware, and a clean machine. The code itself is covered by `go test -race` in CI (see Test Coverage above).
+
+### Hand Checks for Finished Features
+> These features are done in code but still need a check by hand. Most fit into one session around the next real release, which the self-update check needs anyway.
+
+- [ ] HDR tone mapping: a real HDR YouTube video, after post-processing, matches the browser's SDR rendering side by side. ([priorities.md](priorities.md) #5)
+- [ ] Disk space pre-check: on a nearly full USB stick, the warning appears before the download starts. ([priorities.md](priorities.md) #8)
+- [ ] Metadata embedding: an MP3 download shows its title, artist, date, and cover in a music player. ([priorities.md](priorities.md) #10)
+- [ ] Subtitles: a real YouTube video downloaded with **Embed** has a selectable subtitle track in a player. ([priorities_2.md](priorities_2.md) #4)
+- [ ] Self-update: a release build one version behind updates itself from a real GitHub release and restarts on the new version. ([priorities_2.md](priorities_2.md) #10)
+
+### Release Checklist
+> Run with the packaged release before publishing it.
+
+- [ ] Clean-machine test: unzip the release in Windows Sandbox (or a fresh user account) with nothing extra on `PATH`, and download one video with post-processing. This development machine has ffprobe and Node on `PATH`, so features that depend on them work here but not for users. For example, the post-processing percentage needs ffprobe, which the release does not ship.
+- [ ] Live-site smoke test: a YouTube video, a YouTube playlist with a range, a YouTube Short, a Vimeo video, an X/Twitter video with cookies, an MP3 download, a trimmed download, and a download with post-processing. The fake yt-dlp in the tests can't notice when a site changes. Keep the URL list in one place, for example `docs/smoke_test.md`.
+- [ ] Cancel and quit during each phase (checking the URL, downloading, merging, post-processing). Afterwards, Task Manager shows no yt-dlp or ffmpeg processes, and the save folder has no `GOVID` files.
+- [ ] Upgrade test: run the new release with the previous release's settings, presets, and history; all of them load unchanged.
+- [ ] Start the unsigned exe for the first time, and again after a self-update, and note what SmartScreen and Windows Defender show, so the guide describes it correctly.
+- [ ] `sha256sum -c SHA256SUMS` passes, and the ZIP holds `GoVid.exe`, `bin/yt-dlp.exe`, `bin/ffmpeg.exe`, and `VERSIONS.txt`.
+
+### Environment Coverage
+- [ ] Display scaling at 125% and 150%, and a 1366×768 screen: no dialog is clipped, including the fixed-width prompts (disk space, duplicates, playlist, release notes).
+- [ ] Unusual titles and folders: non-ASCII characters (Japanese, emoji), apostrophes and spaces, a save folder in OneDrive and one on a network drive, and paths close to Windows' 260-character limit.
+- [ ] GoVid in a folder the user can't write to (for example, under Program Files). Updating yt-dlp, self-update, history, and logs each fail with a clear message.
+- [ ] GPU post-processing on NVIDIA, Intel, and AMD hardware. This overlaps with the benchmark item under GPU acceleration.
+- [ ] Linux: see Linux Polish.
+
+### Stress and Long Runs
+- [ ] A 100-video playlist with Debug Output on: the window stays responsive, and memory use and the goroutine count stay flat. This overlaps with the freeze-regression item under UI Thread Safety Audit.
+- [ ] Leave GoVid idle for several hours after a long session, then use it. This is the "idle after long run" freeze scenario.
+- [ ] A multi-GB 4K download with post-processing, from start to finish.
+
+### Automated
+- [ ] Measure coverage (`go test -coverprofile`), and add the least-covered files as follow-up items.
+- [ ] An opt-in integration test (`-tags integration`, skipped when `bin/yt-dlp.exe` is missing) that runs the real bundled yt-dlp and ffmpeg against a local HTTP server. Subtitles were checked this way by hand in [priorities_2.md](priorities_2.md) #4. The test would show when a yt-dlp upgrade changes flags or output, without contacting real sites.
+- [ ] Fuzz tests (Go's built-in fuzzing) for the parsers that read outside input: `parseURLList`, `shortcutURL`, `parseSHA256Sums`, the log scanner's line parsers, and `parseFFmpegColorInfo`.
 
 ---
 
@@ -414,7 +472,7 @@ See the [refactoring roadmap](refactor_roadmap.md) for component-level status an
 ### FFmpeg On-Demand
 > Keep the initial download size small.
 
-- [ ] Offer to download/extract FFmpeg on-demand if missing instead of bundling.
+- [ ] Offer to download/extract FFmpeg on-demand if missing instead of bundling. (Planned as part of the Components window under YouTube JavaScript Runtime; FFmpeg stays bundled, and the window installs or repairs it.)
 
 ---
 

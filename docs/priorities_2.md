@@ -1,5 +1,7 @@
 # GoVid — Next Ten Priorities
 
+> The next ten are in [priorities_3.md](priorities_3.md).
+>
 > All ten items below are done in code, each in its own commit. Hand checks still to do: **#4**, a real YouTube video downloaded with **Embed** showing a selectable subtitle track in a player; **#10**, a release build one version behind updating itself from a real GitHub release.
 
 The next ten items to work on, in order. They follow the first ten in [priorities.md](priorities.md), which are all done. Each item was checked against the code as it was on 2026-10-06, after commit `50d7081`.
@@ -349,4 +351,4 @@ These were done in code but still need the hand checks noted in [priorities.md](
 - **#8:** the nearly-full USB stick test.
 - **#10:** an MP3 download showing title, artist, date, and cover in a music player.
 
-The roadmap cleanup listed at the end of [priorities.md](priorities.md) is also still pending. [roadmap.md](roadmap.md) still shows the Window Management, Named Constants (thresholds and costs), Split Long Functions, and status-animation items as open, although the code has them done.
+The roadmap cleanup listed at the end of [priorities.md](priorities.md) is done: the Window Management, Named Constants (thresholds and costs), Split Long Functions, and status-animation items are now ticked in [roadmap.md](roadmap.md).
