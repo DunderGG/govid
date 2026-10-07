@@ -1,3 +1,7 @@
 # Keep Go sources LF on every platform so gofmt -l stays clean even where
 # core.autocrlf=true (the Git for Windows default).
 *.go text eol=lf
+
+# Keep test fixtures byte for byte: ffmpeg_progress.log mixes CR, LF, and CRLF
+# on purpose, and the parsers are tested against exactly those bytes.
+testdata/*.log -text

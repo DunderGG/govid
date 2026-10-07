@@ -1,0 +1,2 @@
+[debug] Command-line config: ['--newline', '--progress', '--verbose']
+ERROR: Unsupported URL: https://example.com/not-a-video

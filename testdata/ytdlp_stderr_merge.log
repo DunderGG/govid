@@ -1,0 +1,5 @@
+[debug] Command-line config: ['--newline', '--progress', '--verbose']
+[debug] Encodings: locale cp1252, fs utf-8, pref cp1252, out utf-8, error utf-8 (No ANSI), screen utf-8
+WARNING: [youtube] Falling back to generic n function search
+[Merger] Merging formats into "C:\Downloads\GoVid_Sample Video_GOVID1700000000000000000.webm"
+[VideoRemuxer] Remuxing video from webm to mp4; Destination: C:\Downloads\GoVid_Sample Video_GOVID1700000000000000000.mp4

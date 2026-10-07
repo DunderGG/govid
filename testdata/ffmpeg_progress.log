@@ -1,0 +1,4 @@
+Input #0, matroska,webm, from 'in.webm':
+  Duration: 00:00:10.00, start: 0.000000, bitrate: 2000 kb/s
+frame=   60 fps=0.0 q=28.0 size=     256KiB time=00:00:01.00 bitrate=2097.2kbits/s speed=1.98xframe=  150 fps= 59 q=28.0 size=     640KiB time=00:00:02.50 bitrate=2097.2kbits/s speed=2.00xframe=  240 fps= 60 q=28.0 size=    1024KiB time=00:00:04.00 bitrate=2097.2kbits/s speed=2.01x
+[out#0/mp4 @ 000001] video:1000KiB audio:24KiB subtitle:0KiB
