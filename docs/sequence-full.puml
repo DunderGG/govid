@@ -20,15 +20,19 @@ participant "OS / Disk"     as OS
 ' 1. APPLICATION STARTUP
 ' ─────────────────────────────────────────────────────────────
 group Startup
-    App -> App  : newDownloaderApp(window)\n  — init UIWidgets\n  — load Fyne preferences
+    App -> App  : newDownloaderApp(window)\n  — chooseSettingsStore: settings.json beside the exe\n    with a GoVid.portable marker, else Fyne preferences\n  — init UIWidgets, load preferences
     App -> UIM  : dlApp.uiManager.createMainMenu()
     App -> UIM  : dlApp.uiManager.createUI()\n  — build layout, wire callbacks
+    App -> UIM  : followSystemTheme(settings)\n  — re-apply the System theme when the OS switches light / dark
+    App -> App  : reportSettingsLocation()  — log where settings are kept (portable or not)
+    App -> OS   : removeOldTools()  — delete the .old copies a tool update left behind
     App -> UIM  : dlApp.uiManager.checkDependencies()
     UIM -> OS   : DependencyService.Check()\n  — Stat(yt-dlp), Stat(ffmpeg)
     OS  --> UIM : found / missing
     alt dependency missing
         UIM -> App : onLog warning for missing tool
     end
+    App -> App  : go checkTools()\n  — notice with Install for a missing yt-dlp or FFmpeg\n  — depSvc.JSRuntime(): bin/deno, then deno / node / bun on PATH\n    (none → notice offering to install Deno)
     opt "Check for updates on startup" enabled
         App -> App  : go checkYtDlpUpdate()\n  — depSvc.Version("yt-dlp") vs releaseSvc.Latest(yt-dlp/yt-dlp)\n    (GitHub asked at most once a day; 403 = unknown)
         alt installed yt-dlp is older
@@ -40,6 +44,10 @@ group Startup
         end
     end
     App -> App  : go startGPUDetection()\n  — gpuSvc.Detect(ctx) runs in the background,\n    populating the GPUBackend → BackendCapability cache once
+    opt offerQueueRestore: queue.json holds downloads saved when GoVid last quit
+        App -> UI  : askRestoreQueue("Resume N downloads?")
+        UI  --> App : Resume → resumeQueue (a restored session, no URL check)\n  / Discard → RemovePartialFiles for each
+    end
     UI  -> U    : ShowAndRun() — window visible
 end
 
@@ -101,7 +109,7 @@ group checkURLs(queueCtx, session) [for each URL entered]
 end
 
 group loop [while QueueModel.Next() returns a waiting item]
-    note right : the Queue panel may remove, move, or retry\nwaiting items while the loop runs
+    note right : the Queue panel may remove, move, retry, pause, or resume\nitems while the loop runs. With Simultaneous Downloads 2–3,\nrunParallel runs this loop in that many workers (3 s apart),\neach item with its own Skip / Pause and a "[n/total]" log prefix.\nOnly paused items left → waitForResume (the button reads Resume).
     alt batch mode (len > 1)
         App -> App : context.WithCancel(queueCtx)\n  → runCtx / skipItem  (per-URL cancel)
         note right : Cancel skips only the active URL;\nqueueCtx and later URLs remain available.
@@ -112,6 +120,10 @@ group loop [while QueueModel.Next() returns a waiting item]
         App -> YT  : engine.ProbeVideo(runCtx, req)\n  — yt-dlp -J --flat-playlist --no-playlist -f <selector>
         YT  --> App : MediaInfo (raw JSON, size, title)
     end
+    opt live or scheduled stream (MediaInfo.LiveStatus)
+        App -> UI  : askLive: Record from now / from the start / Skip,\n  or Wait and record (--wait-for-video 60-300) / Skip
+        note right : a recording skips the disk check below;\nrecordingCallback checks free space every 30 s
+    end
     App -> OS  : freeBytes(save folder)
     alt probe size × 1.1 (× 2 with post-processing) > free space
         App -> UI  : askDiskSpace("Needs ~X, Y free. Continue anyway?")\n  — single: Continue anyway / Cancel\n  — batch: Skip / Continue / Stop
@@ -120,7 +132,8 @@ group loop [while QueueModel.Next() returns a waiting item]
         App -> UI  : appendOutput("Download size unknown; skipping the disk space check.")
     end
 
-    App -> App : runYtDlp(runCtx, req{InfoJSON: item.info.raw}, …)
+    App -> App : downloadContext(runCtx): Pause → errPaused,\n  Stop recording → errStopKeep, quitting → errPaused
+    App -> App : runYtDlp(downloadCtx, item.downloadRequest(){InfoJSON, DownloadID, FormatPick}, …)\n  — yt-dlp --continue, -f pick or selector, --js-runtimes, cookies
 
     group engine.Run(ctx, req, opts, cb)  — BuildArgs + Execute + FinalizeFiles / RemovePartialFiles
         App -> OS  : saveInfoJSON → temp govid-*.info.json (removed when Run returns)
@@ -180,9 +193,11 @@ group loop [while QueueModel.Next() returns a waiting item]
             end
         end
 
-        alt cmdErr == nil
-            App -> OS  : engine.FinalizeFiles(savePath, downloadID)\n  — Glob(*downloadID*)\n  — strip token, uniquePath\n  — os.Rename(tmp → final)
+        alt cmdErr == nil, or stopped with errStopKeep (a kept recording)
+            App -> OS  : engine.FinalizeFiles(savePath, downloadID)\n  — Glob(*downloadID*), skipping .part / .ytdl\n  — strip token, uniquePath (under renameMu)\n  — os.Rename(tmp → final)\n  — a kept recording: finishRecording remuxes it
             OS  --> App : []finalPaths
+        else paused (errPaused)
+            App -> App : keep the partial files → DownloadResult.Paused
         else failed or cancelled
             App -> OS  : engine.RemovePartialFiles(savePath, downloadID)\n  — Glob(*downloadID*) → os.Remove (retried while locked)
         end
@@ -215,6 +230,7 @@ group loop [while QueueModel.Next() returns a waiting item]
         App -> App : skipItem()  — release per-URL context
     end
 end
+App -> App : finishQueue(queue)\n  — quitting: saveQueue → queue.json (waiting + paused)\n  — else: waiting → Skipped, paused → RemovePartialFiles
 
 ' ─────────────────────────────────────────────────────────────
 ' 5. POST-PROCESSING (optional)

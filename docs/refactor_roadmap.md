@@ -97,6 +97,9 @@ Breaking down the `DownloaderApp` "God Object" into specialized components:
 - [x] **LogService** — session log/error log routing, rotation policy, and structured log helpers.
 - [x] **DependencyService** — binary discovery, dependency checks, and updater command execution.
 - [x] **GPUCapabilityService** — FFmpeg GPU backend detection, capability caching, and encoder-plan resolution (see [gpu-acceleration.md](gpu-acceleration.md)).
+- [x] **ToolInstaller** — downloads, checksums, and installs yt-dlp, FFmpeg, and Deno into `bin/` (`tool_installer.go`, added in [priorities_3.md](priorities_3.md) #1). It shares `httpFetcher` (`http_fetch.go`) with `SelfUpdater`, and has no Fyne dependency; the Components window and startup notices reach it through `UIManager` callbacks.
+- [x] **QueueStore** — reads and writes `queue.json`, the downloads left when GoVid quits (`queue_store.go`, [priorities_3.md](priorities_3.md) #4). Plain struct, no UI dependency, like `HistoryService`.
+- [x] **fileStore** — a `fyne.Preferences` kept in `settings.json` beside the exe for Portable Mode (`portable.go`, [priorities_3.md](priorities_3.md) #8). `PreferenceService` takes it in place of the Fyne store, so no other code knows which one is in use.
 - [x] **Update documentation** — architecture.md, classes.puml, and sequence diagrams fully reflect the extracted architecture.
 
 See the sections below for per-component details and open next steps.

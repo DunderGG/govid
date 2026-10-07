@@ -2,6 +2,8 @@
 
 The next ten items to work on, in order. They follow [priorities.md](priorities.md) and [priorities_2.md](priorities_2.md), which are both done. Each item was checked against the code as it was on 2026-10-07, after commit `7909dd6`.
 
+> **Status: all ten are done in code** (one commit each, 2026-10-07), with tests that run in CI. Four still need a check by hand, listed under Testing → Hand Checks in [roadmap.md](roadmap.md): the Components installer in the GUI (#1), a real YouTube live stream (#2), Firefox cookies with an age-restricted video (#3), and the System theme following a Windows light/dark switch (#9).
+
 How the order was chosen:
 
 1. **Keep downloads working (1).** The bundled yt-dlp has no JavaScript runtime, so YouTube downloads currently rely on a deprecated fallback. This is not on the roadmap; we found it by running the bundled yt-dlp against a real video. The fix adds an installer that also covers yt-dlp and FFmpeg.
