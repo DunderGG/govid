@@ -106,7 +106,9 @@ func (app *DownloaderApp) pauseItem(id int) {
 
 // skipItem skips the item with id (the Queue panel's Skip): it stops the
 // download and removes its partial files, or stops a recording and keeps
-// it. An item without its own Skip falls back to the Cancel button's.
+// it. It reports false, and does nothing, when the item has no Skip: a row
+// can still show Skip for a moment after its item finished, and the Cancel
+// button's function then belongs to the session or to the next item.
 func (app *DownloaderApp) skipItem(id int) bool {
 	app.cancelMu.Lock()
 	var skip func()
@@ -115,7 +117,7 @@ func (app *DownloaderApp) skipItem(id int) bool {
 	}
 	app.cancelMu.Unlock()
 	if skip == nil {
-		return app.RequestCancel()
+		return false
 	}
 	skip()
 	return true

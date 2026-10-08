@@ -127,6 +127,26 @@ func TestBackOffNeedsRateLimitOrBotCheck(t *testing.T) {
 	}
 }
 
+// A row can still show Skip just after its item finished and its controls
+// were unregistered. The click must not reach the Cancel button's
+// function, which by then stops the session or skips the next item.
+func TestSkipOfFinishedItemDoesNotCancel(t *testing.T) {
+	app := &DownloaderApp{}
+	app.SetCancelFunc(func() { t.Error("Skip of a finished item called the Cancel function") })
+	skips := 0
+
+	if app.skipItem(1) {
+		t.Error("skipItem() of a finished item = true, want false")
+	}
+	app.registerSkip(2, func() { skips++ })
+	if !app.skipItem(2) || app.skipItem(2) {
+		t.Error("skipItem() of a running item twice = want true, then false")
+	}
+	if skips != 1 {
+		t.Errorf("item's Skip called %d times, want 1", skips)
+	}
+}
+
 func TestDiskCheckLeavesSpaceForRunningDownloads(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-download")
 	h.app.freeBytes = func(string) (uint64, error) { return 30 << 20, nil }
