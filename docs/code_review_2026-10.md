@@ -27,9 +27,9 @@ Each finding has an ID (`CR-nn`), a severity, every place it applies, what goes 
 ✅ | [CR-03](#cr-03-a-stale-skip-in-the-queue-panel-stops-the-session-or-skips-the-wrong-item) | Medium | A stale Skip in the Queue panel stops the session or skips the wrong item | parallel.go |
 ✅ | [CR-04](#cr-04-with-save-preferences-off-opening-a-settings-window-reverts-the-sessions-settings) | Medium | With "Save preferences" off, opening a settings window reverts the session's settings | ui_manager.go, preference_service.go |
 ✅ | [CR-05](#cr-05-widgets-are-read-from-background-goroutines) | Medium | Widgets are read from background goroutines | download.go, postprocess.go |
-❌ | [CR-06](#cr-06-cancelling-post-processing-is-reported-as-a-failure) | Medium | Cancelling post-processing is reported as a failure | pp_engine.go |
-❌ | [CR-07](#cr-07-yt-dlp-updates-are-not-guarded-against-running-downloads) | Medium | yt-dlp updates are not guarded against running downloads | components.go, update_check.go, ui_manager.go |
-❌ | [CR-08](#cr-08-output-readers-hang-on-a-line-longer-than-64-kib) | Medium | Output readers hang on a line longer than 64 KiB | logscanner.go, pp_engine.go |
+✅ | [CR-06](#cr-06-cancelling-post-processing-is-reported-as-a-failure) | Medium | Cancelling post-processing is reported as a failure | pp_engine.go |
+✅ | [CR-07](#cr-07-yt-dlp-updates-are-not-guarded-against-running-downloads) | Medium | yt-dlp updates are not guarded against running downloads | components.go, update_check.go, ui_manager.go |
+✅ | [CR-08](#cr-08-output-readers-hang-on-a-line-longer-than-64-kib) | Medium | Output readers hang on a line longer than 64 KiB | logscanner.go, pp_engine.go |
 ❌ | [CR-09](#cr-09-the-pre-session-log-buffer-is-unbounded-with-unlimited) | Medium | The pre-session log buffer is unbounded with "Unlimited" | log_service.go |
 ❌ | [CR-10](#cr-10-blocking-file-io-on-the-ui-thread) | Medium | Blocking file I/O on the UI thread | history_window.go, others |
 ❌ | [CR-11](#cr-11-the-download-summarys-sizes-are-wrong) | Low | The download summary's sizes are wrong | logscanner.go, types.go |
@@ -193,7 +193,7 @@ The other widget accesses in background code are already inside `fyne.Do`. `newD
 
 ---
 
-### CR-06: Cancelling post-processing is reported as a failure
+### ✅ CR-06: Cancelling post-processing is reported as a failure
 
 **Where.** In [pp_engine.go](../pp_engine.go), `runJob` reaches `failJob` or `retryWithCPU` after a cancel at:
 - [:320-328](../pp_engine.go#L320-L328), the fallback without streaming;
@@ -212,9 +212,11 @@ A GPU job first logs "GPU encode failed — retrying with CPU". Its retry then f
 
 **Test.** Cancel the context while a job runs (`fake_tool_test.go` has a fake ffmpeg). Check that `OnFailure` is not called and that no CPU retry runs.
 
+**Status.** Fixed in `38370c2` as suggested above. `runJob` checks `ctx.Err()` at all three points and hands a canceled job to the new `cancelJob`, which logs "Post-processing canceled: <file>" at `colWarning` and removes `tmpOutput` through `removeTempOutput`, now shared with `failJob`. The `ApplyFilters` workers also stop starting queued jobs once the context is done, so a cancel does not log every waiting file. `TestRunJobCancelIsNotAFailure` cancels a CPU job and a GPU job mid-encode, using a new `ffmpeg-hang` fake. `TestRunJobAlreadyCanceledIsNotAFailure` covers the `Start` path. Both fail against the old code. architecture.md and sequence-full.puml were updated.
+
 ---
 
-### CR-07: yt-dlp updates are not guarded against running downloads
+### ✅ CR-07: yt-dlp updates are not guarded against running downloads
 
 **Where.** Every path that runs `yt-dlp -U`:
 - [update_check.go:135](../update_check.go#L135): the "Update now" button on the out-of-date notice;
@@ -234,9 +236,11 @@ A GPU job first logs "GPU encode failed — retrying with CPU". Its retry then f
 
 `startDownload` already refuses while `installing` is set.
 
+**Status.** Fixed in `232704a` as suggested above. `DownloaderApp.updateYtDlp` refuses with `errToolsInUse` during a session and with `errAlreadyInstall` during another install or update. Otherwise it holds `installing` and keeps the Download button disabled until `yt-dlp -U` finishes. Components → Update calls it directly. `UIManager.runUpdateInUI`, used by Tools → Update yt-dlp and by the notice's "Update now", reaches it through a new injected `onUpdateYtDlp` and shows an error dialog when it refuses. `RunUpdate` itself is unchanged and is only called through `runUpdateThen`. The two errors' texts now fit an update as well as an install. `TestYtDlpUpdateRefusesWhileBusy` and `TestYtDlpUpdateBlocksDownloadsUntilItEnds` fail against the old code. architecture.md and classes.puml were updated.
+
 ---
 
-### CR-08: Output readers hang on a line longer than 64 KiB
+### ✅ CR-08: Output readers hang on a line longer than 64 KiB
 
 **Where.** Every `bufio.Scanner` that reads a running process:
 - [logscanner.go:129](../logscanner.go#L129): yt-dlp's stdout;
@@ -259,6 +263,8 @@ if err := scanner.Err(); err != nil {
 ```
 
 **Test.** Feed `watchOutput` a 200 KiB line followed by normal lines through an `io.Pipe`, and check that it returns.
+
+**Status.** Fixed in `88ee4f1` as suggested above, through two shared helpers in process.go. `newOutputScanner` sets the 1 MiB limit (`maxOutputLine`). `drainOutput` reads the rest after a scanner stops early. In `runJob` the drain also pets the GPU stall watchdog, because FFmpeg is still encoding and the watchdog would otherwise kill it after 30 s. `watchOutput` returning is not enough to prove the fix: the old scanner goroutines returned too, while the writer stayed blocked. `TestWatchOutputKeepsReadingPastLongLines` therefore also waits for the writers, with a 200 KiB line and with a line over the limit. `TestRunJobSurvivesAnOverlongOutputLine` uses a new `ffmpeg-long-line` fake. All three hang against the old behaviour. architecture.md was updated.
 
 ---
 
