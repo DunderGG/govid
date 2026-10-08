@@ -115,6 +115,8 @@ func filesWithID(dir, downloadID string) ([]string, error) {
 
 **Test.** Make the rename injectable, like `ToolInstaller.rename`. With a failing rename, check that the media file still exists and that `FinalPaths` names it.
 
+**Status.** Fixed in `e80ba6c` as suggested above. `FinalizeFiles` renames through `renameWithRetry` and, if the rename still fails, returns the file under its temporary name. A successful run now calls a new `RemoveLeftoverPartials`, which deletes only what `isPartialFile` matches. `finishRecording`'s two renames retry too. `DownloadEngine.rename` is injectable. `TestRunKeepsFileWhoseRenameFails` fails against the old cleanup. `TestFinalizeFilesRetriesLockedRename` and `TestRemoveLeftoverPartialsKeepsFinishedFiles` are also new. architecture.md, classes.puml, and sequence-full.puml were updated.
+
 ---
 
 ## Medium
