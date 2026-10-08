@@ -55,6 +55,53 @@ func TestPreferenceServiceSharpenAmountRoundtrip(t *testing.T) {
 	}
 }
 
+// With "Save preferences" off the store keeps the old settings, but what
+// was saved still applies until GoVid quits; opening a settings window
+// reloads through Load and must not revert it.
+func TestSaveWithoutPersistenceAppliesForTheSession(t *testing.T) {
+	store := test.NewTempApp(t).Preferences()
+	prefSvc := NewPreferenceService(store)
+	p := prefSvc.Load()
+	p.SavePrefs = false
+	p.Sharpen = true
+	p.SharpenAmount = 1.4999
+
+	prefSvc.Save(p)
+
+	loaded := prefSvc.Load()
+	if !loaded.Sharpen || loaded.SavePrefs {
+		t.Errorf("Load() after Save = Sharpen %v, SavePrefs %v; want true, false", loaded.Sharpen, loaded.SavePrefs)
+	}
+	if loaded.SharpenAmount != 1.5 || loaded.SavedPath != defaultSavePath() {
+		t.Errorf("Load() = SharpenAmount %v, SavedPath %q; want them normalized as from the store", loaded.SharpenAmount, loaded.SavedPath)
+	}
+	if NewPreferenceService(store).Load().Sharpen {
+		t.Error("Sharpen was written to the store with Save preferences off")
+	}
+
+	prefSvc.Reset()
+	if prefSvc.Load().Sharpen {
+		t.Error("Load() after Reset still returns the saved Sharpen")
+	}
+}
+
+// A Portable Mode switch takes the settings in use, not the stale store.
+func TestCopySettingsTakesUnpersistedChanges(t *testing.T) {
+	prefSvc := NewPreferenceService(test.NewTempApp(t).Preferences())
+	p := prefSvc.Load()
+	p.SavePrefs = false
+	p.Format = formatWebM
+	prefSvc.Save(p)
+	target := test.NewTempApp(t).Preferences()
+
+	if err := copySettings(prefSvc, target); err != nil {
+		t.Fatalf("copySettings() = %v", err)
+	}
+	if got := NewPreferenceService(target).Load().Format; got != formatWebM {
+		t.Errorf("copied format = %q, want WebM", got)
+	}
+}
+
 func TestNewPreferenceServiceMigratesLegacySmoothMotionKey(t *testing.T) {
 	for _, legacy := range []bool{true, false} {
 		store := test.NewApp().Preferences()

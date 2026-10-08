@@ -535,7 +535,7 @@ func (manager *UIManager) showPreferences() {
 	}
 
 	ui := manager.ui
-	// Reload the persisted values so the window never shows edits that were
+	// Reload the saved values so the window never shows edits that were
 	// discarded by closing it without saving.
 	applyGeneralPrefs(ui, manager.onLoadPreferences())
 	ui.prefs.keepHistory.OnChanged = manager.onKeepHistoryChanged
@@ -823,7 +823,7 @@ func (manager *UIManager) showPostProcessing() {
 		return
 	}
 
-	// Reload the persisted values so the window never shows edits that were
+	// Reload the saved values so the window never shows edits that were
 	// discarded by closing it without applying.
 	applyPostProcessPrefs(manager.ui, manager.onLoadPreferences())
 

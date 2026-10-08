@@ -4,7 +4,9 @@
 //   - AppPreferences: plain value struct that mirrors every stored preference key,
 //     making the full set of configurable options visible in one place.
 //   - PreferenceService: reads from and writes to the Fyne Preferences store,
-//     applying fallbacks where appropriate. Has no dependency on any UI widget.
+//     applying fallbacks where appropriate, and keeps the last saved
+//     preferences for when "Save preferences" is off. Has no dependency on
+//     any UI widget.
 //   - LoadFromFile / MergeConfig / ExportConfig: govid.json, whose AppConfig
 //     type and rules live in config_file.go.
 //   - Named constants for every preference key and default value.
@@ -15,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 
 	"fyne.io/fyne/v2"
 )
@@ -157,8 +160,15 @@ type AppPreferences struct {
 // PreferenceService reads from and writes to a Fyne Preferences store.
 // It has no dependency on any UI widget and owns all preference key names
 // and default values.
+//
+// It also keeps the preferences last saved this session (saved), because
+// with "Save preferences" off the store is not written and so no longer
+// holds the settings in use. Load is called from the session goroutine as
+// well as the UI thread, so mu guards saved.
 type PreferenceService struct {
 	store fyne.Preferences
+	mu    sync.Mutex
+	saved *AppPreferences
 }
 
 // NewPreferenceService constructs a PreferenceService backed by the given
@@ -183,9 +193,22 @@ func (prefSvc *PreferenceService) migrateLegacyKeys() {
 	prefSvc.store.RemoveValue(legacyPrefSmoothMotion)
 }
 
-// Load reads every stored preference and returns an AppPreferences with
-// fallback defaults applied for any key that has not been explicitly set.
+// Load returns the preferences last saved this session or, before any save,
+// reads every stored preference. Either way fallback defaults are applied
+// for any key that has not been explicitly set.
 func (prefSvc *PreferenceService) Load() AppPreferences {
+	prefSvc.mu.Lock()
+	saved := prefSvc.saved
+	prefSvc.mu.Unlock()
+	if saved != nil {
+		return normalizePreferences(*saved)
+	}
+	return prefSvc.loadStore()
+}
+
+// loadStore reads every stored preference, with fallback defaults applied
+// for any key that has not been explicitly set.
+func (prefSvc *PreferenceService) loadStore() AppPreferences {
 	p := AppPreferences{
 		SavePrefs:         prefSvc.store.BoolWithFallback(prefSavePrefs, defaultSavePrefs),
 		SavedPath:         prefSvc.store.String(prefSavedPath),
@@ -219,7 +242,7 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		SmoothMotionMode:  prefSvc.store.StringWithFallback(prefSmoothMotionMode, defaultSmoothMotionMode),
 		SmoothFPS:         prefSvc.store.FloatWithFallback(prefSmoothFPS, defaultSmoothFPS),
 		Sharpen:           prefSvc.store.Bool(prefSharpen),
-		SharpenAmount:     math.Round(prefSvc.store.FloatWithFallback(prefSharpenAmount, defaultSharpenAmount)*10) / 10,
+		SharpenAmount:     prefSvc.store.FloatWithFallback(prefSharpenAmount, defaultSharpenAmount),
 		NormalizeAudio:    prefSvc.store.Bool(prefNormalize),
 		VividMode:         prefSvc.store.Bool(prefVividMode),
 		Denoise:           prefSvc.store.Bool(prefDenoise),
@@ -234,6 +257,14 @@ func (prefSvc *PreferenceService) Load() AppPreferences {
 		UpscaleTarget:     prefSvc.store.StringWithFallback(prefUpscaleTarget, defaultUpscaleTarget),
 		GPUBackend:        prefSvc.store.StringWithFallback(prefGPUBackend, defaultGPUBackend),
 	}
+	return normalizePreferences(p)
+}
+
+// normalizePreferences rounds the sharpen amount to its slider's step and
+// applies resolveDefaults, so Load returns the same whether it reads the
+// store or the preferences saved in memory.
+func normalizePreferences(p AppPreferences) AppPreferences {
+	p.SharpenAmount = math.Round(p.SharpenAmount*10) / 10
 	return resolveDefaults(p)
 }
 
@@ -288,11 +319,15 @@ func defaultSavePath() string {
 	return ""
 }
 
-// Save writes the given AppPreferences to the Fyne store.
-// The savePrefs toggle is always written. All other keys are only written when
-// savePrefs is true, preserving the historic behaviour that lets users opt out
-// of persistence while still remembering their opt-out choice.
+// Save makes p the preferences Load returns, and writes them to the Fyne
+// store. The savePrefs toggle is always written. All other keys are only
+// written when savePrefs is true, preserving the historic behaviour that lets
+// users opt out of persistence while still remembering their opt-out choice;
+// either way they apply for the rest of the session.
 func (prefSvc *PreferenceService) Save(p AppPreferences) {
+	prefSvc.mu.Lock()
+	prefSvc.saved = &p
+	prefSvc.mu.Unlock()
 	prefSvc.store.SetBool(prefSavePrefs, p.SavePrefs)
 	if !p.SavePrefs {
 		return
@@ -351,9 +386,13 @@ func (prefSvc *PreferenceService) write(p AppPreferences) {
 	prefSvc.store.SetString(prefGPUBackend, p.GPUBackend)
 }
 
-// Reset removes every preference key managed by this service from the Fyne
-// store, so the next Load call returns defaults across the board.
+// Reset forgets the saved preferences and removes every preference key
+// managed by this service from the Fyne store, so the next Load call returns
+// defaults across the board.
 func (prefSvc *PreferenceService) Reset() {
+	prefSvc.mu.Lock()
+	prefSvc.saved = nil
+	prefSvc.mu.Unlock()
 	for _, key := range []string{
 		prefSavedPath, prefFormat, prefQuality, prefMaxSpeed, prefThemeMode,
 		prefSavePrefs, prefCookiesPath, prefCookieSource, prefCookieBrowser, prefCookieProfile, prefSimultaneous, prefPreferredCodec, prefFilenameTemplate, prefLogLimit, prefShowDebug, prefCheckUpdates,

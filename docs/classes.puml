@@ -674,6 +674,8 @@ package "Preference Service" #FFF0F0 {
 
     class PreferenceService <<service>> {
         -store : fyne.Preferences
+        -mu : sync.Mutex
+        -saved : *AppPreferences
         --
         +Load() : AppPreferences
         +Save(p AppPreferences)

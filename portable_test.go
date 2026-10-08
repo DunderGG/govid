@@ -168,7 +168,7 @@ func TestSwitchingPortableModeCopiesTheSettings(t *testing.T) {
 	}
 
 	// And back: settings.json's values go to the user profile store.
-	h.app.settingsStore = store
+	h.app.settingsStore, h.app.prefSvc = store, next
 	store.SetString(prefFormat, formatMP3)
 	defer store.(*fileStore).Flush()
 	if err := h.app.setPortable(false); err != nil {

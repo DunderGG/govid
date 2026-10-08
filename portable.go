@@ -311,12 +311,13 @@ func chooseSettingsStore(exeDir string, appStore func() fyne.Preferences, writab
 
 // ── Switching ────────────────────────────────────────────────────────────────
 
-// copySettings copies every setting and the presets from one store to
-// another, whether or not "Save preferences" is on.
-func copySettings(from, to fyne.Preferences) error {
-	source, target := NewPreferenceService(from), NewPreferenceService(to)
-	target.write(source.Load())
-	if raw := from.String(prefPresets); raw != "" {
+// copySettings copies the settings in use, whether or not "Save
+// preferences" is on, and the presets from source's store to another store.
+// The settings come from source.Load, not its store, which with "Save
+// preferences" off does not hold this session's changes.
+func copySettings(source *PreferenceService, to fyne.Preferences) error {
+	NewPreferenceService(to).write(source.Load())
+	if raw := source.store.String(prefPresets); raw != "" {
 		to.SetString(prefPresets, raw)
 	}
 	if file, ok := to.(*fileStore); ok {
@@ -336,7 +337,7 @@ func (app *DownloaderApp) setPortable(on bool) error {
 	}
 	marker := filepath.Join(exeDir, portableMarker)
 	if !on {
-		if err := copySettings(app.settingsStore, fyne.CurrentApp().Preferences()); err != nil {
+		if err := copySettings(app.prefSvc, fyne.CurrentApp().Preferences()); err != nil {
 			return err
 		}
 		if err := os.Remove(marker); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -353,7 +354,7 @@ func (app *DownloaderApp) setPortable(on bool) error {
 		// A damaged settings.json is replaced by the copy.
 		file, _ = newFileStore(filepath.Join(exeDir, settingsFileName))
 	}
-	if err := copySettings(app.settingsStore, file); err != nil {
+	if err := copySettings(app.prefSvc, file); err != nil {
 		return err
 	}
 	text := "This file makes GoVid portable: its settings are kept in settings.json beside it. Delete it (or untick Portable Mode in Preferences) to keep them in your user profile.\n"
