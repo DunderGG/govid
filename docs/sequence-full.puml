@@ -260,7 +260,11 @@ alt hasPostProcess && len(allFinalPaths) > 0 && not cancelled
             end
 
             FF  --> App : exit code
-            alt FFmpeg success
+            alt FFmpeg failure && ctx canceled
+                App -> App : cancelJob(job, cb)\n  — no OnFailure, no CPU retry
+                App -> OS  : os.Remove(tmpOutput)  [clean up partial]
+                App -> UI  : appendOutput("[SYSTEM] Post-processing canceled: <file>", orange)
+            else FFmpeg success
                 App -> OS  : os.Rename(tmpOutput → finalPath)
                 App -> OS  : os.Remove(inputPath)  [original replaced]
             else FFmpeg failure && job.usedGPU

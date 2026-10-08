@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"image/color"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -126,6 +128,74 @@ func TestRunJobFFmpegErrorReportsFailureAndRemovesTemp(t *testing.T) {
 	}
 	if _, err := os.Stat(job.tmpOutput); !os.IsNotExist(err) {
 		t.Errorf("temp output still exists (stat err = %v)", err)
+	}
+}
+
+func TestRunJobCancelIsNotAFailure(t *testing.T) {
+	for _, usedGPU := range []bool{false, true} {
+		t.Run(fmt.Sprintf("usedGPU=%v", usedGPU), func(t *testing.T) {
+			useFakeTool(t, "ffmpeg-hang")
+			runs := useFakeToolState(t)
+			dir := t.TempDir()
+			engine := NewPPEngine(fakeToolPath(t), "ffprobe")
+			job := PostProcessJob{
+				inputPath: filepath.Join(dir, "in.mp4"),
+				tmpOutput: filepath.Join(dir, "in_pp.mp4"),
+				finalPath: filepath.Join(dir, "in.mp4"),
+				usedGPU:   usedGPU,
+			}
+			if err := os.WriteFile(job.tmpOutput, []byte("partial"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			cb, failures, logs := recordingPPCallbacks()
+			// Cancel once FFmpeg reports progress, i.e. mid-encode.
+			var once sync.Once
+			cb.OnStatus = func(string) { once.Do(cancel) }
+
+			engine.runJob(ctx, job, cb)
+
+			joined := strings.Join(*logs, "\n")
+			if *failures != 0 {
+				t.Errorf("OnFailure called %d times, want 0", *failures)
+			}
+			if got := runs(); got != 1 {
+				t.Errorf("FFmpeg ran %d times, want 1 (no CPU retry)", got)
+			}
+			if strings.Contains(joined, "[ERROR]") || strings.Contains(joined, "retrying with CPU") {
+				t.Errorf("cancel logged as a failure:\n%s", joined)
+			}
+			if !strings.Contains(joined, "Post-processing canceled: in.mp4") {
+				t.Errorf("log missing the cancel, got:\n%s", joined)
+			}
+			if _, err := os.Stat(job.tmpOutput); !os.IsNotExist(err) {
+				t.Errorf("temp output still exists (stat err = %v)", err)
+			}
+		})
+	}
+}
+
+func TestRunJobAlreadyCanceledIsNotAFailure(t *testing.T) {
+	dir := t.TempDir()
+	engine := NewPPEngine(fakeToolPath(t), "ffprobe")
+	job := PostProcessJob{
+		inputPath: filepath.Join(dir, "in.mp4"),
+		tmpOutput: filepath.Join(dir, "in_pp.mp4"),
+		finalPath: filepath.Join(dir, "in.mp4"),
+		usedGPU:   true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	cb, failures, logs := recordingPPCallbacks()
+
+	engine.runJob(ctx, job, cb)
+
+	if *failures != 0 {
+		t.Errorf("OnFailure called %d times, want 0", *failures)
+	}
+	if joined := strings.Join(*logs, "\n"); !strings.Contains(joined, "Post-processing canceled") {
+		t.Errorf("log missing the cancel, got:\n%s", joined)
 	}
 }
 

@@ -258,8 +258,9 @@ func (engine *PPEngine) retryWithCPU(ctx context.Context, job PostProcessJob, cb
 
 // failJob reports a terminal FFmpeg failure for job: it marks the session as
 // failed via OnFailure, logs msg and any captured output, and removes the
-// partial temp file. Every path that gives up on a job must go through here
-// so the Retry button and the log stay consistent.
+// partial temp file. Every path that gives up on a job must go through here,
+// or through cancelJob after a cancel, so the Retry button and the log stay
+// consistent.
 func failJob(job PostProcessJob, cb PPCallbacks, msg string, output []string) {
 	cb.OnFailure()
 	cb.OnLog("[ERROR] "+msg, colError)
@@ -268,6 +269,19 @@ func failJob(job PostProcessJob, cb PPCallbacks, msg string, output []string) {
 			cb.OnLog(line, colDebug)
 		}
 	}
+	removeTempOutput(job, cb)
+}
+
+// cancelJob reports that job was stopped by a cancel and removes its partial
+// temp file. Unlike failJob it does not call OnFailure, so a cancel does not
+// turn the button into Retry, and the job is not retried on the CPU.
+func cancelJob(job PostProcessJob, cb PPCallbacks) {
+	cb.OnLog(fmt.Sprintf("[SYSTEM] Post-processing canceled: %s", filepath.Base(job.inputPath)), colWarning)
+	removeTempOutput(job, cb)
+}
+
+// removeTempOutput removes job's partial temp file, if there is one.
+func removeTempOutput(job PostProcessJob, cb PPCallbacks) {
 	if removeErr := os.Remove(job.tmpOutput); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 		cb.OnLog(
 			fmt.Sprintf("[SYSTEM] Warning: could not remove temp file: %v", removeErr),
@@ -319,6 +333,10 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 
 		// If FFmpeg fails, log the error and the captured output.
 		if err != nil {
+			if ctx.Err() != nil {
+				cancelJob(job, cb)
+				return
+			}
 			if job.usedGPU {
 				guard.release()
 				engine.retryWithCPU(ctx, job, cb, lastLine(string(out)))
@@ -340,6 +358,10 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	}
 
 	if err := cmd.Start(); err != nil {
+		if ctx.Err() != nil {
+			cancelJob(job, cb)
+			return
+		}
 		if job.usedGPU {
 			guard.release()
 			engine.retryWithCPU(ctx, job, cb, err.Error())
@@ -389,6 +411,11 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	duration := time.Since(start)
 
 	if err != nil {
+		// A cancel kills FFmpeg, so Wait fails; that is not an encode failure.
+		if ctx.Err() != nil {
+			cancelJob(job, cb)
+			return
+		}
 		if job.usedGPU {
 			reason := err.Error()
 			if len(errLines) > 0 {
@@ -1064,6 +1091,10 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 		go func() {
 			defer wg.Done()
 			for job := range jobCh {
+				// After a cancel, drain the queue without starting the rest.
+				if ctx.Err() != nil {
+					continue
+				}
 				engine.runJob(ctx, job, cb)
 			}
 		}()

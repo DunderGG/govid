@@ -244,6 +244,8 @@ func runFakeTool(mode string, args []string) int {
 		return fakeYtDlpSpawnChild()
 	case "tick":
 		return fakeTick()
+	case "ffmpeg-hang":
+		return fakeFFmpegHang()
 	case "ffprobe-color":
 		return fakeFFprobeColor()
 	case "ffmpeg-summary":
@@ -471,6 +473,14 @@ func fakeTick() int {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+	return 0
+}
+
+// fakeFFmpegHang mimics a long FFmpeg encode: it prints one progress line to
+// stderr and then runs for a minute, so a test can cancel it mid-job.
+func fakeFFmpegHang() int {
+	fmt.Fprintln(os.Stderr, "frame=   10 fps=5.0 q=28.0 size=     256KiB time=00:00:00.40 bitrate=5242.9kbits/s speed=0.2x")
+	time.Sleep(time.Minute)
 	return 0
 }
 
