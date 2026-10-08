@@ -94,6 +94,8 @@ func filesWithID(dir, downloadID string) ([]string, error) {
 
 **Test.** Run the existing `FinalizeFiles` and `RemovePartialFiles` tests with `filepath.Join(t.TempDir(), "Videos [HD]")` as the save folder.
 
+**Status.** Fixed in `e43b8c3` as suggested above. `filesWithID` replaces `filepath.Glob` in all four places. The `FinalizeFiles` and `RemovePartialFiles` tests now run in both a plain folder and a `Videos [HD]` folder, and a new test covers `filesWithID`, `hasFiles`, and `downloadedBytes`. The new tests fail against the old `Glob` code. architecture.md and sequence-full.puml no longer say these functions glob.
+
 ---
 
 ### CR-02: A failed rename deletes the finished download
@@ -372,7 +374,7 @@ Smaller cases, each usually fast but on the UI thread all the same:
 
 **Suggested fix.** Reorder the defers so the state reset happens before the UI is re-enabled: defer `finishSessionUI` first, just after `sessions.Done`, and `isRunning.Store(false)` and the others after it, so they run before it.
 
-**Status.** Fixed together with [CR-27](#cr-27-two-sessions-progress-smoothers-can-run-at-once). `runSession` now runs its teardown in one deferred function, in this order: `stopQueue`, wait for the smoother, clear the cancel and stop functions and `isRunning`, `finishSessionUI`, and `sessions.Done`.
+**Status.** Fixed in `b36ce0d`, together with [CR-27](#cr-27-two-sessions-progress-smoothers-can-run-at-once). `runSession` now runs its teardown in one deferred function, in this order: `stopQueue`, wait for the smoother, clear the cancel and stop functions and `isRunning`, `finishSessionUI`, and `sessions.Done`.
 
 ---
 
@@ -579,4 +581,4 @@ Previous write at … by goroutine 30:   ← the first session's smoother (helpe
 
 **Test.** `TestCustomTemplateNamesTheDownload` already covers this. After the fix, run `go test -race -count=10 -run TestCustomTemplateNamesTheDownload .` and check that it passes every time.
 
-**Status.** Fixed as suggested above, including step 3. `go test -race -count=10 -run TestCustomTemplateNamesTheDownload .` passed 10 of 10 runs, and `go test -race ./...` passes. The architecture.md goroutine table and the teardown in sequence-full.puml were updated to match. The same change fixes [CR-17](#cr-17-runsession-re-enables-the-ui-before-it-resets-session-state).
+**Status.** Fixed in `b36ce0d` as suggested above, including step 3. `go test -race -count=10 -run TestCustomTemplateNamesTheDownload .` passed 10 of 10 runs, and `go test -race ./...` passes. The architecture.md goroutine table and the teardown in sequence-full.puml were updated to match. The same change fixes [CR-17](#cr-17-runsession-re-enables-the-ui-before-it-resets-session-state).
