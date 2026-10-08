@@ -20,41 +20,41 @@ Each finding has an ID (`CR-nn`), a severity, every place it applies, what goes 
 
 ## Summary
 
-| ID | Severity | Finding | Main files |
-|---|---|---|---|
-| [CR-01](#cr-01-a-save-folder-with-brackets-in-its-name-breaks-every-download) | High | A save folder with brackets (`[` `]`) in its name breaks every download | download_engine.go, live.go |
-| [CR-02](#cr-02-a-failed-rename-deletes-the-finished-download) | High | A failed rename deletes the finished download | download_engine.go |
-| [CR-03](#cr-03-a-stale-skip-in-the-queue-panel-stops-the-session-or-skips-the-wrong-item) | Medium | A stale Skip in the Queue panel stops the session or skips the wrong item | parallel.go |
-| [CR-04](#cr-04-with-save-preferences-off-opening-a-settings-window-reverts-the-sessions-settings) | Medium | With "Save preferences" off, opening a settings window reverts the session's settings | ui_manager.go, preference_service.go |
-| [CR-05](#cr-05-widgets-are-read-from-background-goroutines) | Medium | Widgets are read from background goroutines | download.go, postprocess.go |
-| [CR-06](#cr-06-cancelling-post-processing-is-reported-as-a-failure) | Medium | Cancelling post-processing is reported as a failure | pp_engine.go |
-| [CR-07](#cr-07-yt-dlp-updates-are-not-guarded-against-running-downloads) | Medium | yt-dlp updates are not guarded against running downloads | components.go, update_check.go, ui_manager.go |
-| [CR-08](#cr-08-output-readers-hang-on-a-line-longer-than-64-kib) | Medium | Output readers hang on a line longer than 64 KiB | logscanner.go, pp_engine.go |
-| [CR-09](#cr-09-the-pre-session-log-buffer-is-unbounded-with-unlimited) | Medium | The pre-session log buffer is unbounded with "Unlimited" | log_service.go |
-| [CR-10](#cr-10-blocking-file-io-on-the-ui-thread) | Medium | Blocking file I/O on the UI thread | history_window.go, others |
-| [CR-11](#cr-11-the-download-summarys-sizes-are-wrong) | Low | The download summary's sizes are wrong | logscanner.go, types.go |
-| [CR-12](#cr-12-portable-settings-can-be-saved-out-of-order) | Low | Portable settings can be saved out of order | portable.go |
-| [CR-13](#cr-13-removeoldtools-can-delete-the-only-copy-of-a-tool) | Low | `removeOldTools` can delete the only copy of a tool | tool_installer.go |
-| [CR-14](#cr-14-uniquepath-can-loop-forever-while-holding-renamemu) | Low | `uniquePath` can loop forever while holding `renameMu` | download_engine.go |
-| [CR-15](#cr-15-the-disk-space-check-and-reservation-are-not-atomic) | Low | The disk-space check and reservation are not atomic | download.go, disk_space.go |
-| [CR-16](#cr-16-the-cookies-privacy-claim-about-the-session-log-is-inaccurate) | Low | The cookies privacy claim about the session log is inaccurate | ui_manager.go, log_service.go |
-| [CR-17](#cr-17-runsession-re-enables-the-ui-before-it-resets-session-state) | Low | `runSession` re-enables the UI before it resets session state | download.go |
-| [CR-18](#cr-18-open-folder-leaves-a-zombie-process-on-linux) | Low | Open Folder leaves a zombie process on Linux | helpers.go |
-| [CR-19](#cr-19-formats-overwrites-a-running-sessions-status) | Low | Formats… overwrites a running session's status | formats_window.go |
-| [CR-20](#cr-20-external-commands-run-without-a-timeout) | Low | External commands run without a timeout | dependency_service.go, components.go |
-| [CR-21](#cr-21-ui_managergo-has-too-many-responsibilities) | Guideline | `ui_manager.go` has too many responsibilities (§3.1) | ui_manager.go |
-| [CR-22](#cr-22-functions-over-60-lines) | Guideline | Functions over 60 lines (§1.4) | 16 functions |
-| [CR-23](#cr-23-unchecked-errors-and-regexes-compiled-per-call) | Guideline | Unchecked errors, and regexes compiled per call (§1.3) | 4 places |
-| [CR-24](#cr-24-exported-symbols-without-doc-comments) | Guideline | Exported symbols without doc comments (§1.7) | gpu_capability.go, icons.go |
-| [CR-25](#cr-25-a-misplaced-comment-in-downloaderapp) | Guideline | A misplaced comment in `DownloaderApp` | types.go |
-| [CR-26](#cr-26-architecturemd-has-drifted-from-the-code) | Guideline | `architecture.md` has drifted from the code | docs/architecture.md |
-| [CR-27](#cr-27-two-sessions-progress-smoothers-can-run-at-once) | Medium | Two sessions' progress smoothers can run at once; `go test -race` fails (addendum) | download.go, helpers.go |
+|Status | ID | Severity | Finding | Main files |
+|---|---|---|---|---|
+| ✅ | [CR-01](#cr-01-a-save-folder-with-brackets-in-its-name-breaks-every-download) | High | A save folder with brackets (`[` `]`) in its name breaks every download | download_engine.go, live.go |
+| ✅ | [CR-02](#cr-02-a-failed-rename-deletes-the-finished-download) | High | A failed rename deletes the finished download | download_engine.go |
+✅ | [CR-03](#cr-03-a-stale-skip-in-the-queue-panel-stops-the-session-or-skips-the-wrong-item) | Medium | A stale Skip in the Queue panel stops the session or skips the wrong item | parallel.go |
+✅ | [CR-04](#cr-04-with-save-preferences-off-opening-a-settings-window-reverts-the-sessions-settings) | Medium | With "Save preferences" off, opening a settings window reverts the session's settings | ui_manager.go, preference_service.go |
+✅ | [CR-05](#cr-05-widgets-are-read-from-background-goroutines) | Medium | Widgets are read from background goroutines | download.go, postprocess.go |
+❌ | [CR-06](#cr-06-cancelling-post-processing-is-reported-as-a-failure) | Medium | Cancelling post-processing is reported as a failure | pp_engine.go |
+❌ | [CR-07](#cr-07-yt-dlp-updates-are-not-guarded-against-running-downloads) | Medium | yt-dlp updates are not guarded against running downloads | components.go, update_check.go, ui_manager.go |
+❌ | [CR-08](#cr-08-output-readers-hang-on-a-line-longer-than-64-kib) | Medium | Output readers hang on a line longer than 64 KiB | logscanner.go, pp_engine.go |
+❌ | [CR-09](#cr-09-the-pre-session-log-buffer-is-unbounded-with-unlimited) | Medium | The pre-session log buffer is unbounded with "Unlimited" | log_service.go |
+❌ | [CR-10](#cr-10-blocking-file-io-on-the-ui-thread) | Medium | Blocking file I/O on the UI thread | history_window.go, others |
+❌ | [CR-11](#cr-11-the-download-summarys-sizes-are-wrong) | Low | The download summary's sizes are wrong | logscanner.go, types.go |
+❌ | [CR-12](#cr-12-portable-settings-can-be-saved-out-of-order) | Low | Portable settings can be saved out of order | portable.go |
+❌ | [CR-13](#cr-13-removeoldtools-can-delete-the-only-copy-of-a-tool) | Low | `removeOldTools` can delete the only copy of a tool | tool_installer.go |
+❌ | [CR-14](#cr-14-uniquepath-can-loop-forever-while-holding-renamemu) | Low | `uniquePath` can loop forever while holding `renameMu` | download_engine.go |
+❌ | [CR-15](#cr-15-the-disk-space-check-and-reservation-are-not-atomic) | Low | The disk-space check and reservation are not atomic | download.go, disk_space.go |
+❌ | [CR-16](#cr-16-the-cookies-privacy-claim-about-the-session-log-is-inaccurate) | Low | The cookies privacy claim about the session log is inaccurate | ui_manager.go, log_service.go |
+✅ | [CR-17](#cr-17-runsession-re-enables-the-ui-before-it-resets-session-state) | Low | `runSession` re-enables the UI before it resets session state | download.go |
+❌ | [CR-18](#cr-18-open-folder-leaves-a-zombie-process-on-linux) | Low | Open Folder leaves a zombie process on Linux | helpers.go |
+❌ | [CR-19](#cr-19-formats-overwrites-a-running-sessions-status) | Low | Formats… overwrites a running session's status | formats_window.go |
+❌ | [CR-20](#cr-20-external-commands-run-without-a-timeout) | Low | External commands run without a timeout | dependency_service.go, components.go |
+❌ | [CR-21](#cr-21-ui_managergo-has-too-many-responsibilities) | Guideline | `ui_manager.go` has too many responsibilities (§3.1) | ui_manager.go |
+❌ | [CR-22](#cr-22-functions-over-60-lines) | Guideline | Functions over 60 lines (§1.4) | 16 functions |
+❌ | [CR-23](#cr-23-unchecked-errors-and-regexes-compiled-per-call) | Guideline | Unchecked errors, and regexes compiled per call (§1.3) | 4 places |
+❌ | [CR-24](#cr-24-exported-symbols-without-doc-comments) | Guideline | Exported symbols without doc comments (§1.7) | gpu_capability.go, icons.go |
+❌ | [CR-25](#cr-25-a-misplaced-comment-in-downloaderapp) | Guideline | A misplaced comment in `DownloaderApp` | types.go |
+❌ | [CR-26](#cr-26-architecturemd-has-drifted-from-the-code) | Guideline | `architecture.md` has drifted from the code | docs/architecture.md |
+✅ | [CR-27](#cr-27-two-sessions-progress-smoothers-can-run-at-once) | Medium | Two sessions' progress smoothers can run at once; `go test -race` fails (addendum) | download.go, helpers.go |
 
 ---
 
 ## High
 
-### CR-01: A save folder with brackets in its name breaks every download
+### ✅ CR-01: A save folder with brackets in its name breaks every download
 
 **Where.** Every lookup of a download's files by its download ID uses `filepath.Glob(filepath.Join(savePath, "*"+downloadID+"*"))`:
 
@@ -98,7 +98,7 @@ func filesWithID(dir, downloadID string) ([]string, error) {
 
 ---
 
-### CR-02: A failed rename deletes the finished download
+### ✅ CR-02: A failed rename deletes the finished download
 
 **Where.**
 - [download_engine.go:700-706](../download_engine.go#L700-L706): `FinalizeFiles` adds `finalPath` to its result even when `os.Rename` fails.
@@ -121,7 +121,7 @@ func filesWithID(dir, downloadID string) ([]string, error) {
 
 ## Medium
 
-### CR-03: A stale Skip in the Queue panel stops the session or skips the wrong item
+### ✅ CR-03: A stale Skip in the Queue panel stops the session or skips the wrong item
 
 **Where.** [parallel.go:110-122](../parallel.go#L110-L122) `skipItem`, called from the row's Skip button at [queue_panel.go:197-201](../queue_panel.go#L197-L201).
 
@@ -136,9 +136,11 @@ func filesWithID(dir, downloadID string) ([]string, error) {
 
 **Test.** Call `skipItem` with an id that has no controls, and check that the function set with `SetCancelFunc` was not called.
 
+**Status.** Fixed in `93699aa` as suggested above, without the optional re-check in the button handler. `skipItem` returns `false` and does nothing when the item has no Skip. That also covers a second click on the same row, which used to fall back to `RequestCancel` too. The queue never gains items during a session, so every row that can show Skip belongs to a batch item that registered its own. `TestSkipOfFinishedItemDoesNotCancel` fails against the old fallback. architecture.md's Queue panel paragraph was updated.
+
 ---
 
-### CR-04: With "Save preferences" off, opening a settings window reverts the session's settings
+### ✅ CR-04: With "Save preferences" off, opening a settings window reverts the session's settings
 
 **Where.**
 - [ui_manager.go:540](../ui_manager.go#L540): `showPreferences` calls `applyGeneralPrefs(ui, manager.onLoadPreferences())`.
@@ -161,9 +163,11 @@ This fixes every caller above without touching them.
 
 **Test.** In `preference_service_test.go`: `Save(p with SavePrefs=false, Sharpen=true)`, then `Load().Sharpen` must be true. A new `PreferenceService` on the same store must still return the old value.
 
+**Status.** Fixed in `8eee93a` as suggested above. `PreferenceService` keeps the last saved preferences in `saved`, guarded by a mutex because the session goroutine also calls `Load`. `Load` passes that copy through the same normalisation as a store read (`normalizePreferences`: the sharpen rounding and `resolveDefaults`). The suggestion alone did not cover `copySettings`, which built a new `PreferenceService` on the old store. It now takes the app's service, so a Portable Mode switch carries this session's settings. `TestSaveWithoutPersistenceAppliesForTheSession` and `TestCopySettingsTakesUnpersistedChanges` fail against the old code. architecture.md and classes.puml were updated.
+
 ---
 
-### CR-05: Widgets are read from background goroutines
+### ✅ CR-05: Widgets are read from background goroutines
 
 **Where.** Every widget read on the session goroutine that is not inside `fyne.Do`:
 
@@ -184,6 +188,8 @@ The other widget accesses in background code are already inside `fyne.Do`. `newD
 3. Record `PostProcessed: session.hasPostProcess()` in the history.
 
 **Test.** A session test that changes the widgets after `startSession` and checks that the values the session read did not change.
+
+**Status.** Fixed in `515310c` as suggested above. A new `readSessionSettings`, shared by `readSession` and `resumeQueue`, reads `autoRetry`, `notify`, and `gpuBackend` into `downloadSession` along with the session's other settings. `runYtDlp`, `notifyCompletion`, and `applyFFmpegFilters` take them from the session, and the history records `session.hasPostProcess()`. `TestSessionKeepsTheSettingsItStartedWith` turns post-processing on mid-download, and it fails against the old history read. reportDownloadResult's failure notification still reads `notify.Checked` inside `fyne.Do`. That is not a race, but it follows the live toggle rather than the session's setting. architecture.md, classes.puml, and sequence-full.puml were updated.
 
 ---
 
@@ -368,7 +374,7 @@ Smaller cases, each usually fast but on the UI thread all the same:
 
 ---
 
-### CR-17: `runSession` re-enables the UI before it resets session state
+### ✅ CR-17: `runSession` re-enables the UI before it resets session state
 
 **Where.** [download.go:205-210](../download.go#L205-L210).
 
@@ -526,7 +532,7 @@ These are optional. If the team wants them covered, one comment per group (for e
 
 Found on 2026-10-08, after the review, while verifying the CR-01 fix (`e43b8c3`). The code involved is unchanged since `54f3d9a`, so the line numbers hold for both.
 
-### CR-27: Two sessions' progress smoothers can run at once
+### ✅ CR-27: Two sessions' progress smoothers can run at once
 
 **Where.**
 - [download.go:91](../download.go#L91): `startSession` starts `runProgressSmoother(queueCtx)`, and nothing waits for it to return.
