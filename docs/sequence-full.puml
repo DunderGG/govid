@@ -300,6 +300,8 @@ end
 group Teardown
     App -> LS  : CloseSessionLog()
     App -> App : stopQueue()  — cancels queueCtx → stops progress smoother
+    App -> App : <-smootherDone  — waits for its last write
+    App -> App : clear cancel / stop funcs, isRunning = false
     alt sessionFailed
         App -> UI : downloadBtn.SetText("Retry")
     end

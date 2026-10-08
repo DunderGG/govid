@@ -490,7 +490,7 @@ func classify(err error) Category {
 |---|---|---|---|---|
 | Session goroutine (`runSession`) | `startSession` | the queue is done or `queueCtx` is cancelled (Cancel, `StopSession`, Shutdown) | `sessions` wait group (Shutdown, up to 5 s) | – |
 | Download workers (`runParallel`) | `runQueue` with Simultaneous Downloads > 1 | nothing waits, `queueCtx` ends, a disk-space Stop, or `backOff` lowers the limit below the worker's number | `wg.Wait` in `runParallel` | yes |
-| Progress smoother (`runProgressSmoother`, 33 ms ticker) | `startSession` | `queueCtx` cancelled (`runSession` defers `stopQueue`) | no; it only writes through `fyne.Do` | yes |
+| Progress smoother (`runProgressSmoother`, 33 ms ticker) | `startSession` | `queueCtx` cancelled (`runSession` cancels it when the session ends) | yes: `runSession` waits for `smootherDone` before it clears the session state, so two sessions' smoothers never run at once | yes |
 | Status dot pulse (50 ms ticker) | `setStatusIndicator` (UI thread), for the Active and Processing states | `stopStatusPulse`: every state change closes `stopPulse` | yes: `stopStatusPulse` waits for `pulseDone` | yes |
 | yt-dlp output readers (`watchOutput`, two goroutines) | `Execute` | EOF on stdout/stderr once the process tree exits (`cmd.WaitDelay` bounds a pipe a grandchild holds) | `waitGroup.Wait` in `watchOutput` | – |
 | Recording monitor (1 s ticker) | `runArgs`, for live and scheduled streams | the function `monitorRecording` returns, called when `Execute` returns | yes: it waits for `finished` | yes |

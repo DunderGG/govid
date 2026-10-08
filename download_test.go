@@ -117,12 +117,11 @@ func (h *downloadHarness) savedFiles(t *testing.T) []string {
 func (h *downloadHarness) startAndWait(t *testing.T) {
 	t.Helper()
 	h.app.startDownload()
-	deadline := time.Now().Add(60 * time.Second)
-	for h.app.isRunning.Load() {
-		if time.Now().After(deadline) {
-			t.Fatalf("download session did not finish; log:\n%s", h.joinedLogs())
-		}
-		time.Sleep(20 * time.Millisecond)
+	// Wait for sessions.Done, not isRunning: runSession clears isRunning
+	// before it re-enables the Download button, and the next startDownload
+	// must not run beside that.
+	if !waitTimeout(&h.app.sessions, 60*time.Second) {
+		t.Fatalf("download session did not finish; log:\n%s", h.joinedLogs())
 	}
 }
 

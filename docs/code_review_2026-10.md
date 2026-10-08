@@ -14,6 +14,8 @@ Each finding has an ID (`CR-nn`), a severity, every place it applies, what goes 
 
 **Baseline at review time.** `gofmt -l .`, `go vet ./...`, and `staticcheck` v0.8.1 (the CI version) report nothing. `go test -race ./...` passes; the run took about 215 s, and why it takes that long was not investigated. CR-01 was reproduced with a standalone program. The other findings come from reading the code.
 
+**Update, 2026-10-08.** A later `go test -race ./...` run failed on `TestCustomTemplateNamesTheDownload`. The failure depends on timing. See [CR-27](#cr-27-two-sessions-progress-smoothers-can-run-at-once) in the addendum.
+
 ---
 
 ## Summary
@@ -46,6 +48,7 @@ Each finding has an ID (`CR-nn`), a severity, every place it applies, what goes 
 | [CR-24](#cr-24-exported-symbols-without-doc-comments) | Guideline | Exported symbols without doc comments (§1.7) | gpu_capability.go, icons.go |
 | [CR-25](#cr-25-a-misplaced-comment-in-downloaderapp) | Guideline | A misplaced comment in `DownloaderApp` | types.go |
 | [CR-26](#cr-26-architecturemd-has-drifted-from-the-code) | Guideline | `architecture.md` has drifted from the code | docs/architecture.md |
+| [CR-27](#cr-27-two-sessions-progress-smoothers-can-run-at-once) | Medium | Two sessions' progress smoothers can run at once; `go test -race` fails (addendum) | download.go, helpers.go |
 
 ---
 
@@ -369,6 +372,8 @@ Smaller cases, each usually fast but on the UI thread all the same:
 
 **Suggested fix.** Reorder the defers so the state reset happens before the UI is re-enabled: defer `finishSessionUI` first, just after `sessions.Done`, and `isRunning.Store(false)` and the others after it, so they run before it.
 
+**Status.** Fixed together with [CR-27](#cr-27-two-sessions-progress-smoothers-can-run-at-once). `runSession` now runs its teardown in one deferred function, in this order: `stopQueue`, wait for the smoother, clear the cancel and stop functions and `isRunning`, `finishSessionUI`, and `sessions.Done`.
+
 ---
 
 ### CR-18: Open Folder leaves a zombie process on Linux
@@ -510,3 +515,68 @@ These are optional. If the team wants them covered, one comment per group (for e
 | [360](architecture.md#L360) | "Updating in place … is not implemented." | delete the sentence; the next paragraph documents `self_update.go` |
 
 **Suggested fix.** Make the edits above, and follow the checklist in architecture.md §10 when fixing the other items here. CR-01, CR-02, CR-05, and CR-21 each change what §4 describes.
+
+---
+
+## Addendum
+
+Found on 2026-10-08, after the review, while verifying the CR-01 fix (`e43b8c3`). The code involved is unchanged since `54f3d9a`, so the line numbers hold for both.
+
+### CR-27: Two sessions' progress smoothers can run at once
+
+**Where.**
+- [download.go:91](../download.go#L91): `startSession` starts `runProgressSmoother(queueCtx)`, and nothing waits for it to return.
+- [download.go:205-210](../download.go#L205-L210): `runSession`'s defers run `isRunning.Store(false)` *before* `stopQueue`, and `stopQueue` is what stops the smoother.
+- [helpers.go:338-344](../helpers.go#L338-L344): when its context ends, the smoother applies a pending snap, so it writes the progress bar once more after the session is over.
+- [download_test.go:117-127](../download_test.go#L117-L127): `startAndWait` returns as soon as `isRunning` is false.
+- [filename_template_test.go:109-114](../filename_template_test.go#L109-L114): `TestCustomTemplateNamesTheDownload` is the only test that starts two sessions in a row.
+
+**Problem.** When a session ends, `isRunning` goes false before `queueCtx` is cancelled, and the smoother returns some time after that. A session started in that gap starts its own smoother while the old one is still running. Both call `takeTarget` on the shared `app.stats`, and both write the progress bar. The Fyne test driver runs `fyne.Do` on the calling goroutine, so the two `ProgressBar.SetValue` calls race:
+
+```
+WARNING: DATA RACE
+Write at … by goroutine 52:            ← the second session's smoother (helpers.go:349, ticker snap)
+  widget.(*ProgressBar).SetValue()
+  … runProgressSmoother … helpers.go:332
+Previous write at … by goroutine 30:   ← the first session's smoother (helpers.go:342, ctx.Done snap)
+  widget.(*ProgressBar).SetValue()
+  … runProgressSmoother … helpers.go:332
+```
+
+**Impact.**
+- `go test -race ./...` fails, and CI runs exactly that ([ci.yml:53](../.github/workflows/ci.yml#L53)). Reproduced in 3 of 3 runs of `go test -race -count=3 -run TestCustomTemplateNamesTheDownload .` at `59550a1`, which differs from `54f3d9a` only in this document. The review's baseline run passed, so the failure depends on timing.
+- In the app, `fyne.Do` runs both writes on the UI thread, so there is no memory race there. The old smoother can still take a snap meant for the new session, such as `resetSession`'s reset to 0, because `takeTarget` clears it. The bar ends up showing the same value either way, but the smoother no longer "owns the progress bar until the session ends", as `startSession`'s comment says. The gap is short: it lasts from `finishSessionUI` queuing the Download button's re-enable until `stopQueue` runs.
+
+**Suggested fix.** Have `runSession` wait for its smoother before it reports the session finished. Fix this together with [CR-17](#cr-17-runsession-re-enables-the-ui-before-it-resets-session-state), which reorders the same defers.
+
+1. In `startSession`, close a channel when the smoother returns, and pass it to `runSession`:
+
+   ```go
+   smootherDone := make(chan struct{})
+   go func() {
+   	defer close(smootherDone)
+   	app.runProgressSmoother(queueCtx)
+   }()
+   ```
+
+2. In `runSession`, replace the six defers with one that runs the steps in order:
+
+   ```go
+   defer func() {
+   	stopQueue()
+   	<-smootherDone // the smoother has made its last write
+   	app.SetCancelFunc(nil)
+   	app.setStopFunc(nil)
+   	app.isRunning.Store(false)
+   	app.finishSessionUI()
+   	app.sessions.Done() // last, so Shutdown sees everything closed
+   }()
+   ```
+
+   `runSession` runs on its own goroutine, and the smoother's writes go through `fyne.Do`, which does not block. Waiting here therefore cannot deadlock with the UI thread.
+
+3. Make `startAndWait` wait for `sessions` (`waitTimeout(&h.app.sessions, …)`) instead of polling `isRunning`. After step 2, `isRunning` goes false *before* `finishSessionUI`. The test driver runs that function's `fyne.Do` on the session goroutine, so a harness that polls `isRunning` starts the next session while the Download button is still being written. Without this step, the test fails 6 of 10 runs with a race between `finishSessionUI` and `resetSession`. In the app both run on the UI thread, so this race exists only in the tests.
+
+**Test.** `TestCustomTemplateNamesTheDownload` already covers this. After the fix, run `go test -race -count=10 -run TestCustomTemplateNamesTheDownload .` and check that it passes every time.
+
+**Status.** Fixed as suggested above, including step 3. `go test -race -count=10 -run TestCustomTemplateNamesTheDownload .` passed 10 of 10 runs, and `go test -race ./...` passes. The architecture.md goroutine table and the teardown in sequence-full.puml were updated to match. The same change fixes [CR-17](#cr-17-runsession-re-enables-the-ui-before-it-resets-session-state).

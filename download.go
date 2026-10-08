@@ -87,10 +87,16 @@ func (app *DownloaderApp) startSession(session downloadSession) {
 	app.SetCancelFunc(stopQueue)
 	app.setStopFunc(stopQueue)
 
-	// The smoother owns the progress bar until the session ends.
-	go app.runProgressSmoother(queueCtx)
+	// The smoother owns the progress bar until the session ends; runSession
+	// waits for smootherDone so the next session's smoother never runs
+	// beside it.
+	smootherDone := make(chan struct{})
+	go func() {
+		defer close(smootherDone)
+		app.runProgressSmoother(queueCtx)
+	}()
 	app.sessions.Add(1)
-	go app.runSession(queueCtx, stopQueue, session)
+	go app.runSession(queueCtx, stopQueue, smootherDone, session)
 }
 
 // readSession reads and validates the session inputs from the widgets. The
@@ -198,16 +204,23 @@ func (app *DownloaderApp) writeSessionConfig(cfg *SessionConfig) {
 // videos the user picks), downloads them, post-processes the results,
 // sends the completion notification, and finally restores the idle UI. It
 // runs on its own goroutine and owns queueCtx until it returns.
-func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context.CancelFunc, session downloadSession) {
-	// Always stop the smoother and re-enable the download button when the
-	// session finishes, regardless of how it ends. sessions.Done runs last so
-	// Shutdown sees the session as finished only once everything is closed.
-	defer app.sessions.Done()
-	defer stopQueue()
-	defer app.setStopFunc(nil)
-	defer app.SetCancelFunc(nil)
-	defer app.isRunning.Store(false)
-	defer app.finishSessionUI()
+// smootherDone is closed when the session's progress smoother has returned.
+func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context.CancelFunc, smootherDone <-chan struct{}, session downloadSession) {
+	// However the session ends, stop the smoother and wait for its last
+	// write, clear the session state, and only then re-enable the Download
+	// button, so a new session cannot start before this one is cleared.
+	// sessions.Done runs last so Shutdown sees the session as finished only
+	// once everything is closed. The smoother writes through fyne.Do, which
+	// does not block, so waiting for it here cannot deadlock.
+	defer func() {
+		stopQueue()
+		<-smootherDone
+		app.SetCancelFunc(nil)
+		app.setStopFunc(nil)
+		app.isRunning.Store(false)
+		app.finishSessionUI()
+		app.sessions.Done()
+	}()
 
 	app.writeSessionConfig(session.logConfig)
 	if !session.restored {
