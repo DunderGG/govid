@@ -71,7 +71,7 @@ package "Application Core" #F0F4F8 {
         -runQueue(queueCtx, session, queue *QueueModel) : []string
         -downloadItem(queueCtx, session, queue, id, item, batch, continueAll) : ([]string, bool)
         -checkDiskSpace(ctx, session, item, moreQueued, continueAll) : diskSpaceDecision
-        +runYtDlp(ctx, req DownloadRequest, item queueItem, index, total) : []string
+        +runYtDlp(ctx, session, req DownloadRequest, item queueItem, run itemRun, stop) : DownloadResult
         +openDownloadFolder()
         +updateStatus(msg)
         +showDownloadPhase(phase)
@@ -89,7 +89,7 @@ package "Application Core" #F0F4F8 {
         +clearTerminalOutput()
         +getPostProcessingButton()
         +savePreferences(path)
-        +applyFFmpegFilters(ctx, paths, vf, af)
+        +applyFFmpegFilters(ctx, paths, vf, af, backend)
     }
 
     class "latestValueThrottle[T]" as latestValueThrottle <<helper>> {

@@ -225,9 +225,10 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 
 // applyFFmpegFilters creates a PPEngine from resolved binary paths and delegates
 // to PPEngine.ApplyFilters, wiring the app's log/status/failure callbacks.
-func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfFilters, afFilters []string) {
+// backend is the Encoder Backend the session started with.
+func (app *DownloaderApp) applyFFmpegFilters(ctx context.Context, filePaths, vfFilters, afFilters []string, backend GPUBackend) {
 	engine := NewPPEngine(app.depSvc.Resolve("ffmpeg"), app.depSvc.Resolve("ffprobe"))
-	engine.GPUBackend = GPUBackendFromLabel(app.ui.postProcess.gpuBackend.Selected)
+	engine.GPUBackend = backend
 	engine.GPUCapabilities = app.gpuSvc.Detect(ctx)
 	engine.ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks{
 		OnLog:     app.appendOutput,

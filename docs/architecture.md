@@ -229,7 +229,7 @@ Private probe methods (`probeFrameCount`, `probeDuration`, `computeOutputFrameCo
 
 **GPU job lifecycle:** `gpuSem` (buffered channel, capacity `maxConcurrentGPUJobs = 2`) caps how many GPU-encoded jobs run concurrently, since hardware encoders like NVENC enforce a low concurrent session limit. `runJob` wraps each job's GPU-only bookkeeping in a `gpuJobGuard` (`newGPUJobGuard`, `arm`, `pet`, `release`): it acquires a `gpuSem` slot up front (no-op for CPU jobs), arms a `gpuStallTimeout` (30 s) watchdog that is `pet()` on every stderr line, and `release()`s the slot/watchdog exactly once regardless of exit path. If a GPU-encoded job fails — `cmd.Start()` error or a non-zero exit — `retryWithCPU` rebuilds the job's args with `BackendOff` and re-runs `runJob` once, so a driver hiccup or hung encoder falls back to the CPU baseline instead of failing the file outright.
 
-`DownloaderApp.applyFFmpegFilters()` in `postprocess.go` is the thin wrapper that constructs `PPEngine` and wires `PPCallbacks` back to UI helpers; it also sets `engine.GPUBackend` from the Post-Processing dialog's selector and `engine.GPUCapabilities` from `app.gpuSvc.Detect(ctx)` before calling `ApplyFilters`.
+`DownloaderApp.applyFFmpegFilters()` in `postprocess.go` is the thin wrapper that constructs `PPEngine` and wires `PPCallbacks` back to UI helpers; it also sets `engine.GPUBackend` to the session's `gpuBackend` (the Post-Processing dialog's selector, read by `readSessionSettings` as the session starts) and `engine.GPUCapabilities` from `app.gpuSvc.Detect(ctx)` before calling `ApplyFilters`.
 
 ---
 
@@ -287,7 +287,7 @@ Owns the path to `download_history.json` (beside the executable) and exposes thr
 The private `buildEntries` helper and `inferOriginalTitle` live here; neither has a UI dependency. `buildEntries` uses `rec.Title` (the probe's or the playlist's title) and falls back to `inferOriginalTitle` only when it is empty. `findDownloaded(entries, url, videoID, extractor)` returns the newest entry for the same video: one with the same video ID and extractor key, so `youtu.be/x` and `watch?v=x&t=1` match, or, for entries recorded before IDs were kept, the identical URL. `DownloaderApp` holds `historySvc *HistoryService`; `UIManager` uses injected `onLoadHistory` and `onClearHistory` callbacks so `showHistory` never touches the file path directly.
 
 `DownloadHistoryEntry` is a plain JSON-serialisable value struct (url, originalTitle, finalFilename, savedPath, format, quality, downloadedAt, postProcessed, and the optional videoId and extractor), with `FilePath`, `DisplayTitle`, and `DisplayFile` helpers.
-`DownloadRecord` is the plain input value passed to `AppendAll`: URL, final paths, save path, format, quality, post-processing state, and the title, video ID, and extractor the queue item carries (`queueItem.withInfo` takes them from the probe; playlist entries start with the playlist's title, ID, and `ie_key`).
+`DownloadRecord` is the plain input value passed to `AppendAll`: URL, final paths, save path, format, quality, post-processing state (whether the session runs any post-processing filter, `session.hasPostProcess()`), and the title, video ID, and extractor the queue item carries (`queueItem.withInfo` takes them from the probe; playlist entries start with the playlist's title, ID, and `ie_key`).
 
 **Keep download history.** The `KeepHistory` preference (on by default) is mirrored in `DownloaderApp.keepHistory` (an `atomic.Bool`, set at startup and by `UIManager.applyRuntimePrefs`). When it is off, `recordHistory` writes nothing and `skipDownloaded` does not check. Unticking it in Preferences (`onKeepHistoryChanged`) offers to delete the history kept so far.
 
@@ -547,7 +547,7 @@ This matters because yt-dlp runs its own ffmpeg for merging and trimming.
 `--continue` and writes `.part` files (a live recording keeps `--no-part`, so a
 stopped recording is not left as a `.part` file). Each queue item gets a download
 ID once, in `NewQueueModel` (`newDownloadID`, strictly increasing), and its own
-`request`: a copy of the settings `readSession` read from the widgets once
+`request`: a copy of the settings `readSession` read from the widgets once (through `readSessionSettings`, which `resumeQueue` shares; it also reads Auto-retry, Notify on Completion, and the Encoder Backend into the session, so the session goroutine reads no widget)
 (`downloadSession.request`, `queueItem.withRequest`). So a retry, an auto-retry,
 a resume, and a restored item write the same names, and yt-dlp continues their
 partial files; `FinalizeFiles` skips those (`isPartialFile`). Each download runs
@@ -580,7 +580,7 @@ shows "Stopping…", waits off the UI thread for the `sessions` wait group (up t
 inside `fyne.Do`. It first sets `quitting`, so the running download is paused
 rather than cancelled and the queue is saved (see **Pause and resume**).
 
-**UI thread rule:** every widget mutation must run inside `fyne.Do(func() { … })` when called from a non-main goroutine. Fyne panics on direct cross-thread access.
+**UI thread rule:** every widget mutation must run inside `fyne.Do(func() { … })` when called from a non-main goroutine. Fyne panics on direct cross-thread access. The session goroutine also never reads a widget: `readSessionSettings` copies every setting a session needs into `downloadSession` on the UI thread before it starts.
 
 ---
 

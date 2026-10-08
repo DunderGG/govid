@@ -237,11 +237,7 @@ func (app *DownloaderApp) resumeQueue(saved []savedQueueItem) {
 		session.urls = append(session.urls, item.URL)
 		session.items = append(session.items, item.queueItem())
 	}
-	session.request = app.newDownloadRequest("", session.savePath, "", "")
-	session.workers = simultaneousDownloads(app.ui.prefs.simultaneous.Selected)
-	if app.ui.postProcess.enablePostProcess.Checked {
-		session.vfFilters, session.afFilters = buildPostProcessFilters(newPostProcessSettings(app.ui))
-	}
+	app.readSessionSettings(&session)
 	app.appendOutput(fmt.Sprintf("[SYSTEM] Resuming %d saved download(s).", len(saved)), colInfo)
 	app.startSession(session)
 }

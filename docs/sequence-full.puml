@@ -133,7 +133,7 @@ group loop [while QueueModel.Next() returns a waiting item]
     end
 
     App -> App : downloadContext(runCtx): Pause → errPaused,\n  Stop recording → errStopKeep, quitting → errPaused
-    App -> App : runYtDlp(downloadCtx, item.downloadRequest(){InfoJSON, DownloadID, FormatPick}, …)\n  — yt-dlp --continue, -f pick or selector, --js-runtimes, cookies
+    App -> App : runYtDlp(downloadCtx, session, item.downloadRequest(){InfoJSON, DownloadID, FormatPick}, …)\n  — yt-dlp --continue, -f pick or selector, --js-runtimes, cookies
 
     group engine.Run(ctx, req, opts, cb)  — BuildArgs + Execute + FinalizeFiles / RemovePartialFiles
         App -> OS  : saveInfoJSON → temp govid-*.info.json (removed when Run returns)
@@ -239,7 +239,7 @@ App -> App : finishQueue(queue)\n  — quitting: saveQueue → queue.json (waiti
 alt hasPostProcess && len(allFinalPaths) > 0 && not cancelled
     App -> UI  : updateStatus("Post-processing…")
     App -> UI  : setStatusIndicator("processing")
-    App -> App : applyFFmpegFilters(queueCtx, allFinalPaths, vfFilters, afFilters)
+    App -> App : applyFFmpegFilters(queueCtx, allFinalPaths, vfFilters, afFilters, gpuBackend)
 
     group Worker pool [numWorkers = min(NumCPU, numJobs)]
         loop for each PostProcessJob (concurrent)

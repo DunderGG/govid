@@ -42,6 +42,12 @@ type downloadSession struct {
 	// workers is how many items may download at once (Simultaneous
 	// Downloads).
 	workers int
+	// autoRetry, notify, and gpuBackend are the Auto-retry, Notify on
+	// Completion, and Encoder Backend settings, read with the rest so the
+	// session goroutine never reads a widget.
+	autoRetry  bool
+	notify     bool
+	gpuBackend GPUBackend
 	// restored is set for a session resuming the items saved in queue.json:
 	// items is already the queue, so the URLs are not checked again.
 	restored bool
@@ -121,13 +127,23 @@ func (app *DownloaderApp) readSession() (downloadSession, error) {
 		return downloadSession{}, fmt.Errorf("invalid trim time format — use HH:MM:SS, MM:SS, or plain seconds")
 	}
 
+	app.readSessionSettings(&session)
+	return session, nil
+}
+
+// readSessionSettings fills in session's download request and the other
+// settings it runs with from the widgets, once, so the session goroutine
+// never reads them (§2.3). Must be called on the UI thread.
+func (app *DownloaderApp) readSessionSettings(session *downloadSession) {
 	session.request = app.newDownloadRequest("", session.savePath, session.trimStart, session.trimEnd)
 	session.workers = simultaneousDownloads(app.ui.prefs.simultaneous.Selected)
+	session.autoRetry = app.ui.download.autoRetry.Checked
+	session.notify = app.ui.download.notify.Checked
+	session.gpuBackend = GPUBackendFromLabel(app.ui.postProcess.gpuBackend.Selected)
 	// Build the filters once: they are the same for every URL in the session.
 	if app.ui.postProcess.enablePostProcess.Checked {
 		session.vfFilters, session.afFilters = buildPostProcessFilters(newPostProcessSettings(app.ui))
 	}
-	return session, nil
 }
 
 // collectURLs extracts the URLs to download from the URL entry's text. In
@@ -259,10 +275,10 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 		app.runPostProcessing(queueCtx, stopQueue, finalPaths, session)
 		queue.MarkAll(queuePostProcessing, queueDone)
 		if queueCtx.Err() == nil {
-			app.notifyCompletion(true, len(finalPaths), queue.Len())
+			app.notifyCompletion(session, len(finalPaths), queue.Len())
 		}
 	default:
-		app.notifyCompletion(false, len(finalPaths), queue.Len())
+		app.notifyCompletion(session, len(finalPaths), queue.Len())
 	}
 
 	// Close the log file here, after post-processing, so FFmpeg output is captured.
@@ -432,7 +448,7 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 	default:
 		app.registerPause(id, func() { stopDownload(errPaused) })
 	}
-	dl := app.runYtDlp(downloadCtx, req, item, run, stopRecording)
+	dl := app.runYtDlp(downloadCtx, session, req, item, run, stopRecording)
 	// The JSON can be large and is not needed again once used, unless the
 	// download was paused: resuming it within probeMaxAge reuses it.
 	if item.info != nil && !dl.Paused {
@@ -510,7 +526,7 @@ func (app *DownloaderApp) runPostProcessing(queueCtx context.Context, stopQueue 
 	app.updateStatus("Status: Post-processing...")
 	app.setStatusIndicator(StatusProcessing)
 
-	app.applyFFmpegFilters(queueCtx, paths, session.vfFilters, session.afFilters)
+	app.applyFFmpegFilters(queueCtx, paths, session.vfFilters, session.afFilters, session.gpuBackend)
 
 	fyne.Do(func() { app.ui.download.cancelBtn.Disable() })
 	if queueCtx.Err() != nil {
@@ -524,12 +540,12 @@ func (app *DownloaderApp) runPostProcessing(queueCtx context.Context, stopQueue 
 }
 
 // notifyCompletion sends the end-of-session system notification when
-// "Notify on Completion" is checked.
-func (app *DownloaderApp) notifyCompletion(postProcessed bool, fileCount, urlCount int) {
-	if !app.ui.download.notify.Checked {
+// "Notify on Completion" was checked as session started.
+func (app *DownloaderApp) notifyCompletion(session downloadSession, fileCount, urlCount int) {
+	if !session.notify {
 		return
 	}
-	fyne.CurrentApp().SendNotification(completionNotification(postProcessed, fileCount, urlCount))
+	fyne.CurrentApp().SendNotification(completionNotification(session.hasPostProcess(), fileCount, urlCount))
 }
 
 // completionNotification builds the end-of-session notification. After
@@ -561,8 +577,9 @@ func completionNotification(postProcessed bool, fileCount, urlCount int) *fyne.N
 // item in the queue; with run.parallel its log lines carry its "[n/total]"
 // prefix and the progress bar shows the whole queue. For a live recording,
 // stop ends it (keeping it) when the save folder's drive runs low; see
-// recordingCallback.
-func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, item queueItem, run itemRun, stop func()) DownloadResult {
+// recordingCallback. session gives the settings it runs with (Auto-retry,
+// and whether it post-processes, for the history).
+func (app *DownloaderApp) runYtDlp(ctx context.Context, session downloadSession, req DownloadRequest, item queueItem, run itemRun, stop func()) DownloadResult {
 	startTime := time.Now()
 	if run.stats == nil {
 		run.stats = app.stats
@@ -581,13 +598,13 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, req DownloadRequest, ite
 		callbacks.OnRecording = app.recordingCallback(req, stop, run)
 	}
 	dl := app.newDownloadEngine().Run(ctx, req, DownloadOptions{
-		AutoRetry: app.ui.download.autoRetry.Checked,
+		AutoRetry: session.autoRetry,
 		Index:     run.position,
 		Total:     run.total,
 	}, callbacks)
 
 	if dl.Err == nil && !dl.Paused {
-		app.recordHistory(req, item, dl.FinalPaths)
+		app.recordHistory(req, item, dl.FinalPaths, session.hasPostProcess())
 	}
 	if dl.Scan.hadNoJSRuntime {
 		app.showJSRuntimeNotice()
@@ -676,10 +693,11 @@ func (app *DownloaderApp) newDownloadRequest(rawURL, savePath, trimStart, trimEn
 }
 
 // recordHistory appends one history entry per finalized output file, with
-// the title, video ID, and extractor item has, logging a warning (rather
+// the title, video ID, and extractor item has and whether the session
+// post-processes it (postProcessed), logging a warning (rather
 // than failing the download) if the history write fails. It records nothing
 // when "Keep download history" is off.
-func (app *DownloaderApp) recordHistory(req DownloadRequest, item queueItem, finalPaths []string) {
+func (app *DownloaderApp) recordHistory(req DownloadRequest, item queueItem, finalPaths []string, postProcessed bool) {
 	if !app.keepHistory.Load() {
 		return
 	}
@@ -689,7 +707,7 @@ func (app *DownloaderApp) recordHistory(req DownloadRequest, item queueItem, fin
 		SavePath:      req.SavePath,
 		Format:        req.Format,
 		Quality:       req.Quality,
-		PostProcessed: app.ui.postProcess.enablePostProcess.Checked,
+		PostProcessed: postProcessed,
 		Title:         item.title,
 		VideoID:       item.videoID,
 		Extractor:     item.extractor,

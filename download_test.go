@@ -323,7 +323,7 @@ func TestRunYtDlpSuccessRecordsHistory(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-download")
 	const url = "https://example.com/v"
 
-	paths := h.app.runYtDlp(context.Background(), h.app.newDownloadRequest(url, h.saveDir, "", ""), queueItem{url: url}, itemRun{position: 1, total: 1}, nil).FinalPaths
+	paths := h.app.runYtDlp(context.Background(), downloadSession{}, h.app.newDownloadRequest(url, h.saveDir, "", ""), queueItem{url: url}, itemRun{position: 1, total: 1}, nil).FinalPaths
 
 	want := filepath.Join(h.saveDir, "GoVid_Fake Video.mp4")
 	if !slices.Equal(paths, []string{want}) {
@@ -351,7 +351,7 @@ func TestRunYtDlpSuccessRecordsHistory(t *testing.T) {
 func TestRunYtDlpFailure(t *testing.T) {
 	h := newDownloadHarness(t, "fail")
 
-	paths := h.app.runYtDlp(context.Background(), h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, itemRun{position: 1, total: 1}, nil).FinalPaths
+	paths := h.app.runYtDlp(context.Background(), downloadSession{}, h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, itemRun{position: 1, total: 1}, nil).FinalPaths
 
 	if paths != nil {
 		t.Errorf("runYtDlp() = %q, want nil", paths)
@@ -373,7 +373,7 @@ func TestRunYtDlpFailure(t *testing.T) {
 func TestRunYtDlpExtractorErrorSuggestsUpdate(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-extractor-error")
 
-	h.app.runYtDlp(context.Background(), h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, itemRun{position: 1, total: 1}, nil)
+	h.app.runYtDlp(context.Background(), downloadSession{}, h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, itemRun{position: 1, total: 1}, nil)
 
 	if !strings.Contains(h.joinedLogs(), ytDlpUpdateHint) {
 		t.Errorf("log missing the update hint:\n%s", h.joinedLogs())
@@ -383,7 +383,7 @@ func TestRunYtDlpExtractorErrorSuggestsUpdate(t *testing.T) {
 func TestRunYtDlpOtherFailureGivesNoUpdateHint(t *testing.T) {
 	h := newDownloadHarness(t, "fail")
 
-	h.app.runYtDlp(context.Background(), h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, itemRun{position: 1, total: 1}, nil)
+	h.app.runYtDlp(context.Background(), downloadSession{}, h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, itemRun{position: 1, total: 1}, nil)
 
 	if strings.Contains(h.joinedLogs(), ytDlpUpdateHint) {
 		t.Errorf("log has the update hint for an unrelated error:\n%s", h.joinedLogs())
@@ -400,7 +400,7 @@ func TestRunYtDlpCancel(t *testing.T) {
 		}
 	})
 
-	paths := h.app.runYtDlp(ctx, h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, itemRun{position: 1, total: 1}, nil).FinalPaths
+	paths := h.app.runYtDlp(ctx, downloadSession{}, h.app.newDownloadRequest("https://example.com/v", h.saveDir, "", ""), queueItem{url: "https://example.com/v"}, itemRun{position: 1, total: 1}, nil).FinalPaths
 
 	if paths != nil {
 		t.Errorf("runYtDlp() = %q, want nil", paths)
@@ -486,6 +486,31 @@ func TestStartDownloadSingleURL(t *testing.T) {
 	}
 	if h.app.RequestCancel() {
 		t.Error("cancel func still registered after the session finished")
+	}
+}
+
+// The session reads its settings from the widgets as it starts, on the UI
+// thread. Changing them while it runs must not change what it does or
+// records (CR-05).
+func TestSessionKeepsTheSettingsItStartedWith(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	h.app.ui.download.entry.SetText("https://example.com/v")
+	h.app.ui.postProcess.enablePostProcess.SetChecked(false)
+	var once sync.Once
+	h.setHook(func(line string) {
+		if strings.Contains(line, "%") { // the download is running
+			once.Do(func() { h.app.ui.postProcess.enablePostProcess.SetChecked(true) })
+		}
+	})
+
+	h.startAndWait(t)
+
+	entries := h.history(t)
+	if len(entries) != 1 {
+		t.Fatalf("history = %+v, want one entry", entries)
+	}
+	if entries[0].PostProcessed {
+		t.Error("history says post-processed after post-processing was turned on mid-session")
 	}
 }
 
