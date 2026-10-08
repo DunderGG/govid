@@ -174,6 +174,70 @@ func TestInstallComponentRefusesWhileBusy(t *testing.T) {
 	}
 }
 
+// stubYtDlpUpdate replaces "yt-dlp -U" with a stub, so a test decides when
+// the update ends. It returns the number of updates started and the
+// callbacks of the last one.
+func stubYtDlpUpdate(app *DownloaderApp) (started *int, last *UpdateCallbacks) {
+	started, last = new(int), new(UpdateCallbacks)
+	app.uiManager.onRunUpdate = func(cb UpdateCallbacks) {
+		*started++
+		*last = cb
+	}
+	return started, last
+}
+
+func TestYtDlpUpdateRefusesWhileBusy(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	started, _ := stubYtDlpUpdate(h.app)
+
+	h.app.isRunning.Store(true)
+	if err := waitInstall(t, h.app, toolYtDlp, componentUpdate); !errors.Is(err, errToolsInUse) {
+		t.Errorf("Components during a session: error = %v, want errToolsInUse", err)
+	}
+	// The Tools menu and the out-of-date notice share runUpdateInUI.
+	h.app.uiManager.runUpdateInUI()
+	h.app.isRunning.Store(false)
+
+	h.app.installing.Store(true)
+	if err := waitInstall(t, h.app, toolYtDlp, componentUpdate); !errors.Is(err, errAlreadyInstall) {
+		t.Errorf("Components during an install: error = %v, want errAlreadyInstall", err)
+	}
+	h.app.uiManager.runUpdateInUI()
+	h.app.installing.Store(false)
+
+	if *started != 0 {
+		t.Errorf("yt-dlp -U ran %d times while busy, want 0", *started)
+	}
+}
+
+func TestYtDlpUpdateBlocksDownloadsUntilItEnds(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	started, last := stubYtDlpUpdate(h.app)
+	h.app.ui.download.entry.SetText("https://example.com/watch?v=1")
+
+	h.app.uiManager.runUpdateInUI()
+
+	if *started != 1 {
+		t.Fatalf("yt-dlp -U ran %d times, want 1", *started)
+	}
+	if !h.app.installing.Load() || !h.app.ui.download.downloadBtn.Disabled() {
+		t.Error("the update does not hold installing and the Download button")
+	}
+	h.app.startDownload()
+	if h.app.isRunning.Load() {
+		t.Error("a download started while yt-dlp was being updated")
+	}
+	if err := waitInstall(t, h.app, toolYtDlp, componentUpdate); !errors.Is(err, errAlreadyInstall) {
+		t.Errorf("a second update: error = %v, want errAlreadyInstall", err)
+	}
+
+	last.OnSuccess()
+
+	if h.app.installing.Load() || h.app.ui.download.downloadBtn.Disabled() {
+		t.Error("the update did not finish cleanly")
+	}
+}
+
 func TestComponentsRowsOfferEachToolsAction(t *testing.T) {
 	_ = test.NewApp()
 	manager := NewUIManager(test.NewWindow(nil))

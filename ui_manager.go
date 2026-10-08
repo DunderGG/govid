@@ -15,7 +15,7 @@
 //     "Restore Defaults" reset used by showPreferences.
 //   - checkDependencies, confirmYtDlpUpdate, runUpdateInUI: thin delegates to the injected
 //     dependency-service callbacks for the startup tool check and the
-//     "Update yt-dlp" menu action.
+//     "Update yt-dlp" menu action, which runs through onUpdateYtDlp.
 //   - appendLogLine, flushLog: batched rendering of the Terminal Output log
 //     view, capped at maxScreenLogLines and following new lines only while
 //     the view is scrolled to the bottom.
@@ -116,6 +116,7 @@ type UIManager struct {
 	onClearHistory       func() error                                                         // HistoryService.Clear
 	onCheckDependencies  func(onWarning func(msg string))                                     // DependencyService.Check
 	onRunUpdate          func(cb UpdateCallbacks)                                             // DependencyService.RunUpdate
+	onUpdateYtDlp        func(onDone func(err error))                                         // DownloaderApp.updateYtDlp: guards runUpdateThen
 	onYtDlpVersions      func() (installed, latest string)                                    // DownloaderApp.ytDlpVersions
 	onJSRuntimeLabel     func() string                                                        // DownloaderApp.jsRuntimeLabel
 	onComponents         func() []componentStatus                                             // DownloaderApp.componentStatuses
@@ -258,16 +259,23 @@ func (manager *UIManager) confirmYtDlpUpdate() {
 	}()
 }
 
-// runUpdateInUI sets the initial UI state for an update and delegates
-// execution to DependencyService, which runs yt-dlp -U in a background
-// goroutine and reports progress via UpdateCallbacks. A successful update
-// dismisses the "yt-dlp is out of date" notice.
+// runUpdateInUI updates yt-dlp for the Tools menu and the out-of-date
+// notice. It goes through the injected onUpdateYtDlp, which refuses while
+// a download or an install runs, and shows why when it does.
 func (manager *UIManager) runUpdateInUI() {
-	manager.runUpdateThen(nil)
+	manager.onUpdateYtDlp(func(err error) {
+		if err != nil {
+			dialog.ShowError(fmt.Errorf("yt-dlp was not updated: %w", err), manager.mainWindow)
+		}
+	})
 }
 
-// runUpdateThen is runUpdateInUI, calling done (when not nil) from the
-// update's goroutine once it has finished, with whether it succeeded.
+// runUpdateThen sets the initial UI state for an update and delegates
+// execution to DependencyService, which runs yt-dlp -U in a background
+// goroutine and reports progress via UpdateCallbacks. A successful update
+// dismisses the "yt-dlp is out of date" notice. done (when not nil) is
+// called from the update's goroutine once it has finished, with whether it
+// succeeded. Callers go through DownloaderApp.updateYtDlp, which guards it.
 func (manager *UIManager) runUpdateThen(done func(ok bool)) {
 	if done == nil {
 		done = func(bool) {}

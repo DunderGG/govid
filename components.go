@@ -41,10 +41,10 @@ const (
 // the tools' versions and the latest releases.
 const componentsCheckTimeout = 30 * time.Second
 
-// Errors installComponent reports instead of starting.
+// Errors installComponent and updateYtDlp report instead of starting.
 var (
-	errToolsInUse     = errors.New("a download is running and is using the tools; install when it has finished")
-	errAlreadyInstall = errors.New("another tool is being installed; wait for it to finish")
+	errToolsInUse     = errors.New("a download is running and is using the tools; try again when it has finished")
+	errAlreadyInstall = errors.New("another tool is being installed or updated; wait for it to finish")
 )
 
 // canInstallTools reports whether the Components window can install tools
@@ -130,11 +130,11 @@ func (app *DownloaderApp) componentStatuses() []componentStatus {
 }
 
 // installComponent runs a Components action for the tool called name:
-// yt-dlp's Update runs "yt-dlp -U", and everything else downloads the
-// tool's latest release into bin/. It refuses while a download session or
-// another install runs, since the tools would be in use. onDone is called
-// on the UI thread when the action has finished, with nil on success. Must
-// be called on the UI thread.
+// yt-dlp's Update runs "yt-dlp -U" through updateYtDlp, and everything else
+// downloads the tool's latest release into bin/. It refuses while a
+// download session or another install runs, since the tools would be in
+// use. onDone is called on the UI thread when the action has finished, with
+// nil on success. Must be called on the UI thread.
 func (app *DownloaderApp) installComponent(name, action string, onDone func(err error)) {
 	finish := func(err error) { fyne.Do(func() { onDone(err) }) }
 	tool, ok := findTool(name)
@@ -142,11 +142,11 @@ func (app *DownloaderApp) installComponent(name, action string, onDone func(err 
 	case !ok:
 		finish(fmt.Errorf("unknown tool %q", name))
 		return
+	case name == toolYtDlp && action == componentUpdate:
+		app.updateYtDlp(onDone)
+		return
 	case app.isRunning.Load():
 		finish(errToolsInUse)
-		return
-	case name == toolYtDlp && action == componentUpdate:
-		app.uiManager.runUpdateThen(func(bool) { finish(nil) })
 		return
 	case !app.installing.CompareAndSwap(false, true):
 		finish(errAlreadyInstall)
@@ -176,6 +176,34 @@ func (app *DownloaderApp) installComponent(name, action string, onDone func(err 
 		app.afterInstall(tool)
 		finish(nil)
 	}()
+}
+
+// updateYtDlp runs "yt-dlp -U". Every Update yt-dlp action goes through it:
+// the Tools menu, the out-of-date notice (both via UIManager.runUpdateInUI),
+// and Components. Like an install, it refuses while a download session or
+// another install runs, and holds installing, with the Download button
+// disabled, until the update has finished, since Windows cannot replace a
+// yt-dlp.exe that is running. onDone is called on the UI thread when the
+// update has finished, with an error only when it refused to start; the
+// update's own outcome is in the log and the status label. Must be called
+// on the UI thread.
+func (app *DownloaderApp) updateYtDlp(onDone func(err error)) {
+	finish := func(err error) { fyne.Do(func() { onDone(err) }) }
+	switch {
+	case app.isRunning.Load():
+		finish(errToolsInUse)
+		return
+	case !app.installing.CompareAndSwap(false, true):
+		finish(errAlreadyInstall)
+		return
+	}
+
+	app.ui.download.downloadBtn.Disable()
+	app.uiManager.runUpdateThen(func(bool) {
+		app.installing.Store(false)
+		fyne.Do(func() { app.ui.download.downloadBtn.Enable() })
+		finish(nil)
+	})
 }
 
 // toolProgress returns a progress handler that shows a tool download's

@@ -81,6 +81,8 @@ package "Application Core" #F0F4F8 {
         +setProgress(pct)
         +setProgressNow(pct)
         +startGPUDetection()
+        -installComponent(name, action, onDone)
+        -updateYtDlp(onDone func(error))
         +showHistory()
         +showPostProcessing()
         +showPreferences()
@@ -186,6 +188,7 @@ package "UI Layer" #F0F8F0 {
         -onClearHistory : func() error
         -onCheckDependencies : func(func(string))
         -onRunUpdate : func(UpdateCallbacks)
+        -onUpdateYtDlp : func(func(error))
         -onLoadPreferences : func() AppPreferences
         -onSavePreferences : func(AppPreferences)
         -onResetPreferences : func()
@@ -213,6 +216,7 @@ package "UI Layer" #F0F8F0 {
         +checkDependencies()
         +confirmYtDlpUpdate()
         +runUpdateInUI()
+        +runUpdateThen(done func(bool))
         +checkForGoVidUpdates()
         +showGoVidRelease(release Release)
         +showUpdateFailure(err)

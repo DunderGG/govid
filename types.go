@@ -333,7 +333,7 @@ type DownloaderApp struct {
 	sessionFailed  atomic.Bool
 	isRunning      atomic.Bool // true while a download or post-processing session is active
 	updating       atomic.Bool // true while a GoVid self-update downloads or installs
-	installing     atomic.Bool // true while a tool is being installed into bin/; see installComponent
+	installing     atomic.Bool // true while a tool is being installed into bin/ or yt-dlp updated; see installComponent, updateYtDlp
 	showDebug      atomic.Bool // true to show yt-dlp [debug] lines in the log view; see appendOutput
 	recording      atomic.Bool // true while a live stream is recorded; see setRecordingView
 	quitting       atomic.Bool // true once Shutdown has begun: a stopped download is paused and the queue saved

@@ -102,6 +102,7 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	// checkDependencies and the "Update yt-dlp" menu action.
 	dlApp.uiManager.onCheckDependencies = depSvc.Check
 	dlApp.uiManager.onRunUpdate = depSvc.RunUpdate
+	dlApp.uiManager.onUpdateYtDlp = dlApp.updateYtDlp
 	dlApp.uiManager.onYtDlpVersions = dlApp.ytDlpVersions
 	dlApp.uiManager.onJSRuntimeLabel = dlApp.jsRuntimeLabel
 	dlApp.uiManager.onComponents = dlApp.componentStatuses
