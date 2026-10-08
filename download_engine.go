@@ -35,6 +35,18 @@ type DownloadEngine struct {
 	// JSRuntime is the JavaScript runtime yt-dlp solves YouTube's player
 	// challenges with; the zero value passes none.
 	JSRuntime JSRuntime
+
+	rename func(from, to string) error // os.Rename when nil; replaced in tests
+}
+
+// renameFile renames from to to, retrying while the file is locked (see
+// renameWithRetry).
+func (engine *DownloadEngine) renameFile(from, to string) error {
+	rename := engine.rename
+	if rename == nil {
+		rename = os.Rename
+	}
+	return renameWithRetry(rename, from, to)
 }
 
 // jsRuntimeArgs returns the --js-runtimes option naming the engine's
@@ -607,9 +619,11 @@ func (engine *DownloadEngine) runArgs(ctx context.Context, req DownloadRequest, 
 		result.Err, result.Stopped = nil, true
 	}
 	finalPaths, subtitlePaths := splitSubtitleFiles(engine.FinalizeFiles(req.SavePath, built.DownloadID, cb.OnLog))
-	// What FinalizeFiles left are partial files yt-dlp no longer needs,
-	// such as a format an earlier, interrupted run had started.
-	engine.RemovePartialFiles(req.SavePath, built.DownloadID, cb.OnLog)
+	// The partial files FinalizeFiles left are ones yt-dlp no longer needs,
+	// such as a format an earlier, interrupted run had started. A finished
+	// file whose rename failed still carries the download ID, so only
+	// partial files are removed.
+	engine.RemoveLeftoverPartials(req.SavePath, built.DownloadID, cb.OnLog)
 	if keep && req.Live {
 		finalPaths = engine.finishRecording(finalPaths, built.Extension, cb.OnLog)
 	}
@@ -690,7 +704,8 @@ func saveInfoJSON(infoJSON []byte, onLog func(line string, col color.Color)) (pa
 // downloadID token (not its partial files, see isPartialFile), strips the
 // token from their names, and renames them to their final
 // conflict-free paths using uniquePath. It returns the list of final paths so
-// callers can apply further post-processing.
+// callers can apply further post-processing. A file that cannot be renamed
+// (see renameWithRetry) keeps its temporary name, and that name is returned.
 func (engine *DownloadEngine) FinalizeFiles(savePath, downloadID string, onLog func(line string, col color.Color)) []string {
 	matches, err := filesWithID(savePath, downloadID)
 	if err != nil {
@@ -714,11 +729,12 @@ func (engine *DownloadEngine) FinalizeFiles(savePath, downloadID string, onLog f
 				colSystem,
 			)
 		}
-		if err := os.Rename(tmpPath, finalPath); err != nil {
+		if err := engine.renameFile(tmpPath, finalPath); err != nil {
 			onLog(
-				fmt.Sprintf("[SYSTEM] Failed to rename file: %v", err),
+				fmt.Sprintf("[SYSTEM] Failed to rename file (%v); it keeps its temporary name: %s", err, filepath.Base(tmpPath)),
 				colErrorSoft,
 			)
+			finalPath = tmpPath
 		}
 		finalPaths = append(finalPaths, finalPath)
 	}
@@ -731,8 +747,10 @@ func (engine *DownloadEngine) FinalizeFiles(savePath, downloadID string, onLog f
 var renameMu sync.Mutex
 
 // partialRemoveAttempts and partialRemoveRetryDelay bound how long
-// RemovePartialFiles keeps retrying a file that is still locked. On Windows a
-// killed process can keep its files locked for a moment after it exits.
+// RemovePartialFiles keeps retrying a file that is still locked, and
+// FinalizeFiles a rename. On Windows a killed process can keep its files
+// locked for a moment after it exits, and an antivirus scanner, the search
+// indexer, or Explorer's thumbnails can briefly hold a new file open.
 const (
 	partialRemoveAttempts   = 10
 	partialRemoveRetryDelay = 200 * time.Millisecond
@@ -743,11 +761,27 @@ const (
 // fragment files, and any media it finished before it stopped. Each
 // removal, and each file that could not be removed, is logged.
 func (engine *DownloadEngine) RemovePartialFiles(savePath, downloadID string, onLog func(line string, col color.Color)) {
+	removeFilesWithID(savePath, downloadID, false, onLog)
+}
+
+// RemoveLeftoverPartials deletes only the partial files (see isPartialFile)
+// under the downloadID token, for a download that finished: any finished
+// file that still carries the token, because its rename failed, is kept.
+func (engine *DownloadEngine) RemoveLeftoverPartials(savePath, downloadID string, onLog func(line string, col color.Color)) {
+	removeFilesWithID(savePath, downloadID, true, onLog)
+}
+
+// removeFilesWithID deletes the files under the downloadID token, or only
+// the partial ones when partialOnly is set, and logs each outcome.
+func removeFilesWithID(savePath, downloadID string, partialOnly bool, onLog func(line string, col color.Color)) {
 	matches, err := filesWithID(savePath, downloadID)
 	if err != nil {
 		return
 	}
 	for _, path := range matches {
+		if partialOnly && !isPartialFile(path) {
+			continue
+		}
 		if err := removeWithRetry(path); err != nil {
 			onLog(fmt.Sprintf("[SYSTEM] Could not remove partial file: %v", err), colWarning)
 			continue
@@ -766,6 +800,23 @@ func removeWithRetry(path string) error {
 		err = os.Remove(path)
 		if err == nil || errors.Is(err, os.ErrNotExist) {
 			return nil
+		}
+	}
+	return err
+}
+
+// renameWithRetry renames from to to with rename, retrying for a short
+// while if it fails, as removeWithRetry does. A missing source is not
+// retried.
+func renameWithRetry(rename func(from, to string) error, from, to string) error {
+	var err error
+	for attempt := 0; attempt < partialRemoveAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(partialRemoveRetryDelay)
+		}
+		err = rename(from, to)
+		if err == nil || errors.Is(err, os.ErrNotExist) {
+			return err
 		}
 	}
 	return err

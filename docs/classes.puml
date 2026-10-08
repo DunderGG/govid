@@ -267,6 +267,7 @@ package "Download Engine" #FFF8F0 {
         +YtDlpPath : string
         +FFmpegPath : string
         +JSRuntime : JSRuntime
+        -rename : func(from, to) error
         --
         +NewDownloadEngine(ytDlpPath, ffmpegPath) : *DownloadEngine
         +BuildArgs(req DownloadRequest) : DownloadArgs
@@ -276,6 +277,7 @@ package "Download Engine" #FFF8F0 {
         +ProbeVideo(ctx, req DownloadRequest) : (MediaInfo, error)
         +FinalizeFiles(savePath, downloadID, onLog) : []string
         +RemovePartialFiles(savePath, downloadID, onLog)
+        +RemoveLeftoverPartials(savePath, downloadID, onLog)
         -watchOutput(stdout, stderr, cb) : scanResult
         -parseProgress(line, cb)
         -monitorRecording(req, downloadID, onRecording) : func()

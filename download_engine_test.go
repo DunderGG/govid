@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"image/color"
 	"os"
 	"path/filepath"
@@ -787,6 +788,91 @@ func TestFinalizeFilesAvoidsOverwritingExisting(t *testing.T) {
 	if len(logs) != 1 || !strings.Contains(logs[0], "saving as: GoVid_Clip 1.mp4") {
 		t.Errorf("logs = %q, want rename notice", logs)
 	}
+}
+
+// errLocked stands in for a rename refused because another process holds
+// the file open.
+var errLocked = errors.New("the file is in use by another process")
+
+func TestRunKeepsFileWhoseRenameFails(t *testing.T) {
+	_ = test.NewApp()
+	useFakeTool(t, "ytdlp-download")
+	saveDir := t.TempDir()
+	rec := &engineRecorder{}
+	engine := NewDownloadEngine(fakeToolPath(t), "")
+	var attempts int
+	engine.rename = func(string, string) error { attempts++; return errLocked }
+
+	result := engine.Run(context.Background(), DownloadRequest{
+		URL: "https://example.com/v", SavePath: saveDir, Format: "MKV", Quality: "720p",
+	}, DownloadOptions{Index: 1, Total: 1}, rec.callbacks())
+
+	if result.Err != nil {
+		t.Fatalf("Run() error = %v, log:\n%s", result.Err, rec.joinedLogs())
+	}
+	if attempts != partialRemoveAttempts {
+		t.Errorf("rename attempts = %d, want %d", attempts, partialRemoveAttempts)
+	}
+	if len(result.FinalPaths) != 1 {
+		t.Fatalf("FinalPaths = %q, want the file under its temporary name", result.FinalPaths)
+	}
+	path := result.FinalPaths[0]
+	if !strings.Contains(filepath.Base(path), "_GOVID") {
+		t.Errorf("FinalPaths[0] = %q, want the temporary name", path)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("the finished download was removed: %v", err)
+	}
+	logs := rec.joinedLogs()
+	if !strings.Contains(logs, "it keeps its temporary name") {
+		t.Errorf("log missing the rename failure:\n%s", logs)
+	}
+	if strings.Contains(logs, "Removed partial file") {
+		t.Errorf("log reports a removal:\n%s", logs)
+	}
+}
+
+func TestFinalizeFilesRetriesLockedRename(t *testing.T) {
+	dir := t.TempDir()
+	const id = "GOVID321"
+	touch(t, filepath.Join(dir, "GoVid_Clip_"+id+".mp4"))
+	engine := NewDownloadEngine("", "")
+	var attempts int
+	engine.rename = func(from, to string) error {
+		if attempts++; attempts < 3 {
+			return errLocked
+		}
+		return os.Rename(from, to)
+	}
+
+	paths := engine.FinalizeFiles(dir, id, func(string, color.Color) {})
+
+	want := filepath.Join(dir, "GoVid_Clip.mp4")
+	if !slices.Equal(paths, []string{want}) {
+		t.Errorf("FinalizeFiles() = %q, want %q", paths, want)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Errorf("renamed file missing: %v", err)
+	}
+}
+
+func TestRemoveLeftoverPartialsKeepsFinishedFiles(t *testing.T) {
+	forEachSaveDir(t, func(t *testing.T, dir string) {
+		const id = "GOVID43"
+		touch(t, filepath.Join(dir, "GoVid_A_"+id+".mp4"))
+		touch(t, filepath.Join(dir, "GoVid_A_"+id+".f251.webm.part"))
+		touch(t, filepath.Join(dir, "GoVid_A_"+id+".f251.webm.ytdl"))
+
+		NewDownloadEngine("", "").RemoveLeftoverPartials(dir, id, func(string, color.Color) {})
+
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 1 || entries[0].Name() != "GoVid_A_"+id+".mp4" {
+			t.Errorf("remaining files = %v, want only the finished file", entries)
+		}
+	})
 }
 
 func TestFinalizeFilesNoMatches(t *testing.T) {
