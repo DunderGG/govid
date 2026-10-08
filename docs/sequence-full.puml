@@ -194,12 +194,12 @@ group loop [while QueueModel.Next() returns a waiting item]
         end
 
         alt cmdErr == nil, or stopped with errStopKeep (a kept recording)
-            App -> OS  : engine.FinalizeFiles(savePath, downloadID)\n  — Glob(*downloadID*), skipping .part / .ytdl\n  — strip token, uniquePath (under renameMu)\n  — os.Rename(tmp → final)\n  — a kept recording: finishRecording remuxes it
+            App -> OS  : engine.FinalizeFiles(savePath, downloadID)\n  — filesWithID(*downloadID*), skipping .part / .ytdl\n  — strip token, uniquePath (under renameMu)\n  — os.Rename(tmp → final)\n  — a kept recording: finishRecording remuxes it
             OS  --> App : []finalPaths
         else paused (errPaused)
             App -> App : keep the partial files → DownloadResult.Paused
         else failed or cancelled
-            App -> OS  : engine.RemovePartialFiles(savePath, downloadID)\n  — Glob(*downloadID*) → os.Remove (retried while locked)
+            App -> OS  : engine.RemovePartialFiles(savePath, downloadID)\n  — filesWithID(*downloadID*) → os.Remove (retried while locked)
         end
         opt the loaded info failed with HTTP 403 / 410 (hadExpiredLinkErr)
             App -> UI  : appendOutput("download links were refused (expired?); asking the site for new ones")

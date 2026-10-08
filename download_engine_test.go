@@ -536,21 +536,58 @@ func TestRunCancelRemovesPartialFiles(t *testing.T) {
 }
 
 func TestRemovePartialFilesKeepsOtherFiles(t *testing.T) {
-	dir := t.TempDir()
-	const id = "GOVID42"
-	touch(t, filepath.Join(dir, "GoVid_A_"+id+".mp4"))
-	touch(t, filepath.Join(dir, "GoVid_A_"+id+".f248.webm"))
-	touch(t, filepath.Join(dir, "GoVid_B.mp4"))
+	forEachSaveDir(t, func(t *testing.T, dir string) {
+		const id = "GOVID42"
+		touch(t, filepath.Join(dir, "GoVid_A_"+id+".mp4"))
+		touch(t, filepath.Join(dir, "GoVid_A_"+id+".f248.webm"))
+		touch(t, filepath.Join(dir, "GoVid_B.mp4"))
 
-	NewDownloadEngine("", "").RemovePartialFiles(dir, id, func(string, color.Color) {})
+		NewDownloadEngine("", "").RemovePartialFiles(dir, id, func(string, color.Color) {})
 
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 1 || entries[0].Name() != "GoVid_B.mp4" {
+			t.Errorf("remaining files = %v, want only GoVid_B.mp4", entries)
+		}
+	})
+}
+
+// forEachSaveDir runs fn in a plain save folder and in one whose name
+// has the brackets a glob pattern would misread.
+func forEachSaveDir(t *testing.T, fn func(t *testing.T, dir string)) {
+	for _, name := range []string{"Videos", "Videos [HD]"} {
+		t.Run(name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), name)
+			if err := os.Mkdir(dir, 0755); err != nil {
+				t.Fatal(err)
+			}
+			fn(t, dir)
+		})
 	}
-	if len(entries) != 1 || entries[0].Name() != "GoVid_B.mp4" {
-		t.Errorf("remaining files = %v, want only GoVid_B.mp4", entries)
-	}
+}
+
+func TestFilesWithIDFindsFilesInBracketedFolder(t *testing.T) {
+	forEachSaveDir(t, func(t *testing.T, dir string) {
+		const id = "GOVID77"
+		touch(t, filepath.Join(dir, "GoVid_A_"+id+".mp4.part"))
+		touch(t, filepath.Join(dir, "GoVid_B.mp4"))
+		if err := os.Mkdir(filepath.Join(dir, "Folder_"+id), 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		want := []string{filepath.Join(dir, "GoVid_A_"+id+".mp4.part")}
+		if got, err := filesWithID(dir, id); err != nil || !slices.Equal(got, want) {
+			t.Errorf("filesWithID() = %q, %v; want %q", got, err, want)
+		}
+		if !NewDownloadEngine("", "").hasFiles(dir, id) {
+			t.Error("hasFiles() = false, want true")
+		}
+		if size, found := downloadedBytes(dir, id); !found || size != 1 {
+			t.Errorf("downloadedBytes() = %d, %v; want 1, true", size, found)
+		}
+	})
 }
 
 func TestExecuteLaunchFailure(t *testing.T) {
@@ -709,28 +746,29 @@ func touch(t *testing.T, path string) {
 }
 
 func TestFinalizeFilesStripsDownloadID(t *testing.T) {
-	dir := t.TempDir()
-	const id = "GOVID123"
-	touch(t, filepath.Join(dir, "GoVid_Clip_"+id+".mp4"))
-	touch(t, filepath.Join(dir, "GoVid_Clip_"+id+".en.vtt"))
-	touch(t, filepath.Join(dir, "Unrelated.mp4"))
+	forEachSaveDir(t, func(t *testing.T, dir string) {
+		const id = "GOVID123"
+		touch(t, filepath.Join(dir, "GoVid_Clip_"+id+".mp4"))
+		touch(t, filepath.Join(dir, "GoVid_Clip_"+id+".en.vtt"))
+		touch(t, filepath.Join(dir, "Unrelated.mp4"))
 
-	var logs []string
-	paths := NewDownloadEngine("", "").FinalizeFiles(dir, id, func(line string, _ color.Color) { logs = append(logs, line) })
+		var logs []string
+		paths := NewDownloadEngine("", "").FinalizeFiles(dir, id, func(line string, _ color.Color) { logs = append(logs, line) })
 
-	slices.Sort(paths)
-	want := []string{filepath.Join(dir, "GoVid_Clip.en.vtt"), filepath.Join(dir, "GoVid_Clip.mp4")}
-	if !slices.Equal(paths, want) {
-		t.Errorf("FinalizeFiles() = %q, want %q", paths, want)
-	}
-	for _, path := range append(want, filepath.Join(dir, "Unrelated.mp4")) {
-		if _, err := os.Stat(path); err != nil {
-			t.Errorf("expected %s to exist: %v", filepath.Base(path), err)
+		slices.Sort(paths)
+		want := []string{filepath.Join(dir, "GoVid_Clip.en.vtt"), filepath.Join(dir, "GoVid_Clip.mp4")}
+		if !slices.Equal(paths, want) {
+			t.Errorf("FinalizeFiles() = %q, want %q", paths, want)
 		}
-	}
-	if len(logs) != 0 {
-		t.Errorf("unexpected logs: %q", logs)
-	}
+		for _, path := range append(want, filepath.Join(dir, "Unrelated.mp4")) {
+			if _, err := os.Stat(path); err != nil {
+				t.Errorf("expected %s to exist: %v", filepath.Base(path), err)
+			}
+		}
+		if len(logs) != 0 {
+			t.Errorf("unexpected logs: %q", logs)
+		}
+	})
 }
 
 func TestFinalizeFilesAvoidsOverwritingExisting(t *testing.T) {

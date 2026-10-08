@@ -123,7 +123,7 @@ func (engine *DownloadEngine) monitorRecording(req DownloadRequest, downloadID s
 // downloadedBytes adds up the size of the files yt-dlp has written under
 // downloadID, and reports whether there are any.
 func downloadedBytes(savePath, downloadID string) (int64, bool) {
-	matches, err := filepath.Glob(filepath.Join(savePath, "*"+downloadID+"*"))
+	matches, err := filesWithID(savePath, downloadID)
 	if err != nil || len(matches) == 0 {
 		return 0, false
 	}

@@ -622,8 +622,26 @@ func (engine *DownloadEngine) runArgs(ctx context.Context, req DownloadRequest, 
 
 // hasFiles reports whether yt-dlp wrote any file under downloadID.
 func (engine *DownloadEngine) hasFiles(savePath, downloadID string) bool {
-	matches, err := filepath.Glob(filepath.Join(savePath, "*"+downloadID+"*"))
+	matches, err := filesWithID(savePath, downloadID)
 	return err == nil && len(matches) > 0
+}
+
+// filesWithID returns the files in dir whose names contain downloadID,
+// sorted by name. It lists the folder rather than using filepath.Glob,
+// which would read brackets in the folder's name (e.g. "Videos [HD]") as a
+// pattern and match nothing.
+func filesWithID(dir, downloadID string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.Contains(entry.Name(), downloadID) {
+			paths = append(paths, filepath.Join(dir, entry.Name()))
+		}
+	}
+	return paths, nil
 }
 
 // subtitleExts are the extensions of the subtitle files yt-dlp writes next
@@ -674,8 +692,7 @@ func saveInfoJSON(infoJSON []byte, onLog func(line string, col color.Color)) (pa
 // conflict-free paths using uniquePath. It returns the list of final paths so
 // callers can apply further post-processing.
 func (engine *DownloadEngine) FinalizeFiles(savePath, downloadID string, onLog func(line string, col color.Color)) []string {
-	pattern := filepath.Join(savePath, "*"+downloadID+"*")
-	matches, err := filepath.Glob(pattern)
+	matches, err := filesWithID(savePath, downloadID)
 	if err != nil {
 		return nil
 	}
@@ -726,7 +743,7 @@ const (
 // fragment files, and any media it finished before it stopped. Each
 // removal, and each file that could not be removed, is logged.
 func (engine *DownloadEngine) RemovePartialFiles(savePath, downloadID string, onLog func(line string, col color.Color)) {
-	matches, err := filepath.Glob(filepath.Join(savePath, "*"+downloadID+"*"))
+	matches, err := filesWithID(savePath, downloadID)
 	if err != nil {
 		return
 	}
