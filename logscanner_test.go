@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/color"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2/test"
 )
@@ -319,5 +321,53 @@ func TestWatchOutputDetectsAMissingJSRuntime(t *testing.T) {
 		if result.hadNoJSRuntime != tt.want {
 			t.Errorf("hadNoJSRuntime = %v for %q, want %v", result.hadNoJSRuntime, tt.stderr, tt.want)
 		}
+	}
+}
+
+func TestWatchOutputKeepsReadingPastLongLines(t *testing.T) {
+	tests := []struct {
+		name      string
+		lineLen   int
+		wantAfter bool // the lines after the long one are read, not drained
+	}{
+		{"200 KiB line", 200 << 10, true},
+		{"line over the limit", 2 * maxOutputLine, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			output := strings.Repeat("x", tt.lineLen) + "\nafter the long line\n"
+			stdoutR, stdoutW := io.Pipe()
+			stderrR, stderrW := io.Pipe()
+			// Unblock the writers if the test fails, like a killed process.
+			t.Cleanup(func() { stdoutR.Close(); stderrR.Close() })
+			var writers sync.WaitGroup
+			for _, w := range []*io.PipeWriter{stdoutW, stderrW} {
+				writers.Go(func() {
+					_, err := io.WriteString(w, output)
+					w.CloseWithError(err)
+				})
+			}
+			collector := newLogCollector()
+
+			done := make(chan struct{})
+			go func() {
+				NewDownloadEngine("", "").watchOutput(stdoutR, stderrR, collector.callbacks())
+				writers.Wait()
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				t.Fatal("the output was not read to the end; the process would block on a full pipe")
+			}
+
+			joined := strings.Join(collector.lines, "\n")
+			if got := strings.Count(joined, "after the long line"); tt.wantAfter && got != 2 {
+				t.Errorf("the line after the long one was logged %d times, want 2 (stdout and stderr)", got)
+			}
+			if got := strings.Count(joined, "read error"); !tt.wantAfter && got != 2 {
+				t.Errorf("read errors logged %d times, want 2 (stdout and stderr)", got)
+			}
+		})
 	}
 }

@@ -12,7 +12,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"image/color"
 	"io"
@@ -126,7 +125,7 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 	waitGroup.Add(1)
 	go func() {
 		defer waitGroup.Done()
-		scanner := bufio.NewScanner(stdout)
+		scanner := newOutputScanner(stdout)
 		for scanner.Scan() {
 			line := scanner.Text()
 			engine.parseProgress(line, cb)
@@ -143,14 +142,15 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 			cb.OnLog(line, nil) // nil = default foreground, resolved by the UI
 		}
 		if err := scanner.Err(); err != nil {
-			cb.OnLog(fmt.Sprintf("[SYSTEM] stdout read error: %v", err), colWarning)
+			cb.OnLog(fmt.Sprintf("[SYSTEM] stdout read error: %v; the rest of yt-dlp's output is not shown.", err), colWarning)
+			drainOutput(stdout, nil)
 		}
 	}()
 
 	waitGroup.Add(1)
 	go func() {
 		defer waitGroup.Done()
-		scanner := bufio.NewScanner(stderr)
+		scanner := newOutputScanner(stderr)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if phase := detectPhase(line); phase != "" {
@@ -183,7 +183,8 @@ func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCa
 			cb.OnLog(line, logColor)
 		}
 		if err := scanner.Err(); err != nil {
-			cb.OnLog(fmt.Sprintf("[SYSTEM] stderr read error: %v", err), colWarning)
+			cb.OnLog(fmt.Sprintf("[SYSTEM] stderr read error: %v; the rest of yt-dlp's output is not shown.", err), colWarning)
+			drainOutput(stderr, nil)
 		}
 	}()
 

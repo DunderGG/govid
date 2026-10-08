@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestBuildFFmpegArgsForBackend(t *testing.T) {
@@ -196,6 +197,43 @@ func TestRunJobAlreadyCanceledIsNotAFailure(t *testing.T) {
 	}
 	if joined := strings.Join(*logs, "\n"); !strings.Contains(joined, "Post-processing canceled") {
 		t.Errorf("log missing the cancel, got:\n%s", joined)
+	}
+}
+
+func TestRunJobSurvivesAnOverlongOutputLine(t *testing.T) {
+	useFakeTool(t, "ffmpeg-long-line")
+	dir := t.TempDir()
+	engine := NewPPEngine(fakeToolPath(t), "ffprobe")
+	job := PostProcessJob{
+		inputPath: filepath.Join(dir, "in.mp4"),
+		tmpOutput: filepath.Join(dir, "in_pp.mp4"),
+		finalPath: filepath.Join(dir, "in.mp4"),
+	}
+	if err := os.WriteFile(job.tmpOutput, []byte("encoded"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Kill the fake FFmpeg if the test fails, like a cancel would.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cb, failures, logs := recordingPPCallbacks()
+
+	done := make(chan struct{})
+	go func() {
+		engine.runJob(ctx, job, cb)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("runJob did not return; FFmpeg blocked on a full stderr pipe")
+	}
+
+	if *failures != 0 {
+		t.Errorf("OnFailure called %d times, want 0", *failures)
+	}
+	joined := strings.Join(*logs, "\n")
+	if !strings.Contains(joined, "FFmpeg output read error") || !strings.Contains(joined, "POST-PROCESSING COMPLETE") {
+		t.Errorf("want the read error and the job completed, got:\n%.2000s", joined)
 	}
 }
 

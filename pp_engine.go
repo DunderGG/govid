@@ -15,7 +15,6 @@
 package main
 
 import (
-	"bufio"
 	"cmp"
 	"context"
 	"errors"
@@ -387,7 +386,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	markLoop("ffmpeg progress reader ("+filepath.Base(job.finalPath)+")", "started")
 	// Stream FFmpeg's stderr in real-time to the log and status bar.
 	var errLines []string
-	scanner := bufio.NewScanner(stderrPipe)
+	scanner := newOutputScanner(stderrPipe)
 	scanner.Split(scanCRLF)
 	for scanner.Scan() {
 		guard.pet()
@@ -403,7 +402,9 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		cb.OnLog(fmt.Sprintf("[SYSTEM] FFmpeg output read error: %v", err), colWarning)
+		cb.OnLog(fmt.Sprintf("[SYSTEM] FFmpeg output read error: %v; the rest of its output is not shown.", err), colWarning)
+		// FFmpeg is still encoding, so keep the stall watchdog fed.
+		drainOutput(stderrPipe, guard.pet)
 	}
 
 	err := cmd.Wait()

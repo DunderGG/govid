@@ -246,6 +246,8 @@ func runFakeTool(mode string, args []string) int {
 		return fakeTick()
 	case "ffmpeg-hang":
 		return fakeFFmpegHang()
+	case "ffmpeg-long-line":
+		return fakeFFmpegLongLine()
 	case "ffprobe-color":
 		return fakeFFprobeColor()
 	case "ffmpeg-summary":
@@ -481,6 +483,14 @@ func fakeTick() int {
 func fakeFFmpegHang() int {
 	fmt.Fprintln(os.Stderr, "frame=   10 fps=5.0 q=28.0 size=     256KiB time=00:00:00.40 bitrate=5242.9kbits/s speed=0.2x")
 	time.Sleep(time.Minute)
+	return 0
+}
+
+// fakeFFmpegLongLine mimics an FFmpeg encode that prints a stderr line
+// longer than maxOutputLine, then more output, and succeeds.
+func fakeFFmpegLongLine() int {
+	fmt.Fprintln(os.Stderr, strings.Repeat("x", 2*maxOutputLine))
+	fmt.Fprintln(os.Stderr, "frame=   10 fps=5.0 q=28.0 size=     256KiB time=00:00:00.40 bitrate=5242.9kbits/s speed=0.2x")
 	return 0
 }
 

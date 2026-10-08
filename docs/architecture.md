@@ -95,7 +95,7 @@ govid/
 ├── icons.go                SVG icon registry; themedIcon() helper
 ├── shortcuts.go            Keyboard shortcuts: menu items and canvas shortcuts (Ctrl+Enter, Ctrl+O, Ctrl+L, Ctrl+Shift+V, Ctrl+H, Ctrl+,), F1, closeOnEscape
 ├── embedded_icon.go        Bundled app icon (resourceAppiconPng)
-├── process.go              newToolCommand — starts yt-dlp/FFmpeg so cancelling kills the whole process tree
+├── process.go              newToolCommand, newOutputScanner / drainOutput — starts yt-dlp/FFmpeg so cancelling kills the whole process tree; reads their output
 ├── sys_windows.go          Windows-only: hide console windows; kill process trees with taskkill /T; freeDiskBytes (GetDiskFreeSpaceEx)
 ├── sys_others.go           Non-Windows: no-op hideWindow; kill process trees via a process group; freeDiskBytes (statfs)
 │
@@ -540,6 +540,12 @@ can process multiple files concurrently.
 process tree (`taskkill /T` on Windows, the process group on Unix) and
 `cmd.WaitDelay` so `Wait` cannot hang on pipes a surviving grandchild holds.
 This matters because yt-dlp runs its own ffmpeg for merging and trimming.
+The readers of a running tool's output (`watchOutput`'s two goroutines and
+`runJob`'s FFmpeg stderr loop) use `newOutputScanner`, which accepts lines up
+to `maxOutputLine` (1 MiB) instead of `bufio.Scanner`'s 64 KiB. If a scanner
+still stops early, the reader logs it and `drainOutput` reads the rest, since
+a tool blocked on a full pipe never exits and `WaitDelay` only starts once it
+has; `runJob` pets the GPU stall watchdog while it drains.
 
 **Simultaneous downloads** (`parallel.go`). With the preference at 2 or 3 (`session.workers`, read once), `runQueue` hands the queue to `runParallel`: that many workers, each taking `Next()` until nothing waits; a worker that finds only paused items, with none active, waits for a resume. Each item gets an `itemRun` with its own `DownloadStats`; `parallelCallbacks` prefixes its log lines with "[n/total] " (`lineItem`; `renderLogLines` keeps one in-place progress line per prefix in `UIManager.progressLines`), sends its progress to its row (`QueueModel.SetProgress`), and shows the whole queue in the bar and status (`showParallelProgress`: `OverallProgress`, `ActiveCount`); `reportDownloadResult` then leaves the status, dot, and bar to the queue, and `runParallel` sets them when all are done. Cancel stops the session; each row's Skip and Pause act on their own item through `controls`. Shared state is serialised: prompts by `promptMu`, picking a free name and renaming by `renameMu` (`FinalizeFiles`, `finishRecording`), history writes by `HistoryService.mu`, and the disk check subtracts `reservedBytes`. After an HTTP 429 (`scanResult.hadRateLimit`) or a bot check, `backOff` lowers `queueMode.limit` to 1, so the other workers stop taking items, and logs it once.
 
