@@ -39,10 +39,10 @@ Each finding has an ID (`CR-nn`), a severity, every place it applies, what goes 
 ✅ | [CR-15](#cr-15-the-disk-space-check-and-reservation-are-not-atomic) | Low | The disk-space check and reservation are not atomic | download.go, disk_space.go |
 ✅ | [CR-16](#cr-16-the-cookies-privacy-claim-about-the-session-log-is-inaccurate) | Low | The cookies privacy claim about the session log is inaccurate | ui_manager.go, log_service.go |
 ✅ | [CR-17](#cr-17-runsession-re-enables-the-ui-before-it-resets-session-state) | Low | `runSession` re-enables the UI before it resets session state | download.go |
-❌ | [CR-18](#cr-18-open-folder-leaves-a-zombie-process-on-linux) | Low | Open Folder leaves a zombie process on Linux | helpers.go |
-❌ | [CR-19](#cr-19-formats-overwrites-a-running-sessions-status) | Low | Formats… overwrites a running session's status | formats_window.go |
-❌ | [CR-20](#cr-20-external-commands-run-without-a-timeout) | Low | External commands run without a timeout | dependency_service.go, components.go |
-❌ | [CR-21](#cr-21-ui_managergo-has-too-many-responsibilities) | Guideline | `ui_manager.go` has too many responsibilities (§3.1) | ui_manager.go |
+✅ | [CR-18](#cr-18-open-folder-leaves-a-zombie-process-on-linux) | Low | Open Folder leaves a zombie process on Linux | helpers.go |
+✅ | [CR-19](#cr-19-formats-overwrites-a-running-sessions-status) | Low | Formats… overwrites a running session's status | formats_window.go |
+✅ | [CR-20](#cr-20-external-commands-run-without-a-timeout) | Low | External commands run without a timeout | dependency_service.go, components.go |
+✅ | [CR-21](#cr-21-ui_managergo-has-too-many-responsibilities) | Guideline | `ui_manager.go` has too many responsibilities (§3.1) | ui_manager.go |
 ❌ | [CR-22](#cr-22-functions-over-60-lines) | Guideline | Functions over 60 lines (§1.4) | 16 functions |
 ❌ | [CR-23](#cr-23-unchecked-errors-and-regexes-compiled-per-call) | Guideline | Unchecked errors, and regexes compiled per call (§1.3) | 4 places |
 ❌ | [CR-24](#cr-24-exported-symbols-without-doc-comments) | Guideline | Exported symbols without doc comments (§1.7) | gpu_capability.go, icons.go |
@@ -408,7 +408,7 @@ Smaller cases, each usually fast but on the UI thread all the same:
 
 ---
 
-### CR-18: Open Folder leaves a zombie process on Linux
+### ✅ CR-18: Open Folder leaves a zombie process on Linux
 
 **Where.** [helpers.go:128](../helpers.go#L128): `openDownloadFolder` calls `.Start()` and never waits on the process. [history_window.go:275](../history_window.go#L275) reaps its process with `go cmd.Wait()`; `startDetached` ([self_update.go:125-128](../self_update.go#L125-L128)) calls `Release`, which is correct there.
 
@@ -416,9 +416,11 @@ Smaller cases, each usually fast but on the UI thread all the same:
 
 **Suggested fix.** After a successful `Start`, add `go cmd.Wait()`, as `revealHistoryFile` does.
 
+**Status.** Fixed in `aa5fae1` as suggested above, through a shared helper. A new `startReaped` in process.go starts a command and waits for it in the background. It ignores the exit status, because explorer.exe exits with 1 when it succeeds. `openDownloadFolder` and `revealHistoryFile` both use it. `TestStartReapedCollectsTheProcess` checks that the process gets a `ProcessState`, which only `Wait` sets; a process that is only started never gets one. `TestStartReapedReportsAFailedStart` is also new. architecture.md was updated.
+
 ---
 
-### CR-19: Formats… overwrites a running session's status
+### ✅ CR-19: Formats… overwrites a running session's status
 
 **Where.** [formats_window.go:278-281](../formats_window.go#L278-L281).
 
@@ -426,9 +428,11 @@ Smaller cases, each usually fast but on the UI thread all the same:
 
 **Suggested fix.** Change the status only when `!app.isRunning.Load()`, or show the progress in the Formats window instead of the status label.
 
+**Status.** Fixed in `8213f4f` with the first suggestion, plus a guard for the end of the probe. The probe moved to `probeFormatsForURL`, which shows the checking status only when no session is running. Checking `isRunning` only at the start would not be enough: a session started during the probe would still have its status replaced by Idle when the probe returned. A new `latestValueThrottle.Replace(old, value)` sets a value only while the newest one is `old`, so the probe goes back to Idle only if nothing has replaced its status. `probeFormatsForURL` returns a channel that is closed once the formats are shown, as `openHistory` does. `TestFormatsKeepsARunningSessionsStatus` fails against the old code. `TestFormatsShowsItsStatusOutsideASession` and `TestThrottleReplaceOnlyReplacesTheValueGiven` are also new. architecture.md and classes.puml were updated.
+
 ---
 
-### CR-20: External commands run without a timeout
+### ✅ CR-20: External commands run without a timeout
 
 **Where.**
 - [dependency_service.go:107](../dependency_service.go#L107) `Version`: used by the startup update check, the About window, and the Update yt-dlp dialog;
@@ -440,11 +444,13 @@ Smaller cases, each usually fast but on the UI thread all the same:
 
 **Suggested fix.** Use `exec.CommandContext` with a timeout: `toolCommandTimeout` for the version and filter queries, and a few minutes for `yt-dlp -U`. Better still, have `Version` reuse `runVersion`.
 
+**Status.** Fixed in `ca62525` as suggested above, with `Version` reusing `runVersion`. `checkFFmpegFilters` also gives up after `toolCommandTimeout` (15 s). `RunUpdate` and `UpdateCLI` share a new `runYtDlpUpdate`, which gives up after `ytDlpUpdateTimeout` (5 min). All of them, `runVersion` included, now start the tool through `newToolCommand` rather than `exec.CommandContext` alone. On timeout, `exec.CommandContext` kills only the first process of the Windows yt-dlp.exe, and with no `WaitDelay`, `Output` could keep waiting on the pipe that the second process holds. A new `commandError` makes the error say "did not finish within 15s". `UpdateCLI` gets the same limit, and Ctrl+C still works. Both timeouts are now variables, so tests can shorten them. `installedYtDlpVersion` no longer takes the first line itself, because `runVersion` returns only the version. `TestYtDlpCommandsGiveUpOnAHungYtDlp` and `TestCheckFFmpegFiltersGivesUpOnAHungFFmpeg` fail against the old code. architecture.md and classes.puml were updated.
+
 ---
 
 ## Guideline
 
-### CR-21: `ui_manager.go` has too many responsibilities
+### ✅ CR-21: `ui_manager.go` has too many responsibilities
 
 **Guideline:** §3.1, one responsibility per file.
 
@@ -462,6 +468,8 @@ Smaller cases, each usually fast but on the UI thread all the same:
 | `ui_manager.go` (kept) | `UIManager`, window singletons, `createMainMenu`, `showAbout`, the yt-dlp update delegates, `createUI` and its builders, `followSystemTheme` |
 
 Update the file map in architecture.md §3 at the same time.
+
+**Status.** Fixed in `2e13b38` as suggested above, moving code only. A throwaway program built on `go/ast` moved each declaration with its doc comment and gave each file the imports it uses. Apart from the new file headers, the sorted lines of the old and new files are identical. ui_manager.go is now 636 lines. The tests moved the same way, to preferences_window_test.go, postprocess_window_test.go, log_view_test.go, and notices_test.go. ui_manager_test.go keeps the main window tests and the shared helpers `walkObjects` and `findButton`. The help text stays inside `showConfigHelp`: making it a package variable belongs to CR-22. Of CR-22's functions, `showConfigHelp` is now in help_window.go, and `showPreferences` is in preferences_window.go. The architecture.md file map and §4.3 were updated. §4.3's stale `resetPreferences`/`rebuildUI` line, a CR-26 item, was corrected at the same time. The race run also caught a race in a CR-19 test, which read the status label while the throttle's timer wrote it. That was fixed in `8e75181`.
 
 ---
 
@@ -549,6 +557,8 @@ These are optional. If the team wants them covered, one comment per group (for e
 | [360](architecture.md#L360) | "Updating in place … is not implemented." | delete the sentence; the next paragraph documents `self_update.go` |
 
 **Suggested fix.** Make the edits above, and follow the checklist in architecture.md §10 when fixing the other items here. CR-01, CR-02, CR-05, and CR-21 each change what §4 describes.
+
+**Status.** Partly fixed. The line 177 item was fixed with [CR-21](#cr-21-ui_managergo-has-too-many-responsibilities) in `2e13b38`: §4.3 now lists `savePreferences` and `restoreDefaults`. The other items are still open.
 
 ---
 
