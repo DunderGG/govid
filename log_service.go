@@ -66,7 +66,9 @@ func ErrorLogPath(dir string) string {
 // any existing content, then flushes any lines buffered before this session
 // started (e.g. startup dependency checks, GPU diagnostics) so they aren't
 // lost just because logging wasn't enabled yet when they were printed.
-// Returns the resolved path on success.
+// A session log that is still open is closed first, as CloseSessionLog
+// would, so its file is not left open and locked. Returns the resolved path
+// on success.
 func (svc *LogService) OpenSessionLog(dir string) (string, error) {
 	path := SessionLogPath(dir)
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -74,6 +76,7 @@ func (svc *LogService) OpenSessionLog(dir string) (string, error) {
 		return "", err
 	}
 	svc.mutex.Lock()
+	svc.closeSessionLogLocked()
 	svc.file = file
 	svc.sessionDir = dir
 	for _, line := range svc.preSession {
@@ -89,6 +92,11 @@ func (svc *LogService) OpenSessionLog(dir string) (string, error) {
 func (svc *LogService) CloseSessionLog() {
 	svc.mutex.Lock()
 	defer svc.mutex.Unlock()
+	svc.closeSessionLogLocked()
+}
+
+// closeSessionLogLocked is CloseSessionLog with svc.mutex already held.
+func (svc *LogService) closeSessionLogLocked() {
 	if svc.file != nil {
 		fmt.Fprintf(svc.file, "[%s] [SYSTEM] Log file closed.\n", time.Now().Format("15:04:05"))
 		svc.file.Close()

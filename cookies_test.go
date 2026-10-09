@@ -223,7 +223,6 @@ func TestSessionLogNamesOnlyTheCookieSource(t *testing.T) {
 // does (CR-16).
 func TestSessionLogHidesTheCookiesFilePath(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-download")
-	h.app.logSvc.CloseSessionLog() // the session opens its own, in the save folder
 	runs := useFakeArgs(t)
 	h.app.showDebug.Store(true) // the [debug] line also reaches the view
 	folder := filepath.Join(t.TempDir(), "PrivateCookieFolder")

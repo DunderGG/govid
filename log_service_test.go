@@ -90,6 +90,34 @@ func TestSessionLogLifecycle(t *testing.T) {
 	svc.CloseSessionLog()
 }
 
+// Opening a session log while another is open used to replace the file
+// without closing it, leaving it open (and locked, on Windows) until GoVid
+// exited.
+func TestOpenSessionLogClosesTheOneStillOpen(t *testing.T) {
+	first, second := t.TempDir(), t.TempDir()
+	svc := NewLogService()
+	if _, err := svc.OpenSessionLog(first); err != nil {
+		t.Fatalf("OpenSessionLog: %v", err)
+	}
+
+	if _, err := svc.OpenSessionLog(second); err != nil {
+		t.Fatalf("OpenSessionLog: %v", err)
+	}
+	defer svc.CloseSessionLog()
+
+	if content := readFile(t, SessionLogPath(first)); !strings.Contains(content, "[SYSTEM] Log file closed.") {
+		t.Errorf("first log has no closing marker, got:\n%s", content)
+	}
+	// Windows refuses to delete a file that is still open.
+	if err := os.Remove(SessionLogPath(first)); err != nil {
+		t.Errorf("first log cannot be removed: %v", err)
+	}
+	svc.WriteToFile("after the switch")
+	if content := readFile(t, SessionLogPath(second)); !strings.Contains(content, "after the switch") {
+		t.Errorf("second log does not get new lines, got:\n%s", content)
+	}
+}
+
 func TestSessionLogAppendsAcrossSessions(t *testing.T) {
 	dir := t.TempDir()
 	svc := NewLogService()

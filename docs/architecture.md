@@ -258,7 +258,7 @@ Every Fyne preference storage key is a named constant here (`prefSavedPath`, `pr
 
 Owns the session log file handle, two mutexes, daily rotation policy, the UI buffer-limit value, and a pre-session line buffer. Session and error files use `GoVid_log_YYYY-MM-DD.txt` and `GoVid_errors_YYYY-MM-DD.txt`; old daily files are retained rather than automatically deleted. `DownloaderApp` holds `logSvc *LogService`.
 
-- **`OpenSessionLog(dir string) (string, error)`** — opens (or appends to) the daily `GoVid_log_YYYY-MM-DD.txt` in `dir`. Returns the resolved path.
+- **`OpenSessionLog(dir string) (string, error)`** — opens (or appends to) the daily `GoVid_log_YYYY-MM-DD.txt` in `dir`. A session log still open is closed first, as `CloseSessionLog` would, so its file is not left open. Returns the resolved path.
 - **`CloseSessionLog()`** — writes a closing marker and closes the file.
 - **`WriteToFile(line string)`** — appends a timestamped line to the open session log.
 - **`WriteToErrorLog(line string)`** — appends a timestamped line to the daily `GoVid_errors_YYYY-MM-DD.txt`. Uses the session directory cached by `OpenSessionLog`; falls back to the executable directory when no session is active. Opens and closes the file on each call.
