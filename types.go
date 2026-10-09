@@ -330,9 +330,6 @@ type DownloaderApp struct {
 	// appendOutput); newDownloadRequest adds each file it passes.
 	cookiesMask cookiesPathMask
 
-	// The heartbeat (see startHeartbeat): heartbeatStop stops it, nil while
-	// it is not running. runOnUI replaces fyne.Do for its round trip in
-	// tests.
 	// settingsStore is where the settings live: settings.json beside GoVid in
 	// Portable Mode (portable), else the Fyne store in the user profile.
 	// settingsNote explains a fallback, logged at startup.
@@ -340,10 +337,14 @@ type DownloaderApp struct {
 	portable      bool
 	settingsNote  string
 
+	// The heartbeat (see startHeartbeat): heartbeatStop stops it, nil while
+	// it is not running, and heartbeatMu guards it. runOnUI replaces
+	// fyne.Do for its round trip in tests.
 	heartbeatMu   sync.Mutex
 	heartbeatStop func()
 	runOnUI       func(fn func())
-	keepHistory   atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
+
+	keepHistory atomic.Bool // true to record downloads in the history and warn about repeats; see recordHistory
 
 	// queue is the running (or last) session's download queue, shown in the
 	// Queue panel; yt-dlp's output readers report download progress to it.
