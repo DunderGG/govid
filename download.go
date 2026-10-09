@@ -189,9 +189,12 @@ func (app *DownloaderApp) resetSession() {
 
 // openSessionLog starts the on-disk session log, when "Save output to log
 // file" is checked, and returns the session configuration to write at its
-// top (see writeSessionConfig), or nil when there is no log file. Must be
-// called on the UI thread, since it reads the widgets.
+// top (see writeSessionConfig), or nil when there is no log file. Either
+// way it ends the log service's startup buffering, so a session without a
+// log file does not fill a later session's log. Must be called on the UI
+// thread, since it reads the widgets.
 func (app *DownloaderApp) openSessionLog(session downloadSession) *SessionConfig {
+	app.logSvc.EndStartup()
 	if !app.ui.download.saveLog.Checked {
 		return nil
 	}

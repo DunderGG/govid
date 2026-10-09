@@ -854,6 +854,7 @@ package "Log Service" #F0F8FF {
         +OpenSessionLog(dir string) : (string, error)
         +CloseSessionLog()
         +WriteToFile(line string)
+        +EndStartup()
         +WriteToErrorLog(line string)
         +Recent(n int) : []string
         +IsActive() : bool

@@ -72,10 +72,11 @@ group Session Initialisation
     App -> UI   : reset log, progress bar, status → "Initializing…"
     App -> UI   : setStatusIndicator("active")
     App -> App  : sessionFailed.Store(false)
+    App -> LS   : EndStartup()\n  — later lines written without a log file are not buffered
     alt saveLog.Checked
         App -> LS : OpenSessionLog(savePath)\n  — open timestamped session log
         LS  --> App : log path
-        LS  -> LS : flush bounded preSession lines\n  — startup diagnostics buffered before logging enabled
+        LS  -> LS : flush preSession lines (at most 500)\n  — startup diagnostics buffered before the first session
         App -> LS : WriteSessionConfig(cfg, appendOutput)
     end
     App -> App  : context.WithCancel(Background)\n  → queueCtx / stopQueue

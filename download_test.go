@@ -514,6 +514,29 @@ func TestSessionKeepsTheSettingsItStartedWith(t *testing.T) {
 	}
 }
 
+// A session run without a log file must not leave its output for the next
+// session's log, which still gets the startup lines (CR-09).
+func TestSessionLogHoldsOnlyStartupAndItsOwnLines(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	h.app.askDuplicate = func(context.Context, duplicatePrompt) duplicateDecision { return duplicateDownload }
+	h.app.logSvc.CloseSessionLog() // as at startup: no session log is open
+	h.app.logSvc.WriteToFile("[SYSTEM] startup check")
+
+	h.app.ui.download.entry.SetText("https://example.com/v")
+	h.app.ui.download.saveLog.SetChecked(false)
+	h.startAndWait(t)
+	h.app.ui.download.saveLog.SetChecked(true)
+	h.startAndWait(t)
+
+	content := readFile(t, SessionLogPath(h.saveDir))
+	if !strings.Contains(content, "startup check") {
+		t.Errorf("session log missing the startup line, got:\n%s", content)
+	}
+	if n := strings.Count(content, "DOWNLOAD COMPLETE"); n != 1 {
+		t.Errorf("session log holds %d download summaries, want only its own session's:\n%s", n, content)
+	}
+}
+
 func TestStartDownloadLabelsDownscaledVideoWithItsHeight(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-download") // the fake video is 720p
 	h.app.ui.download.quality.SetSelected(quality1080p)

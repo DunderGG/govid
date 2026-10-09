@@ -31,9 +31,15 @@ type LogService struct {
 	errorMutex  sync.Mutex
 	bufferLimit int
 	sessionDir  string   // anchored once at OpenSessionLog time; used by WriteToErrorLog
-	preSession  []string // timestamped lines written before a session log file exists; flushed by OpenSessionLog
+	preSession  []string // timestamped startup lines, kept until a session log opens; see WriteToFile
+	startupDone bool     // set by EndStartup; WriteToFile then stops adding to preSession
 	recent      []string // the latest recentLogLines lines written, for Copy diagnostics; see Recent
 }
+
+// preSessionMaxLines caps the lines LogService keeps for the next session
+// log while none is open. It is separate from the Log Buffer Limit, which
+// may be "Unlimited": the buffer only has to hold startup diagnostics.
+const preSessionMaxLines = 500
 
 // defaultLogBufferLimit is the number of log lines kept in the UI by default.
 // It is the integer form of the defaultLogLimit preference string.
@@ -92,9 +98,11 @@ func (svc *LogService) CloseSessionLog() {
 }
 
 // WriteToFile appends a timestamped line to the open session log. If no
-// session log is open yet, the formatted line is buffered instead (capped to
-// BufferLimit) and flushed by the next OpenSessionLog call, so nothing
-// printed before logging is enabled gets silently discarded.
+// session log is open and EndStartup has not been called, the formatted line
+// is buffered instead (the latest preSessionMaxLines are kept) and flushed by
+// the next OpenSessionLog call, so startup diagnostics printed before logging
+// is enabled are not lost. After EndStartup, a line written while no session
+// log is open belongs to no log file and is not kept.
 func (svc *LogService) WriteToFile(line string) {
 	svc.mutex.Lock()
 	defer svc.mutex.Unlock()
@@ -107,10 +115,24 @@ func (svc *LogService) WriteToFile(line string) {
 		fmt.Fprintln(svc.file, formatted)
 		return
 	}
-	svc.preSession = append(svc.preSession, formatted)
-	if len(svc.preSession) > svc.bufferLimit {
-		svc.preSession = svc.preSession[len(svc.preSession)-svc.bufferLimit:]
+	if svc.startupDone {
+		return
 	}
+	svc.preSession = append(svc.preSession, formatted)
+	if len(svc.preSession) > preSessionMaxLines {
+		svc.preSession = svc.preSession[len(svc.preSession)-preSessionMaxLines:]
+	}
+}
+
+// EndStartup stops WriteToFile from buffering lines for the next session
+// log. It is called when a download session starts, so a later session log
+// holds its own lines plus the startup lines, not the output of earlier
+// sessions that ran without a log file. Lines already buffered are kept
+// until OpenSessionLog flushes them.
+func (svc *LogService) EndStartup() {
+	svc.mutex.Lock()
+	defer svc.mutex.Unlock()
+	svc.startupDone = true
 }
 
 // WriteToErrorLog appends a timestamped line to the daily error log. It uses

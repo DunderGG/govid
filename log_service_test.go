@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"math"
 	"os"
@@ -137,28 +138,65 @@ func TestPreSessionLinesAreFlushedOnOpen(t *testing.T) {
 	}
 }
 
-func TestPreSessionBufferIsCappedToBufferLimit(t *testing.T) {
+// The pre-session buffer has its own cap, so a Log Buffer Limit of
+// "Unlimited" does not let it grow for as long as GoVid runs (CR-09).
+func TestPreSessionBufferIsCapped(t *testing.T) {
+	for _, limit := range []int{3, ParseBufferLimit(logLimitUnlimited)} {
+		dir := t.TempDir()
+		svc := NewLogService()
+		svc.SetBufferLimit(limit)
+
+		total := preSessionMaxLines + 10
+		for i := range total {
+			svc.WriteToFile(fmt.Sprintf("line-%d.", i))
+		}
+		if _, err := svc.OpenSessionLog(dir); err != nil {
+			t.Fatalf("OpenSessionLog: %v", err)
+		}
+		svc.CloseSessionLog()
+
+		content := readFile(t, SessionLogPath(dir))
+		if n := strings.Count(content, "] line-"); n != preSessionMaxLines {
+			t.Errorf("limit %d: flushed %d buffered lines, want %d", limit, n, preSessionMaxLines)
+		}
+		if strings.Contains(content, "line-9.") {
+			t.Errorf("limit %d: oldest lines should have been dropped", limit)
+		}
+		if newest := fmt.Sprintf("line-%d.", total-1); !strings.Contains(content, newest) {
+			t.Errorf("limit %d: newest line %q missing", limit, newest)
+		}
+	}
+}
+
+// After EndStartup, lines written while no session log is open are not kept
+// for the next one, but the startup lines buffered before it still are.
+func TestEndStartupStopsBuffering(t *testing.T) {
 	dir := t.TempDir()
 	svc := NewLogService()
-	svc.SetBufferLimit(3)
 
-	for _, line := range []string{"line-1", "line-2", "line-3", "line-4", "line-5"} {
-		svc.WriteToFile(line)
-	}
+	svc.WriteToFile("startup check")
+	svc.EndStartup()
+	svc.WriteToFile("unlogged session")
 	if _, err := svc.OpenSessionLog(dir); err != nil {
 		t.Fatalf("OpenSessionLog: %v", err)
+	}
+	svc.WriteToFile("logged session")
+	svc.CloseSessionLog()
+	svc.WriteToFile("between sessions")
+	if _, err := svc.OpenSessionLog(dir); err != nil {
+		t.Fatalf("second OpenSessionLog: %v", err)
 	}
 	svc.CloseSessionLog()
 
 	content := readFile(t, SessionLogPath(dir))
-	for _, dropped := range []string{"line-1", "line-2"} {
-		if strings.Contains(content, dropped) {
-			t.Errorf("oldest line %q should have been dropped, got:\n%s", dropped, content)
+	for _, want := range []string{"startup check", "logged session"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("log missing %q, got:\n%s", want, content)
 		}
 	}
-	for _, kept := range []string{"line-3", "line-4", "line-5"} {
-		if !strings.Contains(content, kept) {
-			t.Errorf("newest line %q missing, got:\n%s", kept, content)
+	for _, unwanted := range []string{"unlogged session", "between sessions"} {
+		if strings.Contains(content, unwanted) {
+			t.Errorf("log holds %q, written while no session log was open:\n%s", unwanted, content)
 		}
 	}
 }
