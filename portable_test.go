@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -64,6 +65,44 @@ func TestFileStoreSavesShortlyAfterAChange(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	if !strings.Contains(string(data), `"format": "MKV"`) || changes != 1 {
 		t.Errorf("settings.json = %s; %d change(s) reported", data, changes)
+	}
+}
+
+// Two flushes at once, such as the save timer's and the one on quit, must
+// not leave the older values in the file (CR-12).
+func TestFileStoreFlushesWriteInOrder(t *testing.T) {
+	path := filepath.Join(t.TempDir(), settingsFileName)
+	store, _ := newFileStore(path)
+	firstWrite := make(chan struct{}) // closed once the first write has started
+	release := make(chan struct{})    // lets the first write finish
+	var writes atomic.Int32
+	store.write = func(path string, data []byte) error {
+		if writes.Add(1) == 1 {
+			close(firstWrite)
+			<-release // a slow write, e.g. while an antivirus scans the file
+		}
+		return writeFileAtomic(path, data)
+	}
+
+	store.SetString("format", "older")
+	older := make(chan error)
+	go func() { older <- store.Flush() }()
+	<-firstWrite
+	store.SetString("format", "newer")
+	newer := make(chan error)
+	go func() { newer <- store.Flush() }()
+	// Without writeMu the newer flush writes now, before the older one
+	// finishes; with it, it waits for the older one.
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+	for _, done := range []chan error{older, newer} {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if data, _ := os.ReadFile(path); !strings.Contains(string(data), `"format": "newer"`) {
+		t.Errorf("settings.json = %s, want the newer value", data)
 	}
 }
 

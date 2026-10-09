@@ -366,6 +366,7 @@ package "Download Engine" #FFF8F0 {
 
     class fileStore <<service>> {
         -path : string
+        -writeMu : sync.Mutex
         -values : map[string]any
         --
         +Flush() : error

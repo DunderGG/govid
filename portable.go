@@ -44,7 +44,13 @@ const fileStoreSaveDelay = 300 * time.Millisecond
 // fileStore is a fyne.Preferences kept in a JSON file. Values are stored as
 // JSON numbers, booleans, strings, and lists of them.
 type fileStore struct {
-	path string
+	path  string
+	write func(path string, data []byte) error // writeFileAtomic; replaced in tests
+
+	// writeMu is held by Flush from taking the values until the file is
+	// written, so two flushes cannot write out of order: without it, an
+	// older snapshot written last would undo the newer one.
+	writeMu sync.Mutex
 
 	mu        sync.Mutex
 	values    map[string]any
@@ -59,7 +65,7 @@ var _ fyne.Preferences = (*fileStore)(nil)
 // file that cannot be read or parsed gives an empty store and an error;
 // it is replaced at the next save.
 func newFileStore(path string) (*fileStore, error) {
-	store := &fileStore{path: path, values: map[string]any{}}
+	store := &fileStore{path: path, write: writeFileAtomic, values: map[string]any{}}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return store, nil
@@ -74,8 +80,13 @@ func newFileStore(path string) (*fileStore, error) {
 	return store, nil
 }
 
-// Flush writes the settings now, if a save is pending.
+// Flush writes the settings now, if a save is pending. It may run on the
+// save timer's goroutine and on the caller's at once (quitting, say), so it
+// holds writeMu throughout: flushes write one at a time, in the order they
+// took the values, and the file ends up with the latest.
 func (store *fileStore) Flush() error {
+	store.writeMu.Lock()
+	defer store.writeMu.Unlock()
 	store.mu.Lock()
 	if store.timer == nil {
 		store.mu.Unlock()
@@ -88,7 +99,7 @@ func (store *fileStore) Flush() error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(store.path, append(data, '\n'))
+	return store.write(store.path, append(data, '\n'))
 }
 
 // flushInBackground is the delayed save.
