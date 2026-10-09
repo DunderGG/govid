@@ -25,7 +25,7 @@ group Startup
     App -> UIM  : dlApp.uiManager.createUI()\n  — build layout, wire callbacks
     App -> UIM  : followSystemTheme(settings)\n  — re-apply the System theme when the OS switches light / dark
     App -> App  : reportSettingsLocation()  — log where settings are kept (portable or not)
-    App -> OS   : removeOldTools()  — delete the .old copies a tool update left behind
+    App -> OS   : removeOldTools()  — delete the .old and .new copies a tool update left behind\n  (a .old whose tool is missing is moved back and logged)
     App -> UIM  : dlApp.uiManager.checkDependencies()
     UIM -> OS   : DependencyService.Check()\n  — Stat(yt-dlp), Stat(ffmpeg)
     OS  --> UIM : found / missing

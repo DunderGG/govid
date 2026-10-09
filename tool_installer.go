@@ -448,15 +448,23 @@ func removeStaged(staged []stagedFile) {
 
 // removeOldTools deletes the .old and .new files an install left in bin/,
 // for example when the old tool was still running. It is called at
-// startup.
-func removeOldTools(deps *DependencyService) {
+// startup. A .old file without its tool is the only copy: GoVid stopped
+// between swap's two renames. It is moved back instead, and its path is
+// returned so the caller can report it.
+func removeOldTools(deps *DependencyService) (restored []string) {
 	for _, tool := range installableTools {
 		for _, file := range tool.files {
 			final := deps.LocalPath(file)
+			if !fileExists(final) && fileExists(final+".old") {
+				if err := os.Rename(final+".old", final); err == nil {
+					restored = append(restored, final)
+				}
+			}
 			os.Remove(final + ".old")
 			os.Remove(final + ".new")
 		}
 	}
+	return restored
 }
 
 // extractNamed writes the ZIP entry whose file name is name, in whatever

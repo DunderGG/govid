@@ -362,7 +362,7 @@ func TestRemoveOldTools(t *testing.T) {
 		}
 	}
 
-	removeOldTools(deps)
+	restored := removeOldTools(deps)
 
 	for _, name := range []string{"ffmpeg", "deno"} {
 		if !fileExists(deps.LocalPath(name)) {
@@ -373,6 +373,30 @@ func TestRemoveOldTools(t *testing.T) {
 				t.Errorf("%s%s was left", name, suffix)
 			}
 		}
+	}
+	if len(restored) > 0 {
+		t.Errorf("restored %q, want nothing", restored)
+	}
+}
+
+// GoVid stopped between swap's two renames: the tool exists only as .old,
+// beside the staged .new.
+func TestRemoveOldToolsRestoresAToolLeftOnlyAsOld(t *testing.T) {
+	deps := &DependencyService{binDir: t.TempDir()}
+	final := deps.LocalPath("ffprobe")
+	os.WriteFile(final+".old", []byte("old ffprobe"), 0644)
+	os.WriteFile(final+".new", []byte("new ffprobe"), 0644)
+
+	restored := removeOldTools(deps)
+
+	if got, _ := os.ReadFile(final); string(got) != "old ffprobe" {
+		t.Errorf("ffprobe = %q, want the .old copy moved back", got)
+	}
+	if fileExists(final+".old") || fileExists(final+".new") {
+		t.Error("a .old or .new file was left")
+	}
+	if len(restored) != 1 || restored[0] != final {
+		t.Errorf("restored = %q, want [%q]", restored, final)
 	}
 }
 

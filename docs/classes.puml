@@ -63,6 +63,7 @@ package "Application Core" #F0F4F8 {
         +RequestCancel() : bool
         +StopSession()
         +Shutdown(quit func())
+        -quitWarning() : string
         +startDownload()
         -checkURLs(ctx, session) : []queueItem
         -expandPlaylist(ctx, url, info) : []queueItem

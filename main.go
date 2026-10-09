@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -172,7 +173,10 @@ func main() {
 	dlApp.uiManager.createUI()
 	dlApp.uiManager.followSystemTheme(mainApp.Settings())
 	dlApp.reportSettingsLocation()
-	removeOldTools(dlApp.depSvc)
+	for _, path := range removeOldTools(dlApp.depSvc) {
+		dlApp.appendOutput(fmt.Sprintf("[WARNING] An unfinished install left %s only as %s.old; the old copy was put back.",
+			filepath.Base(path), filepath.Base(path)), colWarning)
+	}
 	dlApp.uiManager.checkDependencies()
 	dlApp.checkTools()
 	dlApp.startUpdateChecks(dlApp.prefSvc.Load().CheckUpdates)
@@ -180,13 +184,14 @@ func main() {
 	dlApp.cleanUpAfterUpdate()
 	dlApp.offerQueueRestore()
 
-	// Show a confirmation dialog if a download or post-processing job is
-	// active. Quitting then stops the job and waits for it to clean up.
+	// Show a confirmation dialog if a download, post-processing job, tool
+	// install, or GoVid update is active. Quitting then stops a session and
+	// waits for it to clean up.
 	mainWindow.SetCloseIntercept(func() {
-		if dlApp.isRunning.Load() {
+		if warning := dlApp.quitWarning(); warning != "" {
 			dialog.ShowConfirm(
 				"Job in Progress",
-				"A download or post-processing job is currently running.\nAre you sure you want to quit?",
+				warning,
 				func(confirmed bool) {
 					if confirmed {
 						dlApp.Shutdown(mainApp.Quit)

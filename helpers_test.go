@@ -74,6 +74,31 @@ func TestSetCancelFuncNilClears(t *testing.T) {
 	}
 }
 
+func TestQuitWarningCoversInstallsAndUpdates(t *testing.T) {
+	tests := []struct {
+		name string
+		set  func(app *DownloaderApp)
+		want string // a word the warning contains; "" for no warning
+	}{
+		{"idle", func(*DownloaderApp) {}, ""},
+		{"session", func(app *DownloaderApp) { app.isRunning.Store(true) }, "download"},
+		{"tool install", func(app *DownloaderApp) { app.installing.Store(true) }, "tool"},
+		{"GoVid update", func(app *DownloaderApp) { app.updating.Store(true) }, "GoVid"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := &DownloaderApp{}
+			tt.set(app)
+
+			got := app.quitWarning()
+
+			if tt.want == "" && got != "" || !strings.Contains(got, tt.want) {
+				t.Errorf("quitWarning() = %q, want one mentioning %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSetProgressClamps(t *testing.T) {
 	tests := []struct {
 		in   float64

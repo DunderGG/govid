@@ -74,6 +74,22 @@ func (app *DownloaderApp) StopSession() {
 	}
 }
 
+// quitWarning returns what closing the main window would interrupt, for its
+// confirmation dialog, or "" when nothing is running. A tool install or a
+// GoVid update stopped between its renames can leave a file only under
+// its .old name (see removeOldTools).
+func (app *DownloaderApp) quitWarning() string {
+	switch {
+	case app.isRunning.Load():
+		return "A download or post-processing job is currently running.\nAre you sure you want to quit?"
+	case app.installing.Load():
+		return "A tool is being installed or updated.\nQuitting now may leave it unfinished. Are you sure you want to quit?"
+	case app.updating.Load():
+		return "GoVid is being updated.\nQuitting now may leave the update unfinished. Are you sure you want to quit?"
+	}
+	return ""
+}
+
 // shutdownTimeout bounds how long Shutdown waits for a running session to
 // stop before quitting anyway.
 const shutdownTimeout = 5 * time.Second
