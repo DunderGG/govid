@@ -359,7 +359,8 @@ Each file should have a single clear responsibility, stated in its package-level
 | `download_engine.go` | yt-dlp arg building and process execution |
 | `pp_engine.go` | FFmpeg post-processing worker pool |
 | `preference_service.go` | Preference key constants, defaults, Load/Save/Reset |
-| `helpers.go` | Thread-safe UI updates and preference translation |
+| `helpers.go` | Thread-safe UI updates |
+| `ui_snapshot.go` | Translation between the widgets and plain value structs (preferences, post-processing settings, session configuration) |
 
 ---
 

@@ -12,7 +12,7 @@ It provides a graphical interface, real-time progress feedback, optional FFmpeg 
 
 | Property | Value |
 |---|---|
-| Language | Go 1.24+ |
+| Language | Go 1.26+ |
 | UI toolkit | [Fyne v2](https://fyne.io/) |
 | External tools | `yt-dlp`, `ffmpeg`, `ffprobe` |
 | Platforms | Windows, Linux |
@@ -89,9 +89,10 @@ govid/
 ├── logscanner.go           DownloadEngine.watchOutput (scanStdout / scanStderr) / parseProgress — yt-dlp stdout/stderr parsing goroutines
 │
 ├── ── UI ──────────────────────────────────────────────────────────
-├── ui.go                   Thin DownloaderApp delegates to UIManager's secondary windows; shared roundedCard/accentBar helpers
+├── ui.go                   The clearTerminalOutput delegate; shared layout helpers (roundedCard, accentBar, sectionHeader, sectionDivider, fixedWidth)
 ├── options.go              Named labels and option lists for every enum-like selector (format, quality, theme, PP modes…)
-├── helpers.go              Thread-safe UI updates, applyPreferencesToWidgets, cancellation callback guard, GPU detection kickoff
+├── helpers.go              Thread-safe UI updates, cancellation callback guard, GPU detection kickoff
+├── ui_snapshot.go          Widgets ↔ value structs: snapshotPreferences, newPostProcessSettings, newSessionConfig, and applyPreferencesToWidgets with its three groups (applyMainWindowPrefs, applyGeneralPrefs, applyPostProcessPrefs)
 ├── throttle.go             latestValueThrottle — applies the newest of a stream of values at most once per interval (status label)
 ├── diagnostics.go          Help → Copy diagnostics (diagnosticsReport, anonymizer), the Debug Output heartbeat (UI round trip, goroutines, tools running), trackTool, markLoop
 │
@@ -175,7 +176,7 @@ Widgets are wired with callbacks in `UIManager.createUI()` and accessed through 
 
 Owns the primary window reference (`mainWindow`) plus the singleton secondary windows (About, Help, History, Preferences, Post-Processing, Components). Calling a `show*` method re-focuses an already-open window rather than opening a duplicate, via the shared `focusOrCreate`/`onWindowClosed` helpers. `UIManager` holds no direct service references — every service access is bridged through injected callbacks (`onLoadHistory`, `onCheckDependencies`, `onSavePreferences`, etc.), wired once in `newDownloaderApp`.
 
-Beyond the five `show*` methods, `UIManager` also owns:
+Beyond its `show*` methods, `UIManager` also owns:
 - **`createUI()`** — builds the main window layout, split into focused helpers (`buildHeader`, `configureEntryMode`, `wireToggleHandlers`, `wireActionButtons`, `buildInputCard` (with `buildURLRows`, `buildSelectorsRow`, and `buildTrimRow`), `buildStatusCard`, `buildLogPane`, `buildFooter`).
 - **`createMainMenu()`** — builds the menu bar.
 - **`showLoadURLFile` / `loadURLList`, `pasteURLs`, `handleDrop`** (`url_input.go`) — the "Load from file…" button, the paste button, and the window's drop handler (`SetOnDropped`, set in `createUI`). All go through `addURLs`, which appends to the URL field without duplicates (`mergeURLs`) and switches on batch mode when the field then holds more than one URL. `parseURLList` skips blank lines, `#` comments (which `collectURLs` also skips in batch mode), and lines that are not http(s) URLs (`looksLikeURL`), and the log says what was skipped. Paste takes the clipboard only if every non-blank line is a URL. A dropped `.txt` is loaded as a list, and a `.url` or `.desktop` shortcut adds its `URL=` line (`shortcutURL`). Links dragged straight from a browser do not arrive on Windows, because GLFW accepts only dropped files there (`WM_DROPFILES`).
@@ -183,7 +184,7 @@ Beyond the five `show*` methods, `UIManager` also owns:
 - **`checkDependencies`, `runUpdateInUI`** — thin delegates to the injected `onCheckDependencies`/`onUpdateYtDlp` callbacks for the startup tool check and the "Update yt-dlp" menu action. `runUpdateInUI` shows an error when `DownloaderApp.updateYtDlp` refuses; `runUpdateThen` sets up the status and calls `onRunUpdate`.
 - **`appendLogLine` / `flushLog`** (`log_view.go`) — batched log rendering. `appendLogLine` is safe to call from any goroutine: it queues the line under `logMu` and, for the first queued line, arms a `logFlushInterval` (100 ms) timer. `flushLog` then renders every queued line in a single `fyne.Do`: it adds the lines, trims once to `screenLogLimit` (the Log Buffer Limit from `onLogBufferLimit`, but never more than `maxScreenLogLines` = 5000, even for "Unlimited"), refreshes once, and scrolls to the bottom only if the view was already there (`isScrolledToBottom`), so a user who scrolled up is not pulled back down. `finishSessionUI` calls `flushLog` directly so the session summary appears at once, and `clearTerminalOutput` drops lines still queued (see §4.7).
 
-`ui.go` is what remains outside `UIManager`: thin one-line `DownloaderApp` delegates to the `show*` methods above (`showHistory`, `showPostProcessing`, `showPreferences`, `showConfigHelp`), plus the shared `roundedCard`/`accentBar` container helpers `UIManager` uses when building widgets.
+`ui.go` is what remains outside `UIManager`: the `DownloaderApp.clearTerminalOutput` delegate `download.go` uses, plus the shared layout helpers `UIManager` uses when building widgets (`roundedCard`, `accentBar`, `sectionHeader`, `sectionDivider`, `fixedWidth`). The menu and the shortcuts call the `show*` methods on `UIManager` directly.
 
 ---
 
@@ -254,7 +255,7 @@ Every Fyne preference storage key is a named constant here (`prefSavedPath`, `pr
 
 **Portable Mode** (`portable.go`). `newDownloaderApp` calls `chooseSettingsStore` before reading any setting: with a `GoVid.portable` marker beside the executable (`executableDir`) and a folder it can write to, the store is a `fileStore`, a `fyne.Preferences` kept in `settings.json` there, saved atomically `fileStoreSaveDelay` (300 ms) after a burst of changes and flushed on quit (`flushSettings`). `Flush` holds `writeMu` from taking the values until the file is written, so the timer's flush and the one on quit cannot write out of order and leave the older values; otherwise it is the Fyne store, which is then the only one touched. A marker in a folder GoVid cannot write to falls back to the Fyne store with a startup warning (`settingsNote`). `PreferenceService` and `ReleaseService` take whichever store it chose. Preferences → **Portable Mode** acts at once (`onPortableChanged` → `setPortable`): `copySettings` writes every preference in use (`prefSvc.Load()`, through `PreferenceService.write`, which ignores "Save preferences") and the presets into the other store, the marker is created or deleted, and GoVid offers to restart (`restart`: `startDetached` and `Shutdown`).
 
-`AppPreferences` is a plain value struct with no widget references. `applyPreferencesToWidgets(AppPreferences)` in `helpers.go` is the single translator from struct → widget state. `UIManager.savePreferences(path)` reads widget state and delegates to `prefSvc.Save`; `DownloaderApp.savePreferences` in `preference_service.go` is a one-line delegate to it. `UIManager.resetPreferences()` (data + log-buffer reset) and `UIManager.rebuildUI()` (dark theme + `createUI`) together handle a full application reset; separating them lets callers invoke only what they need.
+`AppPreferences` is a plain value struct with no widget references. `applyPreferencesToWidgets(AppPreferences)` in `ui_snapshot.go` is the single translator from struct → widget state, made of three groups (`applyMainWindowPrefs`, `applyGeneralPrefs`, `applyPostProcessPrefs`) that the Preferences and Post-Processing windows also call on their own when they open; `snapshotPreferences` translates the other way. `UIManager.savePreferences(path)` (`preferences_window.go`) snapshots widget state and delegates to `prefSvc.Save`; `startDownload` calls it directly. `UIManager.restoreDefaults()` handles a full application reset: it clears the store (`prefSvc.Reset`), applies the defaults to the widgets and the runtime preferences (log-buffer limit, Debug Output, history), applies the default theme, and rebuilds the main window (`createUI`).
 
 ---
 
@@ -366,7 +367,7 @@ Looks up the latest release of a GitHub repository through `GET /repos/<owner>/<
 
 `update_check.go` holds the `DownloaderApp` side. `startUpdateChecks(enabled)` runs `checkYtDlpUpdate` in the background after `checkDependencies` at startup, when the "Check for updates on startup" preference (`prefCheckUpdates`, on by default) is set. When the installed yt-dlp (`DependencyService.Version`) is older than the latest release, it logs one line and calls `UIManager.showNotice` with an "Update now" button wired to `runUpdateInUI`. A check that cannot complete is written to the log file only. `ytDlpVersions()` returns the installed and latest versions (or "unknown") for the Update yt-dlp confirmation dialog and the About window, which fetch them off the UI thread.
 
-**GoVid's own updates:** `checkGoVidUpdate` runs after the yt-dlp check, against `DunderGG/govid`, with the same daily cache and preference. `isNewerRelease(version, tag)` compares the build's `main.version` with the release tag using `compareVersions`, not semver, because GoVid's tags are dates such as `2026.09.17`. A `dev` build never prompts and does not ask GitHub. A newer release logs one line and shows a notice whose "What's new" button opens `UIManager.showGoVidRelease` (`release_dialog.go`): the release notes rendered from Markdown, plus an "Open download page" button that calls `fyne.CurrentApp().OpenURL(html_url)`. Tools → "Check for GoVid updates" (`checkForGoVidUpdates` → `DownloaderApp.checkGoVidRelease`) always asks GitHub (`maxAge` 0) and reports a newer release, "up to date", a development build, or a rate limit. Updating in place (download, verify, swap the running `.exe`) is not implemented. `main.version` comes from the git tag on the built commit: `build.bat` and `build.sh` pass `git describe --tags --exact-match` (without a leading `v`) to `-X main.version`, and fall back to `dev`.
+**GoVid's own updates:** `checkGoVidUpdate` runs after the yt-dlp check, against `DunderGG/govid`, with the same daily cache and preference. `isNewerRelease(version, tag)` compares the build's `main.version` with the release tag using `compareVersions`, not semver, because GoVid's tags are dates such as `2026.09.17`. A `dev` build never prompts and does not ask GitHub. A newer release logs one line and shows a notice whose "What's new" button opens `UIManager.showGoVidRelease` (`release_dialog.go`): the release notes rendered from Markdown, plus an "Open download page" button that calls `fyne.CurrentApp().OpenURL(html_url)`. Tools → "Check for GoVid updates" (`checkForGoVidUpdates` → `DownloaderApp.checkGoVidRelease`) always asks GitHub (`maxAge` 0) and reports a newer release, "up to date", a development build, or a rate limit. `main.version` comes from the git tag on the built commit: `build.bat` and `build.sh` pass `git describe --tags --exact-match` (without a leading `v`) to `-X main.version`, and fall back to `dev`.
 
 **Updating in place** (`self_update.go`). The release dialog shows **Update now** when `DownloaderApp.canSelfUpdate` holds: a release build (`main.buildType == "release"`, injected only by the release script, so builds from `build.bat`/`build.sh` never replace themselves), on Windows, with no session or update running, and with the release's `GoVid_<tag>_Ready.zip` and `SHA256SUMS` among its assets (`findUpdateAssets`). Releases made before checksums were published only get "Open download page". `runSelfUpdate` disables the Download button and runs `SelfUpdater` in the background. `Download` fetches `SHA256SUMS` (`parseSHA256Sums` reads the `<hash>  <name>` lines) and then the ZIP into a new temp folder, hashing it as it streams, with progress in the status label. On a mismatch it returns `errChecksumMismatch` and keeps the ZIP for inspection. `Install` checks that the folder is writable (`dirWritable`, as the yt-dlp updater does) and extracts only `GoVid.exe` as `GoVid.exe.new`, accepting backslash entry names because `Compress-Archive` writes them. It then renames the running `GoVid.exe` to `GoVid.exe.old` (Windows allows renaming a running executable, not overwriting it), moves `.new` into place, and starts it. Any failure puts the old executable back. On success the app quits through `Shutdown`. At startup, `cleanUpAfterUpdate` deletes `GoVid.exe.old`, retrying for a while, because the previous process may still be closing and Windows refuses to delete a running executable.
 
@@ -420,8 +421,8 @@ Startup:
 User saves Prefs window:
   widget state → savePreferences(path) → AppPreferences → prefSvc.Save()
 
-User resets Prefs:
-  prefSvc.Reset() → createUI() → applyPreferencesToWidgets(prefSvc.Load())
+User resets Prefs (restoreDefaults):
+  prefSvc.Reset() → applyPreferencesToWidgets(prefSvc.Load()) → applyRuntimePrefs() → applyTheme() → createUI()
 ```
 
 ---
