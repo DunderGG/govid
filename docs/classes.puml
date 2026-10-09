@@ -104,6 +104,7 @@ package "Application Core" #F0F4F8 {
         -applied : T
         --
         +Set(value T)
+        +Replace(old, value T) : bool
         +Flush()
     }
 

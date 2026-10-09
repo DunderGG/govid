@@ -54,6 +54,24 @@ func newLatestValueThrottle[T comparable](interval time.Duration, apply func(T))
 func (throttle *latestValueThrottle[T]) Set(value T) {
 	throttle.mu.Lock()
 	defer throttle.mu.Unlock()
+	throttle.setLocked(value)
+}
+
+// Replace sets value, as Set does, only if the newest value set is old,
+// and reports whether it did. It undoes a temporary value, such as a status
+// shown during a check, without overwriting a value set since.
+func (throttle *latestValueThrottle[T]) Replace(old, value T) bool {
+	throttle.mu.Lock()
+	defer throttle.mu.Unlock()
+	if !throttle.hasPending || throttle.pending != old {
+		return false
+	}
+	throttle.setLocked(value)
+	return true
+}
+
+// setLocked is Set's body; the caller holds mu.
+func (throttle *latestValueThrottle[T]) setLocked(value T) {
 	throttle.pending, throttle.hasPending = value, true
 	if throttle.armed {
 		return

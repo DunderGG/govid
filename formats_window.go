@@ -258,6 +258,10 @@ func (picks *formatPicks) take(url string) string {
 	return pick
 }
 
+// checkingFormatsStatus is the status while Formats… probes a URL outside a
+// session.
+const checkingFormatsStatus = "Status: Checking the formats…"
+
 // showFormatsForURL is the Formats… button next to the URL field: it
 // probes the single URL there, off the UI thread, and shows its formats;
 // a pick is kept for that URL until it is downloaded. Must be called on
@@ -275,11 +279,26 @@ func (app *DownloaderApp) showFormatsForURL() {
 	url := urls[0]
 	req := app.newDownloadRequest(url, strings.TrimSpace(app.ui.download.path.Text), "", "")
 	req.FormatPick = app.formatPicks.get(url)
-	app.updateStatus("Status: Checking the formats…")
+	app.probeFormatsForURL(url, req)
+}
+
+// probeFormatsForURL probes req off the UI thread and shows its formats, or
+// why they could not be listed. It shows checkingFormatsStatus meanwhile,
+// unless a session is running: the button works during a session too, and
+// the session's status must stay. The returned channel is closed once the
+// formats or the error are shown. Must be called on the UI thread.
+func (app *DownloaderApp) probeFormatsForURL(url string, req DownloadRequest) <-chan struct{} {
+	if !app.isRunning.Load() {
+		app.updateStatus(checkingFormatsStatus)
+	}
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		info, err := app.newDownloadEngine().ProbeVideo(context.Background(), req)
-		app.updateStatus("Status: Idle")
-		fyne.Do(func() {
+		// Back to Idle only if nothing has replaced the checking status, such
+		// as a session started during the probe.
+		app.statusThrottle.Replace(checkingFormatsStatus, "Status: Idle")
+		fyne.DoAndWait(func() {
 			if err != nil {
 				dialog.ShowError(fmt.Errorf("could not list the formats: %w", err), app.window)
 				return
@@ -290,6 +309,7 @@ func (app *DownloaderApp) showFormatsForURL() {
 			})
 		})
 	}()
+	return done
 }
 
 // showFormatsForItem is the Queue panel's Formats… on a waiting row: it

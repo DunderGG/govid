@@ -113,3 +113,31 @@ func TestThrottleFlushAppliesNow(t *testing.T) {
 		t.Errorf("applied = %q, want no second apply", *applied)
 	}
 }
+
+func TestThrottleReplaceOnlyReplacesTheValueGiven(t *testing.T) {
+	throttle, _, applied := newTestThrottle()
+
+	if throttle.Replace("checking", "idle") {
+		t.Error("Replace before any Set = true, want false")
+	}
+
+	throttle.Set("checking")
+	if !throttle.Replace("checking", "idle") {
+		t.Error("Replace of the newest value = false, want true")
+	}
+	throttle.Flush()
+	if !slices.Equal(*applied, []string{"idle"}) {
+		t.Errorf("applied = %q, want the replacement", *applied)
+	}
+
+	// A value set since, such as a session's status, stays.
+	throttle.Set("checking")
+	throttle.Set("downloading")
+	if throttle.Replace("checking", "idle") {
+		t.Error("Replace of an older value = true, want false")
+	}
+	throttle.Flush()
+	if !slices.Equal(*applied, []string{"idle", "downloading"}) {
+		t.Errorf("applied = %q, want the newer value kept", *applied)
+	}
+}

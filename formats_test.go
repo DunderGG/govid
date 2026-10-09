@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
@@ -246,5 +247,49 @@ func TestWillDownloadMatchesWhatYtDlpDownloads(t *testing.T) {
 	got := regexp.MustCompile(`Downloading 1 format\(s\): (\S+)`).FindStringSubmatch(logs)
 	if will == nil || got == nil || will[1] != got[1] {
 		t.Errorf("Will download %v, yt-dlp downloaded %v:\n%s", will, got, logs)
+	}
+}
+
+// probeFormatsAndWait runs probeFormatsForURL on the URL field's URL and
+// returns the status label right after it starts and once it has shown the
+// formats.
+func probeFormatsAndWait(t *testing.T, h *downloadHarness) (during, after string) {
+	t.Helper()
+	url := "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+	req := h.app.newDownloadRequest(url, h.saveDir, "", "")
+
+	shown := h.app.probeFormatsForURL(url, req)
+	h.app.statusThrottle.Flush()
+	during = h.app.ui.download.status.Text
+	select {
+	case <-shown:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the formats were not shown")
+	}
+	h.app.statusThrottle.Flush()
+	return during, h.app.ui.download.status.Text
+}
+
+func TestFormatsShowsItsStatusOutsideASession(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-formats")
+
+	during, after := probeFormatsAndWait(t, h)
+
+	if during != checkingFormatsStatus || after != "Status: Idle" {
+		t.Errorf("status = %q during the probe and %q after, want %q and Status: Idle", during, after, checkingFormatsStatus)
+	}
+}
+
+func TestFormatsKeepsARunningSessionsStatus(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-formats")
+	const sessionStatus = "Status: Downloading 1 of 2…"
+	h.app.isRunning.Store(true)
+	h.app.updateStatus(sessionStatus)
+	h.app.statusThrottle.Flush()
+
+	during, after := probeFormatsAndWait(t, h)
+
+	if during != sessionStatus || after != sessionStatus {
+		t.Errorf("status = %q during the probe and %q after, want the session's %q", during, after, sessionStatus)
 	}
 }
