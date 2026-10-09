@@ -408,9 +408,12 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 	// A live stream has no size to check; recordingCallback watches the
 	// free space while it records instead.
 	if !req.Live {
+		// The check reserves the space it approves before promptMu is
+		// released, so a download checking at the same time counts it.
 		app.promptMu.Lock()
-		decision := app.checkDiskSpace(queueCtx, req, session.hasPostProcess(), item, queue.HasWaiting(), continueLowSpace)
+		decision, releaseSpace := app.checkDiskSpace(queueCtx, req, session.hasPostProcess(), item, queue.HasWaiting(), continueLowSpace)
 		app.promptMu.Unlock()
+		defer releaseSpace()
 		switch decision {
 		case spaceSkip:
 			app.appendOutput(fmt.Sprintf("[SYSTEM] Skipped %s: not enough disk space.", item.url), colWarning)
@@ -422,9 +425,6 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 			app.setStatusIndicator(StatusCanceled)
 			queue.SetStatus(id, queueSkipped)
 			return nil, true
-		}
-		if needed, known := downloadNeeds(item, req, session.hasPostProcess()); known {
-			defer app.reserveSpace(needed)()
 		}
 	}
 

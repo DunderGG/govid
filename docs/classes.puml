@@ -71,7 +71,8 @@ package "Application Core" #F0F4F8 {
         -checkItem(ctx, session, item, position, total) : queueItem
         -runQueue(queueCtx, session, queue *QueueModel) : []string
         -downloadItem(queueCtx, session, queue, id, item, batch, continueAll) : ([]string, bool)
-        -checkDiskSpace(ctx, session, item, moreQueued, continueAll) : diskSpaceDecision
+        -checkDiskSpace(ctx, req, postProcess, item, moreQueued, continueAll) : (diskSpaceDecision, release func())
+        -decideDiskSpace(ctx, req, item, needed, moreQueued, continueAll) : diskSpaceDecision
         +runYtDlp(ctx, session, req DownloadRequest, item queueItem, run itemRun, stop) : DownloadResult
         +openDownloadFolder()
         +updateStatus(msg)

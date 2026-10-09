@@ -159,15 +159,47 @@ func TestDiskCheckLeavesSpaceForRunningDownloads(t *testing.T) {
 	req := DownloadRequest{SavePath: h.saveDir}
 	continueAll := false
 
-	h.app.checkDiskSpace(context.Background(), req, false, item, false, &continueAll)
+	_, releaseChecked := h.app.checkDiskSpace(context.Background(), req, false, item, false, &continueAll)
+	releaseChecked()
 	if asked {
 		t.Fatal("asked with room to spare")
 	}
 	release := h.app.reserveSpace(25 << 20)
-	h.app.checkDiskSpace(context.Background(), req, false, item, false, &continueAll)
+	_, releaseChecked = h.app.checkDiskSpace(context.Background(), req, false, item, false, &continueAll)
+	releaseChecked()
 	release()
 	if !asked {
 		t.Error("did not leave room for the download already running")
+	}
+}
+
+// With Simultaneous Downloads, a second item's check used to run between
+// the first's check and its reservation, and both counted the same space.
+func TestDiskCheckReservesTheSpaceItApproves(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	h.app.freeBytes = func(string) (uint64, error) { return 15 << 20, nil }
+	var asked int
+	h.app.askDiskSpace = func(ctx context.Context, prompt diskSpacePrompt) diskSpaceDecision {
+		asked++
+		return spaceSkip
+	}
+	item := queueItem{url: "u", info: &MediaInfo{formatSize: formatSize{FileSize: 10 << 20}}}
+	req := DownloadRequest{SavePath: h.saveDir}
+	continueAll := false
+
+	first, releaseFirst := h.app.checkDiskSpace(context.Background(), req, false, item, true, &continueAll)
+	second, releaseSecond := h.app.checkDiskSpace(context.Background(), req, false, item, true, &continueAll)
+
+	if first != spaceProceed || second != spaceSkip || asked != 1 {
+		t.Errorf("checks = %v then %v, asked %d times; want the second to find the space taken", first, second, asked)
+	}
+	releaseSecond()
+	if got, want := h.app.reservedBytes.Load(), int64(diskSpaceNeeded(10<<20, false)); got != want {
+		t.Errorf("reserved %d bytes, want only the first item's %d", got, want)
+	}
+	releaseFirst()
+	if got := h.app.reservedBytes.Load(); got != 0 {
+		t.Errorf("reserved %d bytes after both released, want 0", got)
 	}
 }
 

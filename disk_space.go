@@ -5,6 +5,7 @@
 //     estimated (see MediaInfo.EstimatedSize) with the free space in the
 //     save folder, and asks the user what to do when it looks too small.
 //     Checking per item matters because earlier items of a batch use space.
+//     The space it approves is reserved for the download (reserveSpace).
 //   - diskSpaceNeeded, trimFraction: the pure arithmetic behind the check.
 //   - UIManager.askDiskSpace: the "Low disk space" prompt.
 package main
@@ -115,13 +116,27 @@ func existingDir(path string) string {
 // little space it asks the user, unless they already chose to continue for
 // the whole session (*continueAll). An unknown size, or free space that
 // cannot be measured, skips the check, and the log says so.
-func (app *DownloaderApp) checkDiskSpace(ctx context.Context, req DownloadRequest, postProcess bool, item queueItem, moreQueued bool, continueAll *bool) diskSpaceDecision {
+//
+// When it decides to proceed with a known size, it also reserves that space
+// (see reserveSpace), and release gives it back; otherwise release does
+// nothing. Callers hold promptMu, so the next check, by another download
+// running at the same time, already counts this one's reservation.
+func (app *DownloaderApp) checkDiskSpace(ctx context.Context, req DownloadRequest, postProcess bool, item queueItem, moreQueued bool, continueAll *bool) (decision diskSpaceDecision, release func()) {
 	needed, known := downloadNeeds(item, req, postProcess)
 	if !known {
 		app.appendOutput("[SYSTEM] Download size unknown; skipping the disk space check.", colSystem)
-		return spaceProceed
+		return spaceProceed, func() {}
 	}
+	decision = app.decideDiskSpace(ctx, req, item, needed, moreQueued, continueAll)
+	if decision != spaceProceed {
+		return decision, func() {}
+	}
+	return spaceProceed, app.reserveSpace(needed)
+}
 
+// decideDiskSpace is checkDiskSpace's decision for a download needing
+// needed bytes, before anything is reserved.
+func (app *DownloaderApp) decideDiskSpace(ctx context.Context, req DownloadRequest, item queueItem, needed uint64, moreQueued bool, continueAll *bool) diskSpaceDecision {
 	free, err := app.freeBytes(existingDir(req.SavePath))
 	if err != nil {
 		app.appendOutput(fmt.Sprintf("[SYSTEM] Could not check free disk space (%v); skipping the check.", err), colWarning)
