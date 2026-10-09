@@ -192,8 +192,9 @@ type replacement struct {
 }
 
 // newAnonymizer returns an anonymizer for the user with home folder home
-// and name username, which also hides cookiesPath.
-func newAnonymizer(home, username, cookiesPath string) anonymizer {
+// and name username, which also hides cookiesPaths. An empty home or
+// username is left alone.
+func newAnonymizer(home, username string, cookiesPaths ...string) anonymizer {
 	var replacements []replacement
 	addPath := func(old, with string) {
 		if strings.TrimSpace(old) == "" {
@@ -205,7 +206,9 @@ func newAnonymizer(home, username, cookiesPath string) anonymizer {
 			replacements = append(replacements, replacement{old: form, new: with})
 		}
 	}
-	addPath(cookiesPath, "<cookies file>")
+	for _, cookiesPath := range cookiesPaths {
+		addPath(cookiesPath, "<cookies file>")
+	}
 	addPath(home, "%USERPROFILE%")
 	if strings.TrimSpace(username) != "" {
 		replacements = append(replacements, replacement{old: username, new: "%USERNAME%", wholeWord: true})

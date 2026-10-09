@@ -54,6 +54,7 @@ package "Application Core" #F0F4F8 {
         -controls : map[int]*itemControls
         -promptMu : sync.Mutex
         -reservedBytes : atomic.Int64
+        -cookiesMask : cookiesPathMask
         -heartbeatStop : func()
         -runOnUI : func(func())
         --

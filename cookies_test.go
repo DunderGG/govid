@@ -218,6 +218,69 @@ func TestSessionLogNamesOnlyTheCookieSource(t *testing.T) {
 	}
 }
 
+// yt-dlp runs with --verbose, and its "[debug] Command-line config" line
+// named the cookies file in the session log, which the help says it never
+// does (CR-16).
+func TestSessionLogHidesTheCookiesFilePath(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	h.app.logSvc.CloseSessionLog() // the session opens its own, in the save folder
+	runs := useFakeArgs(t)
+	h.app.showDebug.Store(true) // the [debug] line also reaches the view
+	folder := filepath.Join(t.TempDir(), "PrivateCookieFolder")
+	cookies := filepath.Join(folder, "cookies.txt")
+	os.MkdirAll(folder, 0755)
+	touch(t, cookies)
+	h.app.ui.prefs.cookies.SetText(cookies)
+	h.app.ui.prefs.cookieSource.SetSelected(cookieSourceFile)
+	h.app.ui.download.saveLog.SetChecked(true)
+	h.app.ui.download.entry.SetText("https://example.com/v")
+
+	h.startAndWait(t)
+
+	passed := false
+	for _, args := range runs() {
+		passed = passed || argAfter(args, "--cookies") == cookies
+	}
+	if !passed {
+		t.Fatalf("yt-dlp was not passed the cookies file: %q", runs())
+	}
+	for name, text := range map[string]string{
+		"session log": readFile(t, SessionLogPath(h.saveDir)),
+		"log view":    h.joinedLogs(),
+	} {
+		if !strings.Contains(text, "'--cookies', '<cookies file>'") {
+			t.Errorf("%s does not show the hidden cookies file:\n%s", name, text)
+		}
+		if strings.Contains(strings.ToLower(text), "privatecookiefolder") {
+			t.Errorf("%s names the cookies file's folder:\n%s", name, text)
+		}
+	}
+}
+
+func TestCookiesPathMask(t *testing.T) {
+	var mask cookiesPathMask
+	line := `[debug] Command-line config: ['--cookies', 'C:\\Jane\\old.txt', '--cookies', 'C:\\Jane\\new.txt']`
+	if got := mask.apply(line); got != line {
+		t.Errorf("an empty mask changed the line to %q", got)
+	}
+
+	mask.add(`C:\Jane\old.txt`)
+	mask.add(`C:\Jane\new.txt`)
+	mask.add(`C:\Jane\new.txt`)
+	mask.add("  ")
+
+	want := `[debug] Command-line config: ['--cookies', '<cookies file>', '--cookies', '<cookies file>']`
+	if got := mask.apply(line); got != want {
+		t.Errorf("apply() = %q, want %q", got, want)
+	}
+	if got := mask.apply(`ERROR: c:/jane/OLD.txt is not a Netscape cookies file`); got != "ERROR: <cookies file> is not a Netscape cookies file" {
+		t.Errorf("apply() = %q, want the forward-slash path hidden in any case", got)
+	}
+	if len(mask.paths) != 2 {
+		t.Errorf("mask keeps %q, want the two paths once each", mask.paths)
+	}
+}
+
 func TestCookiesRowShowsTheChosenSource(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-download")
 	row := h.app.uiManager.buildCookiesRow().(*fyne.Container)

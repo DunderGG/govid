@@ -169,7 +169,10 @@ func (app *DownloaderApp) showStatus(msg string) {
 // additionally mirrored to the daily error log via LogService. yt-dlp's
 // [debug] lines (it runs with --verbose) go to the log file only, unless
 // "Show debug output" is enabled, so they do not bury the lines users need.
+// The cookies file's path is hidden first (cookiesMask), in every
+// destination.
 func (app *DownloaderApp) appendOutput(line string, col color.Color) {
+	line = app.cookiesMask.apply(line)
 	if !IsDebugLine(line) || app.showDebug.Load() {
 		app.onLogLine(line, col)
 	}

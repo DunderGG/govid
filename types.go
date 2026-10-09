@@ -326,6 +326,9 @@ type DownloaderApp struct {
 	// formatPicks holds the formats picked in the Format Browser for URLs in
 	// the URL field, until a session queues them.
 	formatPicks formatPicks
+	// cookiesMask hides the cookies files' paths in the log (see
+	// appendOutput); newDownloadRequest adds each file it passes.
+	cookiesMask cookiesPathMask
 
 	// The heartbeat (see startHeartbeat): heartbeatStop stops it, nil while
 	// it is not running. runOnUI replaces fyne.Do for its round trip in

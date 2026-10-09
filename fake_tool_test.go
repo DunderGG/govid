@@ -295,7 +295,7 @@ func fakeYtDlpDownload(args []string) int {
 	fmt.Println("[download] Destination: " + strings.TrimSuffix(path, "."+ext) + ".f248.webm")
 	fmt.Println("[download]  50.0% of   10.00MiB at    5.00MiB/s ETA 00:01")
 	fmt.Println("[download] 100.0% of   10.00MiB at    5.00MiB/s ETA 00:00")
-	fmt.Fprintln(os.Stderr, "[debug] Command-line config: fake")
+	fmt.Fprintln(os.Stderr, "[debug] Command-line config: "+pythonList(args))
 	// Real yt-dlp prints post-processor messages such as [Merger] to stdout.
 	fmt.Printf("[Merger] Merging formats into %q\n", path)
 	return fakeWriteSubtitles(args, strings.TrimSuffix(path, "."+ext))
@@ -410,6 +410,16 @@ func fakeYtDlpProbe(mode, url string, noPlaylist bool) int {
 	fmt.Printf(`{"_type": "video", "id": "fakevid", "extractor_key": "Fake", "webpage_url": %q, "title": "Fake Video", "format_id": "fake-v+fake-a", "duration": 10, "height": %d, "subtitles": {"en": [], "de": []}, "automatic_captions": {"en": [], "fr": []}, "requested_formats": [{"filesize": %d}, {"filesize_approx": %d}]}`+"\n",
 		url, fakeVideoHeight, fakeVideoSize-1024*1024, 1024*1024)
 	return 0
+}
+
+// pythonList writes args as yt-dlp's "Command-line config" line does, as a
+// Python list: ['--cookies', 'C:\\Users\\…\\cookies.txt'].
+func pythonList(args []string) string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = "'" + strings.ReplaceAll(arg, `\`, `\\`) + "'"
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
 }
 
 // fakeOutputPath returns the file a yt-dlp run with args would write, named

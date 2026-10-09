@@ -7,6 +7,8 @@
 //     (None / From file / From browser).
 //   - cookieLabel: how the session log names the cookie source ("Firefox",
 //     "file set"), never the file's path or anything in it.
+//   - cookiesPathMask: hides the cookies file's path in every log line,
+//     since yt-dlp --verbose prints its command line.
 //   - classifyAccessError / accessHint: yt-dlp errors that cookies cause (a
 //     browser holding its cookie database locked, Chrome's app-bound
 //     encryption, a missing profile) or would fix (YouTube's bot check,
@@ -16,8 +18,46 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 )
+
+// cookiesPathMask hides the paths of the cookies files passed to yt-dlp in
+// log lines, as "<cookies file>". yt-dlp runs with --verbose, and its
+// "[debug] Command-line config" line names the --cookies file. It keeps
+// every path passed this run, not only the current one, because the
+// preference can change while a download that uses the old file still logs.
+// The zero value hides nothing.
+type cookiesPathMask struct {
+	mu    sync.Mutex // guards paths
+	paths []string
+	anon  atomic.Pointer[anonymizer] // nil until a path is added
+}
+
+// add starts hiding path. Empty paths are ignored.
+func (mask *cookiesPathMask) add(path string) {
+	if strings.TrimSpace(path) == "" {
+		return
+	}
+	mask.mu.Lock()
+	defer mask.mu.Unlock()
+	if slices.Contains(mask.paths, path) {
+		return
+	}
+	mask.paths = append(mask.paths, path)
+	anon := newAnonymizer("", "", mask.paths...)
+	mask.anon.Store(&anon)
+}
+
+// apply returns line with every added path hidden.
+func (mask *cookiesPathMask) apply(line string) string {
+	if anon := mask.anon.Load(); anon != nil {
+		return anon.apply(line)
+	}
+	return line
+}
 
 // cookieArgs returns the yt-dlp options that pass req's cookies: from a
 // browser, or from a cookies.txt file that exists. Both the probe and the

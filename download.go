@@ -658,6 +658,7 @@ func (app *DownloaderApp) newDownloadRequest(rawURL, savePath, trimStart, trimEn
 	switch app.ui.prefs.cookieSource.Selected {
 	case cookieSourceFile:
 		cookiesPath = strings.TrimSpace(app.ui.prefs.cookies.Text)
+		app.cookiesMask.add(cookiesPath)
 	case cookieSourceBrowser:
 		cookiesBrowser = cookiesFromBrowser(app.ui.prefs.cookieBrowser.Selected, app.ui.prefs.cookieProfile.Text)
 	}
