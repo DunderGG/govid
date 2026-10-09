@@ -7,7 +7,7 @@
 //     the theme foreground, keeping this file free of Fyne imports.
 //   - Extracts file-format metadata (source extensions, conversion flag)
 //     for display in the post-download summary.
-//   - Parses percentage and size tokens, reporting them via
+//   - Parses progress percentages, reporting them via
 //     ProcessCallbacks.OnProgress for the animated progress bar.
 package main
 
@@ -17,6 +17,7 @@ import (
 	"io"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -216,23 +217,26 @@ func lineItem(line string) string {
 	return itemPrefixPattern.FindString(line)
 }
 
-// parseProgress scans a line of yt-dlp output for percentage markers and size
-// information, reporting them to cb.OnProgress for the caller to apply to
-// its own progress bar and session statistics.
+// parseProgress reports the first percentage in a line of yt-dlp output,
+// e.g. the 42.3 of "[download]  42.3% of   10.00MiB …", to cb.OnProgress for
+// the caller to apply to its progress bar. A field such as "abc%" is not a
+// percentage and is skipped. The sizes in the line are not used: they give
+// the current stream's total, not what has been downloaded, so the summary
+// measures the files instead (DownloadResult.Bytes).
 func (engine *DownloadEngine) parseProgress(line string, cb ProcessCallbacks) {
-	if strings.Contains(line, "%") {
-		fields := strings.Fields(line)
-		for _, field := range fields {
-			if strings.HasSuffix(field, "%") {
-				var val float64
-				fmt.Sscanf(field, "%f%%", &val)
-				size := ""
-				if len(fields) >= 4 {
-					size = fields[3]
-				}
-				cb.OnProgress(val/100.0, size)
-				break
-			}
+	if !strings.Contains(line, "%") {
+		return
+	}
+	for _, field := range strings.Fields(line) {
+		number, found := strings.CutSuffix(field, "%")
+		if !found {
+			continue
 		}
+		pct, err := strconv.ParseFloat(number, 64)
+		if err != nil {
+			continue
+		}
+		cb.OnProgress(pct / 100)
+		return
 	}
 }

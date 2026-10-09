@@ -331,6 +331,8 @@ package "Download Engine" #FFF8F0 {
         +Err : error
         +Stopped : bool
         +Paused : bool
+        +Bytes : int64
+        +ResumedBytes : int64
     }
 
     class DownloadArgs <<data>> {
@@ -348,7 +350,7 @@ package "Download Engine" #FFF8F0 {
     class ProcessCallbacks <<bridge>> {
         +OnLog : func(line string, col color.Color)
         +OnStatus : func(msg string)
-        +OnProgress : func(pct float64, size string)
+        +OnProgress : func(pct float64)
         +OnPhase : func(phase string)
     }
 
@@ -907,10 +909,8 @@ package "Support Types" #F5F5F5 {
     }
 
     class DownloadStats <<state>> {
-        -lastSize : string
-        -downloadedRaw : float64
-        -unit : string
         -targetPct : float64
+        -snapPending : bool
     }
 
     class AppConfig <<data>> {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"image/color"
 	"sync"
 	"sync/atomic"
@@ -214,16 +213,13 @@ func NewUIWidgets() *UIWidgets {
 	}
 }
 
-// DownloadStats tracks the real-time metrics of a download session. It is
-// written from the yt-dlp output goroutine and read by the progress smoother
-// and runYtDlp, so every field is guarded by mu.
+// DownloadStats holds the progress bar's target for the progress smoother.
+// It is written from the yt-dlp output goroutine and read by the smoother,
+// so every field is guarded by mu.
 type DownloadStats struct {
-	mu            sync.Mutex
-	lastSize      string  // Last size reported by yt-dlp e.g., "15.2MiB"
-	downloadedRaw float64 // Numeric value for calculations
-	unit          string  // e.g., "MiB"
-	targetPct     float64 // The target percentage to aim for, for smoothing logic
-	snapPending   bool    // true when the smoother should jump straight to targetPct
+	mu          sync.Mutex
+	targetPct   float64 // The target percentage to aim for, for smoothing logic
+	snapPending bool    // true when the smoother should jump straight to targetPct
 }
 
 // setTarget records a new progress target. When snap is true the smoother
@@ -245,32 +241,14 @@ func (s *DownloadStats) takeTarget() (pct float64, snap bool) {
 	return s.targetPct, snap
 }
 
-// reset clears the metrics of the previous download and requests a snap of
-// the progress bar back to 0, so a download that fails before reporting
-// progress does not inherit the previous one's size and speed.
+// reset requests a snap of the progress bar back to 0 for the next
+// download, so one that fails before reporting progress does not show the
+// previous one's.
 func (s *DownloadStats) reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.lastSize = ""
-	s.downloadedRaw = 0
-	s.unit = ""
 	s.targetPct = 0
 	s.snapPending = true
-}
-
-// recordSize stores the latest downloaded size reported by yt-dlp, e.g. "15.2MiB".
-func (s *DownloadStats) recordSize(size string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.lastSize = size
-	fmt.Sscanf(size, "%f%s", &s.downloadedRaw, &s.unit)
-}
-
-// sizeSnapshot returns the latest downloaded size and its parsed parts.
-func (s *DownloadStats) sizeSnapshot() (lastSize string, downloadedRaw float64, unit string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.lastSize, s.downloadedRaw, s.unit
 }
 
 // DownloaderApp acts as a coordinator, holding pointers to the specialized
@@ -278,7 +256,7 @@ func (s *DownloadStats) sizeSnapshot() (lastSize string, downloadedRaw float64, 
 type DownloaderApp struct {
 	window        fyne.Window           // The primary application window
 	ui            *UIWidgets            // The graphical interface components
-	stats         *DownloadStats        // Statistics tracked during a session
+	stats         *DownloadStats        // The progress bar's target, for the progress smoother
 	logSvc        *LogService           // Session log, error log, and buffer-limit management
 	cancelMu      sync.Mutex            // Guards cancelFn, stopFn, and controls
 	cancelFn      context.CancelFunc    // Function used to signal yt-dlp to stop; in batch mode it skips only the current item

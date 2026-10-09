@@ -396,10 +396,9 @@ type ProcessCallbacks struct {
 	OnLog func(line string, col color.Color)
 	// OnStatus is called to update the short status label.
 	OnStatus func(msg string)
-	// OnProgress is called whenever a progress percentage is parsed from yt-dlp
-	// output. size is the last reported downloaded-size token (e.g. "15.2MiB"),
-	// or empty when the output line did not include one.
-	OnProgress func(pct float64, size string)
+	// OnProgress is called whenever a progress percentage (0..1) is parsed
+	// from yt-dlp output.
+	OnProgress func(pct float64)
 	// OnPhase is called when yt-dlp moves on from downloading to a step it
 	// runs with ffmpeg once the download is complete: phaseMerging or
 	// phaseConverting.
@@ -496,6 +495,13 @@ type DownloadResult struct {
 	// Paused is set when the download was paused (see errPaused): its
 	// partial files are kept for a later run to continue. Err is then nil.
 	Paused bool
+	// Bytes is the size on disk of what the download wrote: its finished
+	// files or, when it was paused, failed, or cancelled, its partial files
+	// (measured before they were removed). ResumedBytes is how much of it
+	// an earlier, paused run had already written when this one started.
+	// The summary reports these rather than the sizes in yt-dlp's progress
+	// lines, which give each stream's total, not what has been downloaded.
+	Bytes, ResumedBytes int64
 }
 
 // errStopKeep is the cause a download's context is cancelled with to stop
@@ -591,14 +597,16 @@ func (engine *DownloadEngine) Run(ctx context.Context, req DownloadRequest, opts
 // for a finished download, and a live recording is then made playable in
 // the chosen container (finishRecording).
 func (engine *DownloadEngine) runArgs(ctx context.Context, req DownloadRequest, built DownloadArgs, opts DownloadOptions, cb ProcessCallbacks) DownloadResult {
+	resumedBytes, _ := downloadedBytes(req.SavePath, built.DownloadID)
 	stopMonitor := engine.monitorRecording(req, built.DownloadID, cb.OnRecording)
 	scan, cmdErr := engine.Execute(ctx, built.Args, opts, cb)
 	stopMonitor()
 
-	result := DownloadResult{Extension: built.Extension, Scan: scan, Err: cmdErr}
+	result := DownloadResult{Extension: built.Extension, Scan: scan, Err: cmdErr, ResumedBytes: resumedBytes}
 	if cmdErr != nil && errors.Is(context.Cause(ctx), errPaused) {
 		cb.OnLog("[SYSTEM] Paused; the partial download is kept and continues when resumed.", colSystem)
 		result.Err, result.Paused = nil, true
+		result.Bytes, _ = downloadedBytes(req.SavePath, built.DownloadID)
 		return result
 	}
 	stopped := errors.Is(context.Cause(ctx), errStopKeep)
@@ -606,6 +614,7 @@ func (engine *DownloadEngine) runArgs(ctx context.Context, req DownloadRequest, 
 	if cmdErr != nil && !keep {
 		// Execute returns only once the process tree is dead, so nothing is
 		// still writing to these files.
+		result.Bytes, _ = downloadedBytes(req.SavePath, built.DownloadID)
 		engine.RemovePartialFiles(req.SavePath, built.DownloadID, cb.OnLog)
 		return result
 	}
@@ -631,6 +640,7 @@ func (engine *DownloadEngine) runArgs(ctx context.Context, req DownloadRequest, 
 		cb.OnLog(fmt.Sprintf("[SYSTEM] Saved subtitles: %s", filepath.Base(path)), colSystem)
 	}
 	result.FinalPaths, result.SubtitlePaths = finalPaths, subtitlePaths
+	result.Bytes = totalSize(finalPaths) + totalSize(subtitlePaths)
 	return result
 }
 

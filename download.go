@@ -354,10 +354,7 @@ func (app *DownloaderApp) runQueue(queueCtx context.Context, session downloadSes
 // the whole queue.
 func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloadSession, queue *QueueModel, id int, item queueItem, mode queueMode, continueLowSpace *bool) (paths []string, stop bool) {
 	position, total := queue.Position(id)
-	run := itemRun{id: id, position: position, total: total, parallel: mode.parallel, stats: app.stats}
-	if mode.parallel {
-		run.stats = &DownloadStats{}
-	}
+	run := itemRun{id: id, position: position, total: total, parallel: mode.parallel}
 	defer app.unregister(id)
 
 	// In batch mode, give each URL its own child context so the Cancel
@@ -584,10 +581,6 @@ func completionNotification(postProcessed bool, fileCount, urlCount int) *fyne.N
 // and whether it post-processes, for the history).
 func (app *DownloaderApp) runYtDlp(ctx context.Context, session downloadSession, req DownloadRequest, item queueItem, run itemRun, stop func()) DownloadResult {
 	startTime := time.Now()
-	if run.stats == nil {
-		run.stats = app.stats
-	}
-
 	callbacks := ProcessCallbacks{
 		OnLog:      app.appendOutput,
 		OnStatus:   app.updateStatus,
@@ -618,8 +611,8 @@ func (app *DownloaderApp) runYtDlp(ctx context.Context, session downloadSession,
 
 // parallelCallbacks returns the callbacks of a download running alongside
 // others: its log lines carry run's "[n/total]" prefix, its progress goes to
-// its row of the Queue panel and its own stats, and the status label and
-// progress bar show the whole queue rather than this item.
+// its row of the Queue panel, and the status label and progress bar show
+// the whole queue rather than this item.
 func (app *DownloaderApp) parallelCallbacks(run itemRun) ProcessCallbacks {
 	prefix := run.prefix()
 	queue := app.queue.Load()
@@ -633,12 +626,9 @@ func (app *DownloaderApp) parallelCallbacks(run itemRun) ProcessCallbacks {
 			app.appendOutput(prefix+line, col)
 		},
 		OnStatus: func(string) { showQueue() },
-		OnProgress: func(pct float64, size string) {
+		OnProgress: func(pct float64) {
 			if queue != nil {
 				queue.SetProgress(run.id, pct)
-			}
-			if size != "" {
-				run.stats.recordSize(size)
 			}
 			showQueue()
 		},
@@ -730,10 +720,7 @@ func (app *DownloaderApp) recordHistory(req DownloadRequest, item queueItem, fin
 // caller starts post-processing and overwrites the status.
 // After a failure it logs hints, which say what may fix it (see failureHints).
 func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadResult, elapsed time.Duration, hints []string, run itemRun) {
-	if run.stats == nil {
-		run.stats = app.stats
-	}
-	lastSize, downloadedRaw, unit := run.stats.sizeSnapshot()
+	downloaded := formatBytes(dl.Bytes)
 	// With other downloads running, the status label, dot, and progress bar
 	// show the whole queue (showParallelProgress), not this item's end.
 	updateStatus, setIndicator, setProgressNow := app.updateStatus, app.setStatusIndicator, app.setProgressNow
@@ -742,7 +729,7 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 	}
 	prefix := run.prefix()
 	elapsedStr := fmt.Sprintf("%.2fs", elapsed.Seconds())
-	avgSpeed := averageSpeed(downloadedRaw, elapsed.Seconds(), unit)
+	avgSpeed := averageSpeed(dl.Bytes-dl.ResumedBytes, elapsed.Seconds())
 
 	uiDone := make(chan struct{})
 	fyne.Do(func() {
@@ -755,14 +742,14 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 		case dl.Paused:
 			app.logDownloadSummary(prefix+"DOWNLOAD PAUSED", []summaryRow{
 				{"Runtime", elapsedStr},
-				{"Downloaded", lastSize},
+				{"Downloaded", downloaded},
 			}, colWarning, colAbortedBorder)
 			updateStatus("Status: Paused.")
 			setIndicator(StatusCanceled)
 		case dl.Stopped:
 			app.logDownloadSummary(prefix+"RECORDING SAVED", []summaryRow{
 				{"Duration", elapsedStr},
-				{"Recorded", lastSize},
+				{"Recorded", downloaded},
 				{"Files", strconv.Itoa(len(dl.FinalPaths))},
 			}, colSuccess, colSuccessBorder)
 			updateStatus("Status: Recording saved.")
@@ -772,7 +759,7 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 			app.logDownloadSummary(prefix+"DOWNLOAD COMPLETE", []summaryRow{
 				{"Duration", elapsedStr},
 				{"Avg Speed", avgSpeed},
-				{"Downloaded", lastSize},
+				{"Downloaded", downloaded},
 				{"Format", describeOutputFormat(dl.Extension, dl.Scan)},
 			}, colSuccess, colSuccessBorder)
 			updateStatus("Status: Success!")
@@ -782,7 +769,7 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 			app.logDownloadSummary(prefix+"DOWNLOAD ABORTED", []summaryRow{
 				{"Runtime", elapsedStr},
 				{"Avg Speed", avgSpeed},
-				{"Downloaded", lastSize},
+				{"Downloaded", downloaded},
 			}, colWarning, colAbortedBorder)
 			updateStatus("Status: Canceled.")
 			setIndicator(StatusCanceled)
@@ -844,13 +831,13 @@ func summaryLines(rows []summaryRow) []string {
 	return lines
 }
 
-// averageSpeed formats downloaded/seconds as e.g. "1.25MiB/s", or "N/A" when
+// averageSpeed formats byteCount/seconds as e.g. "1.2 MiB/s", or "N/A" when
 // either value is zero (nothing downloaded, or no measurable elapsed time).
-func averageSpeed(downloaded, seconds float64, unit string) string {
-	if seconds <= 0 || downloaded <= 0 {
+func averageSpeed(byteCount int64, seconds float64) string {
+	if seconds <= 0 || byteCount <= 0 {
 		return "N/A"
 	}
-	return fmt.Sprintf("%.2f%s/s", downloaded/seconds, unit)
+	return formatBytes(int64(float64(byteCount)/seconds)) + "/s"
 }
 
 // describeOutputFormat builds the human-readable format line for the

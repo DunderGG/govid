@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
-	"math"
 	"os"
 	"os/exec"
 	"slices"
@@ -96,36 +95,13 @@ func TestSetProgressClamps(t *testing.T) {
 	}
 }
 
-func TestUpdateProgressRecordsSize(t *testing.T) {
+func TestUpdateProgressSetsTheTarget(t *testing.T) {
 	app := &DownloaderApp{stats: &DownloadStats{}}
 
-	app.updateProgress(0.25, "15.2MiB")
+	app.updateProgress(0.25)
 
 	if app.stats.targetPct != 0.25 {
 		t.Errorf("targetPct = %v, want 0.25", app.stats.targetPct)
-	}
-	if app.stats.lastSize != "15.2MiB" {
-		t.Errorf("lastSize = %q, want %q", app.stats.lastSize, "15.2MiB")
-	}
-	if math.Abs(app.stats.downloadedRaw-15.2) > 0.001 {
-		t.Errorf("downloadedRaw = %v, want 15.2", app.stats.downloadedRaw)
-	}
-	if app.stats.unit != "MiB" {
-		t.Errorf("unit = %q, want %q", app.stats.unit, "MiB")
-	}
-}
-
-func TestUpdateProgressEmptySizeKeepsStats(t *testing.T) {
-	app := &DownloaderApp{stats: &DownloadStats{lastSize: "3.0GiB", downloadedRaw: 3, unit: "GiB"}}
-
-	app.updateProgress(0.5, "")
-
-	if app.stats.targetPct != 0.5 {
-		t.Errorf("targetPct = %v, want 0.5", app.stats.targetPct)
-	}
-	if app.stats.lastSize != "3.0GiB" || app.stats.downloadedRaw != 3 || app.stats.unit != "GiB" {
-		t.Errorf("stats changed on empty size: lastSize=%q downloadedRaw=%v unit=%q",
-			app.stats.lastSize, app.stats.downloadedRaw, app.stats.unit)
 	}
 }
 
@@ -145,14 +121,10 @@ func TestSetProgressNowRequestsSnap(t *testing.T) {
 
 func TestDownloadStatsResetClearsPreviousDownload(t *testing.T) {
 	stats := &DownloadStats{}
-	stats.recordSize("15.2MiB")
 	stats.setTarget(0.8, false)
 
 	stats.reset()
 
-	if size, raw, unit := stats.sizeSnapshot(); size != "" || raw != 0 || unit != "" {
-		t.Errorf("sizeSnapshot() = (%q, %v, %q), want zero values", size, raw, unit)
-	}
 	if pct, snap := stats.takeTarget(); pct != 0 || !snap {
 		t.Errorf("takeTarget() = (%v, %v), want (0, true)", pct, snap)
 	}

@@ -22,7 +22,6 @@ type logCollector struct {
 	lines    []string
 	colors   map[string]color.Color
 	progress []float64
-	sizes    []string
 	phases   []string
 }
 
@@ -39,11 +38,10 @@ func (c *logCollector) callbacks() ProcessCallbacks {
 			c.colors[line] = col
 		},
 		OnStatus: func(string) {},
-		OnProgress: func(pct float64, size string) {
+		OnProgress: func(pct float64) {
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			c.progress = append(c.progress, pct)
-			c.sizes = append(c.sizes, size)
 		},
 		OnPhase: func(phase string) {
 			c.mu.Lock()
@@ -92,12 +90,6 @@ func TestWatchOutputSuccessfulMerge(t *testing.T) {
 	wantProgress := []float64{0, 0.125, 0.5, 1, 1, 1}
 	if !reflect.DeepEqual(collector.progress, wantProgress) {
 		t.Errorf("progress = %v, want %v", collector.progress, wantProgress)
-	}
-	if collector.sizes[1] != "45.20MiB" {
-		t.Errorf("sizes[1] = %q, want %q", collector.sizes[1], "45.20MiB")
-	}
-	if last := collector.sizes[len(collector.sizes)-1]; last != "3.10MiB" {
-		t.Errorf("last size = %q, want %q", last, "3.10MiB")
 	}
 }
 
@@ -195,24 +187,25 @@ func TestParseProgress(t *testing.T) {
 		line     string
 		wantCall bool
 		wantPct  float64
-		wantSize string
 	}{
-		{"standard progress line", "[download]  42.0% of   10.00MiB at 1.00MiB/s ETA 00:06", true, 0.42, "10.00MiB"},
-		{"completion line", "[download] 100% of   45.20MiB in 00:00:07 at 6.21MiB/s", true, 1, "45.20MiB"},
-		{"too few fields for size", "[download] 7.5%", true, 0.075, ""},
-		{"no percent sign", "[youtube] dQw4w9WgXcQ: Downloading webpage", false, 0, ""},
-		{"percent not at end of a field", "[debug] -o GoVid_%(title)s.%(ext)s", false, 0, ""},
+		{"standard progress line", "[download]  42.0% of   10.00MiB at 1.00MiB/s ETA 00:06", true, 0.42},
+		{"completion line", "[download] 100% of   45.20MiB in 00:00:07 at 6.21MiB/s", true, 1},
+		{"estimated size", "[download]  12.5% of ~  45.20MiB at 1.00MiB/s ETA 00:30 (frag 3/24)", true, 0.125},
+		{"percentage alone", "[download] 7.5%", true, 0.075},
+		{"no percent sign", "[youtube] dQw4w9WgXcQ: Downloading webpage", false, 0},
+		{"percent not at end of a field", "[debug] -o GoVid_%(title)s.%(ext)s", false, 0},
+		{"not a number before the percent sign", "[debug] format: abc% then 30%", true, 0.3},
+		{"no number at all", "[debug] 100 per cent: abc%", false, 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			called := false
 			var gotPct float64
-			var gotSize string
 			engine.parseProgress(tt.line, ProcessCallbacks{
-				OnProgress: func(pct float64, size string) {
+				OnProgress: func(pct float64) {
 					called = true
-					gotPct, gotSize = pct, size
+					gotPct = pct
 				},
 			})
 
@@ -224,9 +217,6 @@ func TestParseProgress(t *testing.T) {
 			}
 			if diff := gotPct - tt.wantPct; diff > 1e-9 || diff < -1e-9 {
 				t.Errorf("pct = %v, want %v", gotPct, tt.wantPct)
-			}
-			if gotSize != tt.wantSize {
-				t.Errorf("size = %q, want %q", gotSize, tt.wantSize)
 			}
 		})
 	}

@@ -161,9 +161,9 @@ group loop [while QueueModel.Next() returns a waiting item]
             group Concurrent output scanning
                 WO  -> YT : scan stdout line by line
                 loop stdout lines
-                    WO  -> WO  : engine.parseProgress(line, cb)\n  — extract %, size
+                    WO  -> WO  : engine.parseProgress(line, cb)\n  — extract %
                     WO  -> WO  : detect [download] Destination:\n  — collect source extension
-                    WO  -> App : cb.OnProgress(pct, size)\n  — App applies to stats.targetPct
+                    WO  -> App : cb.OnProgress(pct)\n  — App applies to stats.targetPct
                     WO  -> WO  : detect [Merger]/[VideoConvertor] → wasConverted
                     WO  -> App : cb.OnPhase("Merging"/"Converting")\n  — App snaps the bar to 95%, status "Merging…"
                     WO  -> App : cb.OnLog(line, foreground colour)
@@ -208,7 +208,7 @@ group loop [while QueueModel.Next() returns a waiting item]
             App -> YT  : run once more from the URL (BuildArgs without --load-info-json)
         end
     end
-    App <-- App : DownloadResult{FinalPaths, Extension, Scan, Err}
+    App <-- App : DownloadResult{FinalPaths, Extension, Scan, Err, Bytes, ResumedBytes}\n  — Bytes measured on disk, for the summary
 
     group UI result (fyne.Do)
         alt cancelled (ctx.Err == Canceled)

@@ -179,15 +179,11 @@ func (app *DownloaderApp) showDownloadPhase(phase string) {
 }
 
 // updateProgress is a ProcessCallbacks.OnProgress handler: it advances the
-// progress bar and the downloading row of the Queue panel and, when size is
-// non-empty, records it in the session stats.
-func (app *DownloaderApp) updateProgress(pct float64, size string) {
+// progress bar and the downloading row of the Queue panel.
+func (app *DownloaderApp) updateProgress(pct float64) {
 	app.setProgress(pct)
 	if queue := app.queue.Load(); queue != nil {
 		queue.SetActiveProgress(pct)
-	}
-	if size != "" {
-		app.stats.recordSize(size)
 	}
 }
 

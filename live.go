@@ -127,13 +127,19 @@ func downloadedBytes(savePath, downloadID string) (int64, bool) {
 	if err != nil || len(matches) == 0 {
 		return 0, false
 	}
+	return totalSize(matches), true
+}
+
+// totalSize adds up the sizes of the files at paths, skipping any it cannot
+// stat.
+func totalSize(paths []string) int64 {
 	var total int64
-	for _, path := range matches {
+	for _, path := range paths {
 		if info, err := os.Stat(path); err == nil {
 			total += info.Size()
 		}
 	}
-	return total, true
+	return total
 }
 
 // remuxTimeout bounds how long finishing a stopped recording may take.
@@ -334,11 +340,10 @@ func clock(d time.Duration) string {
 
 // recordingCallback returns the ProcessCallbacks.OnRecording handler for a
 // recording of req: it shows the recording's time and size (or the
-// countdown to a scheduled stream) in the status label, keeps the session
-// stats' size current, and every liveSpaceCheckInterval checks the free
-// space, stopping the recording with stop when less than liveMinFreeBytes
-// is left. Alongside other downloads (run.parallel) it leaves the status label
-// to the whole queue.
+// countdown to a scheduled stream) in the status label, and every
+// liveSpaceCheckInterval checks the free space, stopping the recording with
+// stop when less than liveMinFreeBytes is left. Alongside other downloads
+// (run.parallel) it leaves the status label to the whole queue.
 func (app *DownloaderApp) recordingCallback(req DownloadRequest, stop func(), run itemRun) func(started bool, elapsed time.Duration, size int64) {
 	var lastCheck time.Time
 	stopped := false
@@ -347,11 +352,7 @@ func (app *DownloaderApp) recordingCallback(req DownloadRequest, stop func(), ru
 		if !run.parallel {
 			app.updateStatus(liveStatusText(started, elapsed, size, req.ReleaseTime, now))
 		}
-		if !started || stopped {
-			return
-		}
-		run.stats.recordSize(strings.ReplaceAll(formatBytes(size), " ", ""))
-		if now.Sub(lastCheck) < liveSpaceCheckInterval {
+		if !started || stopped || now.Sub(lastCheck) < liveSpaceCheckInterval {
 			return
 		}
 		lastCheck = now

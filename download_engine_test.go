@@ -289,7 +289,7 @@ func (r *engineRecorder) callbacks() ProcessCallbacks {
 			defer r.mu.Unlock()
 			r.statuses = append(r.statuses, msg)
 		},
-		OnProgress: func(pct float64, _ string) {
+		OnProgress: func(pct float64) {
 			r.mu.Lock()
 			defer r.mu.Unlock()
 			r.progress = append(r.progress, pct)
@@ -533,6 +533,35 @@ func TestRunCancelRemovesPartialFiles(t *testing.T) {
 	}
 	if !strings.Contains(rec.joinedLogs(), "[SYSTEM] Removed partial file: GoVid_Fake Video_GOVID") {
 		t.Errorf("log missing the removal message:\n%s", rec.joinedLogs())
+	}
+	if want := int64(len("partial")); result.Bytes != want {
+		t.Errorf("Bytes = %d, want %d: the partial file's size before it was removed", result.Bytes, want)
+	}
+}
+
+// Run measures what the download wrote, and how much of it an earlier,
+// paused run had written, for the summary: yt-dlp's progress lines give
+// only each stream's total (CR-11).
+func TestRunMeasuresTheBytesDownloaded(t *testing.T) {
+	_ = test.NewApp()
+	useFakeTool(t, "ytdlp-resumable")
+	saveDir := t.TempDir()
+	const resumed = 3 * 1024 * 1024
+	part := filepath.Join(saveDir, "GoVid_Fake Video_GOVID123.mp4.part")
+	if err := os.WriteFile(part, make([]byte, resumed), 0644); err != nil {
+		t.Fatal(err)
+	}
+	rec := &engineRecorder{}
+
+	result := NewDownloadEngine(fakeToolPath(t), "").Run(context.Background(), DownloadRequest{
+		URL: "https://example.com/v", SavePath: saveDir, Format: formatMP4, Quality: qualityBest, DownloadID: "GOVID123",
+	}, DownloadOptions{Index: 1, Total: 1}, rec.callbacks())
+
+	if result.Err != nil {
+		t.Fatalf("Run() error = %v, log:\n%s", result.Err, rec.joinedLogs())
+	}
+	if want := int64(fakeResumableChunks * 1024 * 1024); result.Bytes != want || result.ResumedBytes != resumed {
+		t.Errorf("Bytes, ResumedBytes = %d, %d; want %d, %d", result.Bytes, result.ResumedBytes, want, resumed)
 	}
 }
 

@@ -163,13 +163,12 @@ type queueMode struct {
 	limit    *atomic.Int32 // with parallel, how many workers may still take items
 }
 
-// itemRun is one queue item's download: where it is in the queue, whether
-// others download at the same time, and its own statistics.
+// itemRun is one queue item's download: where it is in the queue, and
+// whether others download at the same time.
 type itemRun struct {
 	id              int
 	position, total int
 	parallel        bool
-	stats           *DownloadStats // the item's sizes; app.stats when it downloads alone
 }
 
 // prefix returns the "[2/5] " that marks the item's log lines when several

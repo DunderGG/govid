@@ -232,6 +232,32 @@ func TestPauseAndResumeContinuesTheDownload(t *testing.T) {
 	}
 }
 
+// The paused summary gives what is on disk, not the total yt-dlp's progress
+// lines name (CR-11).
+func TestPausedSummaryGivesTheBytesDownloaded(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-resumable")
+	h.app.ui.download.entry.SetText("https://example.com/v")
+	pauseOnceAt(h, "30.0")
+
+	h.app.startDownload()
+	waitForPaused(t, h)
+	files := h.savedFiles(t)
+	if len(files) != 1 {
+		t.Fatalf("saved files while paused = %q, want the .part file", files)
+	}
+	info, err := os.Stat(filepath.Join(h.saveDir, files[0]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logs := h.joinedLogs()
+	h.app.RequestCancel()
+	waitForSessionEnd(t, h)
+
+	if want := "Downloaded: " + formatBytes(info.Size()); !strings.Contains(logs, want) {
+		t.Errorf("paused summary lacks %q:\n%s", want, logs)
+	}
+}
+
 func TestCancellingAPausedDownloadRemovesItsFiles(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-resumable")
 	h.app.ui.download.entry.SetText("https://example.com/v")

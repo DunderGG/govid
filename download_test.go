@@ -255,17 +255,19 @@ func TestSummaryLines(t *testing.T) {
 
 func TestAverageSpeed(t *testing.T) {
 	tests := []struct {
-		downloaded, seconds float64
-		unit                string
-		want                string
+		byteCount int64
+		seconds   float64
+		want      string
 	}{
-		{10, 4, "MiB", "2.50MiB/s"},
-		{0, 4, "MiB", "N/A"},
-		{10, 0, "MiB", "N/A"},
+		{10 * 1024 * 1024, 4, "2.5 MiB/s"},
+		{512, 2, "256 B/s"},
+		{0, 4, "N/A"},
+		{-1, 4, "N/A"},
+		{10, 0, "N/A"},
 	}
 	for _, tt := range tests {
-		if got := averageSpeed(tt.downloaded, tt.seconds, tt.unit); got != tt.want {
-			t.Errorf("averageSpeed(%v, %v, %q) = %q, want %q", tt.downloaded, tt.seconds, tt.unit, got, tt.want)
+		if got := averageSpeed(tt.byteCount, tt.seconds); got != tt.want {
+			t.Errorf("averageSpeed(%v, %v) = %q, want %q", tt.byteCount, tt.seconds, got, tt.want)
 		}
 	}
 }
@@ -332,8 +334,14 @@ func TestRunYtDlpSuccessRecordsHistory(t *testing.T) {
 	if got := h.app.ui.download.status.Text; got != "Status: Success!" {
 		t.Errorf("status = %q, want Status: Success!", got)
 	}
+	// The summary gives the size of the file, not the total in the progress
+	// lines (10.00MiB), which is only a stream's size (CR-11).
+	info, err := os.Stat(want)
+	if err != nil {
+		t.Fatal(err)
+	}
 	logs := h.joinedLogs()
-	for _, line := range []string{"DOWNLOAD COMPLETE", "Downloaded: 10.00MiB", "Format:     WEBM → MP4 (converted)"} {
+	for _, line := range []string{"DOWNLOAD COMPLETE", "Downloaded: " + formatBytes(info.Size()), "Format:     WEBM → MP4 (converted)"} {
 		if !strings.Contains(logs, line) {
 			t.Errorf("log missing %q:\n%s", line, logs)
 		}
