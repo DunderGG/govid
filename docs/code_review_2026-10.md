@@ -43,11 +43,11 @@ Each finding has an ID (`CR-nn`), a severity, every place it applies, what goes 
 ✅ | [CR-19](#cr-19-formats-overwrites-a-running-sessions-status) | Low | Formats… overwrites a running session's status | formats_window.go |
 ✅ | [CR-20](#cr-20-external-commands-run-without-a-timeout) | Low | External commands run without a timeout | dependency_service.go, components.go |
 ✅ | [CR-21](#cr-21-ui_managergo-has-too-many-responsibilities) | Guideline | `ui_manager.go` has too many responsibilities (§3.1) | ui_manager.go |
-❌ | [CR-22](#cr-22-functions-over-60-lines) | Guideline | Functions over 60 lines (§1.4) | 16 functions |
-❌ | [CR-23](#cr-23-unchecked-errors-and-regexes-compiled-per-call) | Guideline | Unchecked errors, and regexes compiled per call (§1.3) | 4 places |
-❌ | [CR-24](#cr-24-exported-symbols-without-doc-comments) | Guideline | Exported symbols without doc comments (§1.7) | gpu_capability.go, icons.go |
-❌ | [CR-25](#cr-25-a-misplaced-comment-in-downloaderapp) | Guideline | A misplaced comment in `DownloaderApp` | types.go |
-❌ | [CR-26](#cr-26-architecturemd-has-drifted-from-the-code) | Guideline | `architecture.md` has drifted from the code | docs/architecture.md |
+✅ | [CR-22](#cr-22-functions-over-60-lines) | Guideline | Functions over 60 lines (§1.4) | 16 functions |
+✅ | [CR-23](#cr-23-unchecked-errors-and-regexes-compiled-per-call) | Guideline | Unchecked errors, and regexes compiled per call (§1.3) | 4 places |
+✅ | [CR-24](#cr-24-exported-symbols-without-doc-comments) | Guideline | Exported symbols without doc comments (§1.7) | gpu_capability.go, icons.go |
+✅ | [CR-25](#cr-25-a-misplaced-comment-in-downloaderapp) | Guideline | A misplaced comment in `DownloaderApp` | types.go |
+✅ | [CR-26](#cr-26-architecturemd-has-drifted-from-the-code) | Guideline | `architecture.md` has drifted from the code | docs/architecture.md |
 ✅ | [CR-27](#cr-27-two-sessions-progress-smoothers-can-run-at-once) | Medium | Two sessions' progress smoothers can run at once; `go test -race` fails (addendum) | download.go, helpers.go |
 
 ---
@@ -473,7 +473,7 @@ Update the file map in architecture.md §3 at the same time.
 
 ---
 
-### CR-22: Functions over 60 lines
+### ✅ CR-22: Functions over 60 lines
 
 **Guideline:** §1.4. About 60 lines is a smell threshold, not a hard limit. Every function in the package over 60 lines:
 
@@ -496,9 +496,11 @@ Update the file map in architecture.md §3 at the same time.
 | 61 | [playlist_dialog.go `showPlaylistDialog`](../playlist_dialog.go#L49) | Borderline; extract the button list. |
 | 61 | [diagnostics.go `diagnosticsReport`](../diagnostics.go#L284) | Borderline; extract `writeToolsSection(report)`. |
 
+**Status.** Fixed in `7acca71`, mostly as suggested above, moving code only. No function outside the tests is now over 60 lines. `main` and `runSession`, which had grown past 60 lines since the review, were split too (`interceptClose`, `finishDownloads`). As suggested, `runJob` lost its `StderrPipe` fallback, and a pipe error is handled like a failed start. Where the split differs from the suggestions: `runJob`'s cancel, CPU retry, and failure handling is one `abandonJob`, shared by a failed start and a failed encode, beside `streamFFmpeg` and `reportJobDone`. `downloadItem` also gained `beginItem` (the item's context and Skip). `BuildArgs` also gained `outputArgs`, `ffmpegLocationArgs`, and `inputArgs`, since `trimArgs` and `containerArgs` alone left it at 81 lines. `watchOutput`'s `scanStdout` and `scanStderr` each return their own `scanResult`, which `watchOutput` combines once both are done, instead of writing one shared struct. `newDownloaderApp` is split into four `wire*` functions along its comment groups. `computeProcessingLoad` keeps its signature over `processingCost` and `describeLoad`. `TestSummaryFor` and `TestItemStatus` are new table-driven tests of the two pure functions the split produced. architecture.md, classes.puml, sequence-full.puml, and roadmap.md were updated.
+
 ---
 
-### CR-23: Unchecked errors, and regexes compiled per call
+### ✅ CR-23: Unchecked errors, and regexes compiled per call
 
 **Guideline:** §1.3, always check errors.
 
@@ -508,11 +510,11 @@ Update the file map in architecture.md §3 at the same time.
 - [types.go:266](../types.go#L266) `fmt.Sscanf(size, "%f%s", …)`: on failure the previous `downloadedRaw`/`unit` survive next to the new `lastSize`. Parse first, and update all three only on success (see also CR-11).
 - [ui_manager.go:176](../ui_manager.go#L176) `parseURL`: `url.Parse` errors are ignored. It is only called with constant URLs, so this is acceptable; say so in its doc comment, or panic on error as `MustCompile` would.
 
-**Status.** Partly fixed. The logscanner.go and types.go items were fixed with [CR-11](#cr-11-the-download-summarys-sizes-are-wrong) in `de184e0`: `parseProgress` uses `strconv.ParseFloat` and skips a field that is not a number, and `recordSize` was removed. `validateTimestamp` and `parseURL` are still open.
+**Status.** Fixed. The logscanner.go and types.go items were fixed with [CR-11](#cr-11-the-download-summarys-sizes-are-wrong) in `de184e0`: `parseProgress` uses `strconv.ParseFloat` and skips a field that is not a number, and `recordSize` was removed. The other two were fixed in `d7d1cd1`. `validateTimestamp` uses a package-level `timestampPattern`. `parseURL` was not only called with constant URLs: the release dialog's "Open download page" passed it the `html_url` from GitHub's API. A URL that does not parse gave `OpenURL` a nil URL, and Fyne's Windows `OpenURL` calls `String` on it, which panics. The About window's constant links now go through `mustParseURL`, which panics as `regexp.MustCompile` does, and the release dialog checks `url.Parse`'s error. That dialog also showed its error and then hid itself. Hiding a dialog removes every overlay shown after it, so the error was never seen; the dialog now hides first. `TestReleaseDialogReportsAPageURLThatDoesNotParse` fails against the old code. `TestMustParseURL` is also new.
 
 ---
 
-### CR-24: Exported symbols without doc comments
+### ✅ CR-24: Exported symbols without doc comments
 
 **Guideline:** §1.7, every exported symbol has a doc comment.
 
@@ -530,9 +532,11 @@ Exported *methods* that implement an interface have no doc comments either:
 
 These are optional. If the team wants them covered, one comment per group (for example "fyne.Preferences methods, backed by values") is enough.
 
+**Status.** Fixed in `a7cc9d4`, including the optional methods. Both constant blocks have a comment, and each constant has a line of its own: the encoder and systems of each backend, and where each icon is used. Each of the listed interface methods has a one-line doc comment rather than one per group, because `go doc` shows a comment only on the method right below it. A scan of the package with `go/ast` finds no exported symbol without a doc comment.
+
 ---
 
-### CR-25: A misplaced comment in `DownloaderApp`
+### ✅ CR-25: A misplaced comment in `DownloaderApp`
 
 **Where.** [types.go:352-357](../types.go#L352-L357).
 
@@ -540,9 +544,11 @@ These are optional. If the team wants them covered, one comment per group (for e
 
 **Suggested fix.** Move the heartbeat sentences down to `heartbeatMu`, and leave only the settings sentences above `settingsStore`.
 
+**Status.** Fixed in `68a6f6f` as suggested above. The heartbeat comment now also says that `heartbeatMu` guards `heartbeatStop`, and `keepHistory`, which had sat among the heartbeat fields, stands apart.
+
 ---
 
-### CR-26: `architecture.md` has drifted from the code
+### ✅ CR-26: `architecture.md` has drifted from the code
 
 **Where.** In [architecture.md](architecture.md):
 
@@ -558,7 +564,7 @@ These are optional. If the team wants them covered, one comment per group (for e
 
 **Suggested fix.** Make the edits above, and follow the checklist in architecture.md §10 when fixing the other items here. CR-01, CR-02, CR-05, and CR-21 each change what §4 describes.
 
-**Status.** Partly fixed. The line 177 item was fixed with [CR-21](#cr-21-ui_managergo-has-too-many-responsibilities) in `2e13b38`: §4.3 now lists `savePreferences` and `restoreDefaults`. The other items are still open.
+**Status.** Fixed. The line 177 item was fixed with [CR-21](#cr-21-ui_managergo-has-too-many-responsibilities) in `2e13b38`: §4.3 now lists `savePreferences` and `restoreDefaults`. The other items were fixed in `7ff586f` as suggested above. Making them turned up more drift, fixed in the same commit. §5.2 gave `restoreDefaults`' steps in the wrong order. The file map and §4.3 described ui.go as `DownloaderApp` delegates to the `show*` windows, which were deleted long ago; ui.go holds `clearTerminalOutput` and the shared layout helpers. classes.puml still listed those delegates, and `resetPreferences` and `rebuildUI` on `UIManager`. coding_guidelines.md §3.1 still put the preference translation in helpers.go. The §4 descriptions of the functions CR-22 split were updated with it.
 
 ---
 
