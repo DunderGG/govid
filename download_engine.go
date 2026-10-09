@@ -202,14 +202,6 @@ const heightLabel = "%(height&_{}p|)s"
 func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 	_, extension, height := formatSelection(req.Format, req.Quality)
 
-	// A capped download is labelled with the height yt-dlp actually picked,
-	// which can be lower than the cap (or, through the selector's final
-	// "/best", higher); see heightLabel.
-	qualitySuffix := ""
-	if height != "" {
-		qualitySuffix = heightLabel
-	}
-
 	// Embed a unique token into the filename while yt-dlp is running so it never
 	// conflicts with existing files mid-download. Stripped on finalization.
 	// A queued item keeps its own (req.DownloadID), so a retry or a resume
@@ -220,29 +212,9 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 	}
 
 	hasTrim := req.TrimStart != "" || req.TrimEnd != ""
-	template := outputTemplate(req.FilenameTemplate, qualitySuffix, downloadID, hasTrim)
-
-	// yt-dlp writes .part files and continues them, so an interrupted
-	// download resumes where it stopped. A live recording cannot be
-	// resumed, and must be written under its final name so that stopping it
-	// leaves a file to keep (see finishRecording).
-	partFlag := "--continue"
-	if req.Live {
-		partFlag = "--no-part"
-	}
-	args := []string{
-		"--newline", "--progress", "--verbose", partFlag, "--no-playlist",
-		"-P", req.SavePath, "-o", template,
-	}
+	args := outputArgs(req, height, downloadID, hasTrim)
 	args = append(args, formatArgs(req)...)
-
-	// Use bundled ffmpeg if available.
-	if engine.FFmpegPath != "" {
-		if _, err := os.Stat(engine.FFmpegPath); err == nil {
-			args = append(args, "--ffmpeg-location", engine.FFmpegPath)
-		}
-	}
-
+	args = append(args, engine.ffmpegLocationArgs()...)
 	args = append(args, engine.jsRuntimeArgs()...)
 
 	if req.MaxSpeed != "" {
@@ -250,45 +222,16 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 	}
 
 	args = append(args, cookieArgs(req)...)
-
-	if isAudioOnlyExt(extension) {
-		args = append(args, "--extract-audio", "--audio-format", extension, "--audio-quality", "0")
-	} else if extension != "" {
-		args = append(args, "--merge-output-format", extension)
-		args = append(args, "--remux-video", extension, "--recode-video", extension)
-	}
-
-	// Trim arguments.
-	trimDisplayStart, trimDisplayEnd := req.TrimStart, req.TrimEnd
-	if hasTrim {
-		start := req.TrimStart
-		if start == "" {
-			start = "0"
-			trimDisplayStart = "start"
-		}
-		end := req.TrimEnd
-		if end == "" {
-			end = "inf"
-			trimDisplayEnd = "end"
-		}
-		args = append(args, "--download-sections", fmt.Sprintf("*%s-%s", start, end))
-		args = append(args, "--force-keyframes-at-cuts")
-	}
-
+	args = append(args, containerArgs(extension)...)
+	trimFlags, trimDisplayStart, trimDisplayEnd := trimArgs(req)
+	args = append(args, trimFlags...)
 	args = append(args, liveArgs(req)...)
 
 	embedFlags, thumbnailSkipped := embedArgs(req, extension)
 	args = append(args, embedFlags...)
 	subtitleFlags, subtitlesSkipped := subtitleArgs(req, extension)
 	args = append(args, subtitleFlags...)
-
-	// yt-dlp downloads every URL it is given as well as a loaded info file,
-	// so the URL must be left out when the info file stands in for it.
-	if req.infoJSONPath != "" {
-		args = append(args, "--load-info-json", req.infoJSONPath)
-	} else {
-		args = append(args, req.URL)
-	}
+	args = append(args, inputArgs(req)...)
 
 	return DownloadArgs{
 		Args:             args,
@@ -301,6 +244,93 @@ func (engine *DownloadEngine) BuildArgs(req DownloadRequest) DownloadArgs {
 		HasSubtitles:     len(subtitleFlags) > 0,
 		SubtitlesSkipped: subtitlesSkipped,
 	}
+}
+
+// outputArgs returns the flags every download starts with: progress on
+// lines of its own, verbose output for the log file, no playlist, and the
+// save folder and -o template, which carries downloadID. height is the
+// quality cap, "" for none; hasTrim marks a trimmed download.
+func outputArgs(req DownloadRequest, height, downloadID string, hasTrim bool) []string {
+	// A capped download is labelled with the height yt-dlp actually picked,
+	// which can be lower than the cap (or, through the selector's final
+	// "/best", higher); see heightLabel.
+	qualitySuffix := ""
+	if height != "" {
+		qualitySuffix = heightLabel
+	}
+	template := outputTemplate(req.FilenameTemplate, qualitySuffix, downloadID, hasTrim)
+
+	// yt-dlp writes .part files and continues them, so an interrupted
+	// download resumes where it stopped. A live recording cannot be
+	// resumed, and must be written under its final name so that stopping it
+	// leaves a file to keep (see finishRecording).
+	partFlag := "--continue"
+	if req.Live {
+		partFlag = "--no-part"
+	}
+	return []string{
+		"--newline", "--progress", "--verbose", partFlag, "--no-playlist",
+		"-P", req.SavePath, "-o", template,
+	}
+}
+
+// ffmpegLocationArgs points yt-dlp at the bundled ffmpeg, if there is one.
+func (engine *DownloadEngine) ffmpegLocationArgs() []string {
+	if engine.FFmpegPath == "" {
+		return nil
+	}
+	if _, err := os.Stat(engine.FFmpegPath); err != nil {
+		return nil
+	}
+	return []string{"--ffmpeg-location", engine.FFmpegPath}
+}
+
+// inputArgs returns what yt-dlp downloads: the loaded info file when req
+// has one, else req's URL. yt-dlp downloads every URL it is given as well
+// as a loaded info file, so the URL must be left out when the info file
+// stands in for it.
+func inputArgs(req DownloadRequest) []string {
+	if req.infoJSONPath != "" {
+		return []string{"--load-info-json", req.infoJSONPath}
+	}
+	return []string{req.URL}
+}
+
+// containerArgs returns the yt-dlp flags that give the download the
+// container extension: for an audio format the audio is extracted and
+// converted to it, and a video's streams are merged and remuxed, or
+// recoded, into it.
+func containerArgs(extension string) []string {
+	switch {
+	case isAudioOnlyExt(extension):
+		return []string{"--extract-audio", "--audio-format", extension, "--audio-quality", "0"}
+	case extension != "":
+		return []string{"--merge-output-format", extension, "--remux-video", extension, "--recode-video", extension}
+	default:
+		return nil
+	}
+}
+
+// trimArgs returns the yt-dlp flags that download only req's trim range,
+// none when req is not trimmed, and the range's bounds as the log shows
+// them: a bound left empty is "start" or "end".
+func trimArgs(req DownloadRequest) (args []string, displayStart, displayEnd string) {
+	displayStart, displayEnd = req.TrimStart, req.TrimEnd
+	if req.TrimStart == "" && req.TrimEnd == "" {
+		return nil, displayStart, displayEnd
+	}
+	start := req.TrimStart
+	if start == "" {
+		start = "0"
+		displayStart = "start"
+	}
+	end := req.TrimEnd
+	if end == "" {
+		end = "inf"
+		displayEnd = "end"
+	}
+	args = []string{"--download-sections", fmt.Sprintf("*%s-%s", start, end), "--force-keyframes-at-cuts"}
+	return args, displayStart, displayEnd
 }
 
 // waitForVideoRange is how long yt-dlp waits between checks of a scheduled

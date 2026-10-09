@@ -79,8 +79,7 @@ func choiceFor(info MediaInfo, pick string) formatChoice {
 // called on the UI thread.
 func (manager *UIManager) showFormatWindow(info MediaInfo, pick, extension string, onPick func(pick string)) dialog.Dialog {
 	choice := choiceFor(info, pick)
-	filter := filterAll
-	rows := formatRows(info, filter)
+	rows := formatRows(info, filterAll)
 
 	summary := widget.NewLabel("")
 	summary.Wrapping = fyne.TextWrapWord
@@ -116,46 +115,69 @@ func (manager *UIManager) showFormatWindow(info MediaInfo, pick, extension strin
 		list.UnselectAll()
 	}
 
-	filterSelect := widget.NewSelect(formatFilterOptions, func(label string) {
-		for i, option := range formatFilterOptions {
-			if option == label {
-				filter = formatFilter(i)
-			}
-		}
+	filterSelect := newFormatFilterSelect(func(filter formatFilter) {
 		rows = formatRows(info, filter)
 		list.Refresh()
 	})
-	filterSelect.SetSelected(formatFilterOptions[filterAll])
 
+	title := widget.NewLabelWithStyle(info.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	title.Truncation = fyne.TextTruncateEllipsis
+	top := container.NewVBox(title,
+		container.NewBorder(nil, nil, widget.NewLabel("Show:"), nil, fixedWidth(filterSelect, 160)),
+		widget.NewLabel("● marks what will download. Click a video row and an audio row (or one with both) to choose."),
+		newFormatHeader())
+	content := container.NewBorder(top, summary, nil, nil, list)
+
+	dlg := dialog.NewCustomWithoutButtons("Formats", content, manager.mainWindow)
+	// A closure, not the method value choice.pick, which would copy choice
+	// before any row is clicked.
+	setFormatButtons(dlg, useBtn, func() string { return choice.pick() }, onPick)
+	refreshSummary()
+	dlg.Resize(fyne.NewSize(760, 560))
+	dlg.Show()
+	return dlg
+}
+
+// newFormatFilterSelect returns the Format Browser's "Show:" select, set to
+// all formats. onChange gets the filter of each option chosen, the first
+// one included.
+func newFormatFilterSelect(onChange func(formatFilter)) *widget.Select {
+	filterSelect := widget.NewSelect(formatFilterOptions, func(label string) {
+		for i, option := range formatFilterOptions {
+			if option == label {
+				onChange(formatFilter(i))
+			}
+		}
+	})
+	filterSelect.SetSelected(formatFilterOptions[filterAll])
+	return filterSelect
+}
+
+// newFormatHeader returns the Format Browser's header row: the column names
+// in bold.
+func newFormatHeader() *fyne.Container {
 	header := newFormatRowView()
 	showFormatRow(header, formatRow{cells: formatColumns}, false)
 	for _, label := range formatRowLabels(header) {
 		label.TextStyle = fyne.TextStyle{Bold: true}
 		label.Refresh()
 	}
-	title := widget.NewLabelWithStyle(info.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	title.Truncation = fyne.TextTruncateEllipsis
-	top := container.NewVBox(title,
-		container.NewBorder(nil, nil, widget.NewLabel("Show:"), nil, fixedWidth(filterSelect, 160)),
-		widget.NewLabel("● marks what will download. Click a video row and an audio row (or one with both) to choose."),
-		header)
-	content := container.NewBorder(top, summary, nil, nil, list)
+	return header
+}
 
-	var dlg *dialog.CustomDialog
+// setFormatButtons gives the Format Browser dlg its button bar: Cancel,
+// Automatic, which passes "" to onPick, and useBtn ("Use these formats"),
+// which passes the pick the window shows. Each closes the window.
+func setFormatButtons(dlg *dialog.CustomDialog, useBtn *widget.Button, pick func() string, onPick func(pick string)) {
 	useBtn.OnTapped = func() {
 		dlg.Hide()
-		onPick(choice.pick())
+		onPick(pick())
 	}
 	autoBtn := widget.NewButton("Automatic", func() {
 		dlg.Hide()
 		onPick("")
 	})
-	dlg = dialog.NewCustomWithoutButtons("Formats", content, manager.mainWindow)
-	dlg.SetButtons([]fyne.CanvasObject{widget.NewButton("Cancel", func() { dlg.Hide() }), autoBtn, useBtn})
-	refreshSummary()
-	dlg.Resize(fyne.NewSize(760, 560))
-	dlg.Show()
-	return dlg
+	dlg.SetButtons([]fyne.CanvasObject{widget.NewButton("Cancel", dlg.Hide), autoBtn, useBtn})
 }
 
 // newFormatRowView returns an empty row of the Format Browser: a marker

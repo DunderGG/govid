@@ -158,7 +158,7 @@ group loop [while QueueModel.Next() returns a waiting item]
 
             App -> WO  : engine.watchOutput(stdout, stderr, cb)
 
-            group Concurrent output scanning
+            group Concurrent output scanning (scanStdout, scanStderr; each into its own scanResult)
                 WO  -> YT : scan stdout line by line
                 loop stdout lines
                     WO  -> WO  : engine.parseProgress(line, cb)\n  — extract %
@@ -173,13 +173,13 @@ group loop [while QueueModel.Next() returns a waiting item]
                 WO  -> YT : scan stderr line by line
                 loop stderr lines
                     WO  -> WO  : same [Merger]/[VideoConvertor]/[ExtractAudio] checks as stdout
-                    WO  -> WO  : check transientErrPatterns\n  — 429, timeout, connection/reset errors → hadTransientErr
-                    WO  -> App : cb.OnLog(line, red/amber/grey/default)
+                    WO  -> WO  : classifyStderrLine(line, &result)\n  — transientErrPatterns: 429, timeout, connection/reset errors → hadTransientErr
+                    WO  -> App : cb.OnLog(line, stderrColor(line))\n  — red/amber/grey/default
                 end
                 WO  -> WO : scanner.Err() check → log if I/O error
             end
 
-            WO  --> App : scanResult{sourceExts, wasConverted, hadTransientErr}
+            WO  --> App : scanResult{sourceExts, wasConverted, hadTransientErr}\n  — stderr's result, with stdout's sourceExts\n    and either stream's wasConverted
             App -> YT  : cmd.Wait()
             YT  --> App : exit code / error (cmdErr)
 
@@ -250,9 +250,9 @@ alt hasPostProcess && len(allFinalPaths) > 0 && not cancelled
             App -> App  : PlanEncoder(engine.GPUBackend,\n  engine.GPUCapabilities, containerExt)\n  — resolves GPU -c:v args, or CPU\n    (libx264 CRF 18 / libvpx-vp9 CRF 31) if unavailable
             App -> App  : engine.buildFFmpegArgsForBackend(input, tmpOutput,\n  vfFilters, afFilters, backend, threadsPerJob)
             App -> App  : guard := newGPUJobGuard(engine, job.usedGPU)\n  — blocks until a gpuSem slot is free (max 2 concurrent GPU jobs)
-            App -> OS   : exec FFmpeg process
+            App -> OS   : exec FFmpeg process\n  — a failed start goes to abandonJob, as a failure below does
             OS  -> FF   : spawn process
-            App -> App  : guard.arm(onStall)  — no-op for CPU jobs
+            App -> App  : streamFFmpeg: guard.arm(onStall)  — no-op for CPU jobs
 
             loop FFmpeg stderr progress lines
                 FF  -> App : frame=N fps=X speed=Y
@@ -260,18 +260,18 @@ alt hasPostProcess && len(allFinalPaths) > 0 && not cancelled
                 App -> UI  : updateStatus(progress %)
             end
 
-            FF  --> App : exit code
+            FF  --> App : exit code  (streamFFmpeg returns Wait's error)
             alt FFmpeg failure && ctx canceled
-                App -> App : cancelJob(job, cb)\n  — no OnFailure, no CPU retry
+                App -> App : abandonJob → cancelJob(job, cb)\n  — no OnFailure, no CPU retry
                 App -> OS  : os.Remove(tmpOutput)  [clean up partial]
                 App -> UI  : appendOutput("[SYSTEM] Post-processing canceled: <file>", orange)
             else FFmpeg success
-                App -> OS  : os.Rename(tmpOutput → finalPath)
-                App -> OS  : os.Remove(inputPath)  [original replaced]
-            else FFmpeg failure && job.usedGPU
+                App -> OS  : reportJobDone: os.Rename(tmpOutput → finalPath)\n  [replaces the original]
+                App -> UI  : appendOutput("POST-PROCESSING COMPLETE…")
+            else FFmpeg failure && job.usedGPU  (abandonJob)
                 App -> App : guard.release()
                 App -> App : engine.retryWithCPU(ctx, job, cb, reason)\n  — rebuilds args with BackendOff, re-runs runJob()
-            else FFmpeg failure (CPU job)
+            else FFmpeg failure (CPU job)  (abandonJob → failJob)
                 App -> App : sessionFailed.Store(true)
                 App -> OS  : os.Remove(tmpOutput)  [clean up partial]
                 App -> UI  : appendOutput("[SYSTEM] FFmpeg failed…", red)

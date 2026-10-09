@@ -35,10 +35,31 @@ func (manager *UIManager) showPreferences() {
 	// discarded by closing it without saving.
 	applyGeneralPrefs(ui, manager.onLoadPreferences())
 	ui.prefs.keepHistory.OnChanged = manager.onKeepHistoryChanged
-	// Portable Mode is not a stored preference but a marker file, so the
-	// toggle acts at once rather than on Save. A switch that fails puts it
-	// back without acting again.
-	portable := ui.prefs.portable
+	manager.wirePortableToggle()
+
+	resetBtn := widget.NewButton("Restore Defaults", manager.confirmRestoreDefaults)
+	resetBtn.Importance = widget.DangerImportance
+
+	loadConfigBtn := widget.NewButtonWithIcon("Load from Config (govid.json)", theme.SettingsIcon(), manager.loadConfigFile)
+
+	manager.prefsWindow = fyne.CurrentApp().NewWindow("Preferences")
+	manager.prefsWindow.SetContent(container.NewPadded(container.NewVBox(
+		manager.buildPreferencesForm(),
+		widget.NewSeparator(),
+		container.NewGridWithColumns(2, loadConfigBtn, resetBtn),
+	)))
+	manager.prefsWindow.Resize(fyne.NewSize(520, 560))
+	manager.prefsWindow.SetOnClosed(onWindowClosed(&manager.prefsWindow))
+	closeOnEscape(manager.prefsWindow)
+	manager.prefsWindow.Show()
+}
+
+// wirePortableToggle sets the Portable Mode toggle to whether GoVid runs
+// portable and wires it. Portable Mode is not a stored preference but a
+// marker file, so the toggle acts at once rather than on Save. A switch
+// that fails puts it back without acting again.
+func (manager *UIManager) wirePortableToggle() {
+	portable := manager.ui.prefs.portable
 	var onPortable func(on bool)
 	setPortable := func(on bool) {
 		portable.OnChanged = nil
@@ -49,8 +70,13 @@ func (manager *UIManager) showPreferences() {
 		manager.onSetPortable(on, func() { setPortable(!on) })
 	}
 	setPortable(manager.onIsPortable())
+}
 
-	form := &widget.Form{
+// buildPreferencesForm lays out the Preferences window's settings, each
+// with its hint; Save submits them (submitPreferences).
+func (manager *UIManager) buildPreferencesForm() *widget.Form {
+	ui := manager.ui
+	return &widget.Form{
 		Items: []*widget.FormItem{
 			{Text: "Save Preferences", Widget: ui.prefs.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
 			{Text: "Log Buffer Limit", Widget: ui.prefs.logLimit, HintText: "Max lines kept in the log view (never more than 5000); older entries are removed from the top"},
@@ -70,22 +96,6 @@ func (manager *UIManager) showPreferences() {
 		},
 		OnSubmit: manager.submitPreferences,
 	}
-
-	resetBtn := widget.NewButton("Restore Defaults", manager.confirmRestoreDefaults)
-	resetBtn.Importance = widget.DangerImportance
-
-	loadConfigBtn := widget.NewButtonWithIcon("Load from Config (govid.json)", theme.SettingsIcon(), manager.loadConfigFile)
-
-	manager.prefsWindow = fyne.CurrentApp().NewWindow("Preferences")
-	manager.prefsWindow.SetContent(container.NewPadded(container.NewVBox(
-		form,
-		widget.NewSeparator(),
-		container.NewGridWithColumns(2, loadConfigBtn, resetBtn),
-	)))
-	manager.prefsWindow.Resize(fyne.NewSize(520, 560))
-	manager.prefsWindow.SetOnClosed(onWindowClosed(&manager.prefsWindow))
-	closeOnEscape(manager.prefsWindow)
-	manager.prefsWindow.Show()
 }
 
 // buildCookiesRow lays out the Cookies choice (None / From file / From

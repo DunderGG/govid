@@ -57,10 +57,10 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	}
 	dlApp.toolInstaller = NewToolInstaller(depSvc, dlApp.releaseSvc, "GoVid/"+version)
 
-	// Load saved preferences and apply them to all widgets.
 	dlApp.statusThrottle = newLatestValueThrottle(statusThrottleInterval, dlApp.showStatus)
 	dlApp.pauseThrottle = newLatestValueThrottle(statusThrottleInterval, dlApp.showPauseControl)
 
+	// Load saved preferences and apply them to all widgets.
 	dlApp.settingsStore, dlApp.portable, dlApp.settingsNote = store, portable, settingsNote
 	dlApp.prefSvc = NewPreferenceService(store)
 	prefs := dlApp.prefSvc.Load()
@@ -69,14 +69,23 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.setDebug(prefs.ShowDebug)
 	dlApp.keepHistory.Store(prefs.KeepHistory)
 
-	// Wire history service to both the app and the UIManager's callbacks.
 	dlApp.historySvc = NewHistoryService()
 	dlApp.queueStore = NewQueueStore()
+
+	wireSettingsCallbacks(dlApp)
+	wireToolCallbacks(dlApp)
+	wireMainWindowCallbacks(dlApp)
+	wirePrompts(dlApp)
+	return dlApp
+}
+
+// wireSettingsCallbacks gives dlApp's UIManager the widgets, and the
+// history, preference, and log-service callbacks the History and
+// Preferences windows and createUI need.
+func wireSettingsCallbacks(dlApp *DownloaderApp) {
 	dlApp.uiManager.onLoadHistory = dlApp.historySvc.Load
 	dlApp.uiManager.onClearHistory = dlApp.historySvc.Clear
 
-	// Wire the widgets and preference/log-service callbacks showPreferences
-	// and createUI need.
 	dlApp.uiManager.ui = dlApp.ui
 	dlApp.uiManager.onLoadPreferences = dlApp.prefSvc.Load
 	dlApp.uiManager.onSavePreferences = dlApp.prefSvc.Save
@@ -98,11 +107,14 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onSetPortable = dlApp.onPortableChanged
 	dlApp.uiManager.onSetKeepHistory = dlApp.keepHistory.Store
 	dlApp.uiManager.onSessionRunning = dlApp.isRunning.Load
+}
 
-	// Wire the dependency-service callbacks and log/status callbacks for
-	// checkDependencies and the "Update yt-dlp" menu action.
-	dlApp.uiManager.onCheckDependencies = depSvc.Check
-	dlApp.uiManager.onRunUpdate = depSvc.RunUpdate
+// wireToolCallbacks gives dlApp's UIManager the dependency-service and
+// update callbacks, and the log and status callbacks, for checkDependencies,
+// the "Update yt-dlp" menu action, Components, and GoVid's updates.
+func wireToolCallbacks(dlApp *DownloaderApp) {
+	dlApp.uiManager.onCheckDependencies = dlApp.depSvc.Check
+	dlApp.uiManager.onRunUpdate = dlApp.depSvc.RunUpdate
 	dlApp.uiManager.onUpdateYtDlp = dlApp.updateYtDlp
 	dlApp.uiManager.onYtDlpVersions = dlApp.ytDlpVersions
 	dlApp.uiManager.onJSRuntimeLabel = dlApp.jsRuntimeLabel
@@ -114,18 +126,12 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onLog = dlApp.appendOutput
 	dlApp.uiManager.onStatus = dlApp.updateStatus
 	dlApp.uiManager.onSetStatusIndicator = dlApp.setStatusIndicator
+}
 
-	// appendOutput delegates the widget-mutation half of logging to UIManager,
-	// which owns the log widgets' lifecycle.
-	dlApp.onLogLine = dlApp.uiManager.appendLogLine
-	dlApp.askPlaylist = dlApp.uiManager.askPlaylist
-	dlApp.askDuplicate = dlApp.uiManager.askDuplicate
-	dlApp.askLive = dlApp.uiManager.askLive
-	dlApp.askRestoreQueue = dlApp.uiManager.askRestoreQueue
-	dlApp.freeBytes = freeDiskBytes
-	dlApp.askDiskSpace = dlApp.uiManager.askDiskSpace
-
-	// Wire the main window's action callbacks (download, open folder, cancel).
+// wireMainWindowCallbacks gives dlApp's UIManager the main window's and the
+// Queue panel's action callbacks (download, open folder, cancel, pause,
+// skip, formats).
+func wireMainWindowCallbacks(dlApp *DownloaderApp) {
 	dlApp.uiManager.onStartDownload = dlApp.startDownload
 	dlApp.uiManager.onOpenFolder = dlApp.openDownloadFolder
 	dlApp.uiManager.onRequestCancel = dlApp.RequestCancel
@@ -136,7 +142,21 @@ func newDownloaderApp(window fyne.Window) *DownloaderApp {
 	dlApp.uiManager.onShowFormats = dlApp.showFormatsForURL
 	dlApp.uiManager.onItemFormats = dlApp.showFormatsForItem
 	dlApp.uiManager.onDiscardPaused = dlApp.discardPausedItem
-	return dlApp
+}
+
+// wirePrompts sets dlApp's log view and the prompts the session goroutine
+// asks through to UIManager's, and the free-space query to the real one;
+// tests replace them.
+func wirePrompts(dlApp *DownloaderApp) {
+	// appendOutput delegates the widget-mutation half of logging to UIManager,
+	// which owns the log widgets' lifecycle.
+	dlApp.onLogLine = dlApp.uiManager.appendLogLine
+	dlApp.askPlaylist = dlApp.uiManager.askPlaylist
+	dlApp.askDuplicate = dlApp.uiManager.askDuplicate
+	dlApp.askLive = dlApp.uiManager.askLive
+	dlApp.askRestoreQueue = dlApp.uiManager.askRestoreQueue
+	dlApp.freeBytes = freeDiskBytes
+	dlApp.askDiskSpace = dlApp.uiManager.askDiskSpace
 }
 
 // main is the entry point of the application. It initializes the Fyne app,
@@ -183,27 +203,32 @@ func main() {
 	dlApp.startGPUDetection()
 	dlApp.cleanUpAfterUpdate()
 	dlApp.offerQueueRestore()
+	interceptClose(dlApp, mainApp.Quit)
 
-	// Show a confirmation dialog if a download, post-processing job, tool
-	// install, or GoVid update is active. Quitting then stops a session and
-	// waits for it to clean up.
-	mainWindow.SetCloseIntercept(func() {
+	mainWindow.ShowAndRun()
+}
+
+// interceptClose makes closing dlApp's window show a confirmation dialog if
+// a download, post-processing job, tool install, or GoVid update is active
+// (see quitWarning). Quitting then stops a session and waits for it to
+// clean up before quit runs. Otherwise the settings are flushed and quit
+// runs at once.
+func interceptClose(dlApp *DownloaderApp, quit func()) {
+	dlApp.window.SetCloseIntercept(func() {
 		if warning := dlApp.quitWarning(); warning != "" {
 			dialog.ShowConfirm(
 				"Job in Progress",
 				warning,
 				func(confirmed bool) {
 					if confirmed {
-						dlApp.Shutdown(mainApp.Quit)
+						dlApp.Shutdown(quit)
 					}
 				},
-				mainWindow,
+				dlApp.window,
 			)
 			return
 		}
 		dlApp.flushSettings()
-		mainApp.Quit()
+		quit()
 	})
-
-	mainWindow.ShowAndRun()
 }

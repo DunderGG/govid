@@ -349,6 +349,7 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 - [x] Split `runYtDlp()` (~180 lines) into `buildYtDlpArgs()` and `parseYtDlpOutput()` in download.go. (Done differently: argument building is `DownloadEngine.BuildArgs` and output parsing is `watchOutput` in `logscanner.go`; `runYtDlp` is now a ~20-line wrapper around `DownloadEngine.Run`.)
 - [x] Split `createUI()` (~560 lines) into `createInputCard()`, `createStatusCard()`, and `createLogSection()` in ui.go. (`createUI` moved to `UIManager` and is composed of nine `build*`/`wire*` helpers, including `buildInputCard`, `buildStatusCard`, and `buildLogPane`.)
 - [x] Split `startDownload()` into `validateDownloadInputs()` and `initializeDownloadSession()` in download.go. (`startDownload` delegates to `readSession`, which validates the inputs, and `runSession`.)
+- [x] Split every function over 60 lines (guideline §1.4), such as `runJob`, `downloadItem`, `ApplyFilters`, and `BuildArgs`. (See CR-22 in [code_review_2026-10.md](code_review_2026-10.md).)
 
 ### Naming Consistency
 > Align naming conventions across the codebase.

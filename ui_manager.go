@@ -515,11 +515,27 @@ func (manager *UIManager) buildInputCard(themeMode string) fyne.CanvasObject {
 		manager.onOpenFolder()
 	})
 
-	ui.download.trimStart.SetPlaceHolder("e.g. 00:01:30  (optional)")
-	ui.download.trimEnd.SetPlaceHolder("e.g. 00:05:00  (optional)")
-	ui.download.trimStart.Validator = validateTimestamp
-	ui.download.trimEnd.Validator = validateTimestamp
+	urlHeader, urlRow := manager.buildURLRows()
+	inputCard := roundedCard("Specify the source and destination",
+		container.NewVBox(
+			urlHeader,
+			urlRow,
+			widget.NewLabelWithStyle("Save Destination:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			container.NewBorder(nil, nil, nil, browseBtn, ui.download.path),
+			manager.buildSelectorsRow(),
+			manager.buildTrimRow(),
+			container.NewHBox(ui.download.saveLog, ui.download.notify, ui.download.autoRetry, ui.postProcess.enablePostProcess),
+			container.NewGridWithColumns(4, ui.download.downloadBtn, openFolderBtn, ui.download.pauseBtn, ui.download.cancelBtn),
+		),
+	)
+	return container.NewBorder(nil, nil, accentBar(), nil, inputCard)
+}
 
+// buildURLRows returns the input card's "Video URL:" header, with the
+// Formats…, Load from file…, and Batch Mode controls, and the URL field's
+// row, with its paste and clear buttons.
+func (manager *UIManager) buildURLRows() (header, row fyne.CanvasObject) {
+	ui := manager.ui
 	loadFileBtn := widget.NewButtonWithIcon("Load from file…", theme.FileTextIcon(), manager.showLoadURLFile)
 	formatsBtn := widget.NewButtonWithIcon("Formats…", theme.ListIcon(), manager.onShowFormats)
 	pasteBtn := widget.NewButtonWithIcon("", theme.ContentPasteIcon(), manager.pasteURLs)
@@ -527,47 +543,56 @@ func (manager *UIManager) buildInputCard(themeMode string) fyne.CanvasObject {
 		ui.download.entry.SetText("")
 	})
 
-	inputCard := roundedCard("Specify the source and destination",
+	header = container.NewHBox(
+		widget.NewLabelWithStyle("Video URL:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		layout.NewSpacer(),
+		formatsBtn,
+		loadFileBtn,
+		ui.download.batchMode,
+	)
+	row = container.NewBorder(nil, nil, nil, container.NewHBox(pasteBtn, clearBtn), ui.download.entry)
+	return header, row
+}
+
+// buildSelectorsRow lays out the Preset, Output Format, and Max Quality
+// selectors side by side.
+func (manager *UIManager) buildSelectorsRow() fyne.CanvasObject {
+	ui := manager.ui
+	return container.NewGridWithColumns(3,
 		container.NewVBox(
-			container.NewHBox(
-				widget.NewLabelWithStyle("Video URL:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-				layout.NewSpacer(),
-				formatsBtn,
-				loadFileBtn,
-				ui.download.batchMode,
-			),
-			container.NewBorder(nil, nil, nil, container.NewHBox(pasteBtn, clearBtn), ui.download.entry),
-			widget.NewLabelWithStyle("Save Destination:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-			container.NewBorder(nil, nil, nil, browseBtn, ui.download.path),
-			container.NewGridWithColumns(3,
-				container.NewVBox(
-					widget.NewLabelWithStyle("Preset:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-					manager.buildPresetRow(),
-				),
-				container.NewVBox(
-					widget.NewLabelWithStyle("Output Format:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-					ui.download.format,
-				),
-				container.NewVBox(
-					widget.NewLabelWithStyle("Max Quality:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-					ui.download.quality,
-				),
-			),
-			container.NewGridWithColumns(2,
-				container.NewVBox(
-					widget.NewLabelWithStyle("Trim Start: (optional)", fyne.TextAlignLeading, fyne.TextStyle{}),
-					ui.download.trimStart,
-				),
-				container.NewVBox(
-					widget.NewLabelWithStyle("Trim End: (optional)", fyne.TextAlignLeading, fyne.TextStyle{}),
-					ui.download.trimEnd,
-				),
-			),
-			container.NewHBox(ui.download.saveLog, ui.download.notify, ui.download.autoRetry, ui.postProcess.enablePostProcess),
-			container.NewGridWithColumns(4, ui.download.downloadBtn, openFolderBtn, ui.download.pauseBtn, ui.download.cancelBtn),
+			widget.NewLabelWithStyle("Preset:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			manager.buildPresetRow(),
+		),
+		container.NewVBox(
+			widget.NewLabelWithStyle("Output Format:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			ui.download.format,
+		),
+		container.NewVBox(
+			widget.NewLabelWithStyle("Max Quality:", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+			ui.download.quality,
 		),
 	)
-	return container.NewBorder(nil, nil, accentBar(), nil, inputCard)
+}
+
+// buildTrimRow lays out the Trim Start and Trim End fields side by side,
+// each checked with validateTimestamp.
+func (manager *UIManager) buildTrimRow() fyne.CanvasObject {
+	ui := manager.ui
+	ui.download.trimStart.SetPlaceHolder("e.g. 00:01:30  (optional)")
+	ui.download.trimEnd.SetPlaceHolder("e.g. 00:05:00  (optional)")
+	ui.download.trimStart.Validator = validateTimestamp
+	ui.download.trimEnd.Validator = validateTimestamp
+
+	return container.NewGridWithColumns(2,
+		container.NewVBox(
+			widget.NewLabelWithStyle("Trim Start: (optional)", fyne.TextAlignLeading, fyne.TextStyle{}),
+			ui.download.trimStart,
+		),
+		container.NewVBox(
+			widget.NewLabelWithStyle("Trim End: (optional)", fyne.TextAlignLeading, fyne.TextStyle{}),
+			ui.download.trimEnd,
+		),
+	)
 }
 
 // buildStatusCard assembles the progress bar and status-dot indicator card.

@@ -300,21 +300,7 @@ func (app *DownloaderApp) diagnosticsReport(prefs AppPreferences) string {
 	fmt.Fprintf(&report, "OS: %s/%s, %d CPUs\n", runtime.GOOS, runtime.GOARCH, runtime.NumCPU())
 
 	section("Tools")
-	for _, name := range []string{toolYtDlp, toolFFmpeg, "ffprobe"} {
-		tool := app.depSvc.Installed(name)
-		switch {
-		case !tool.Found():
-			fmt.Fprintf(&report, "%s: not found\n", name)
-		case tool.Version == "":
-			fmt.Fprintf(&report, "%s: does not run (%s)\n", name, tool.Source())
-		default:
-			fmt.Fprintf(&report, "%s: %s (%s)\n", name, tool.Version, tool.Source())
-		}
-	}
-	fmt.Fprintf(&report, "JavaScript runtime: %s\n", app.jsRuntimeLabel())
-	for _, note := range app.depSvc.JSRuntimeNotes() {
-		fmt.Fprintf(&report, "  %s\n", note)
-	}
+	app.writeToolsSection(&report)
 
 	section("GPU")
 	for _, line := range FormatGPUDiagnostics(app.gpuSvc.Detect(context.Background())) {
@@ -345,6 +331,27 @@ func (app *DownloaderApp) diagnosticsReport(prefs AppPreferences) string {
 	}
 
 	return currentAnonymizer(prefs.CookiesPath).apply(report.String())
+}
+
+// writeToolsSection writes the diagnostics report's Tools section to
+// report: each tool's version and where it was found, and the JavaScript
+// runtime, with why other runtimes were skipped. It runs the tools.
+func (app *DownloaderApp) writeToolsSection(report *strings.Builder) {
+	for _, name := range []string{toolYtDlp, toolFFmpeg, "ffprobe"} {
+		tool := app.depSvc.Installed(name)
+		switch {
+		case !tool.Found():
+			fmt.Fprintf(report, "%s: not found\n", name)
+		case tool.Version == "":
+			fmt.Fprintf(report, "%s: does not run (%s)\n", name, tool.Source())
+		default:
+			fmt.Fprintf(report, "%s: %s (%s)\n", name, tool.Version, tool.Source())
+		}
+	}
+	fmt.Fprintf(report, "JavaScript runtime: %s\n", app.jsRuntimeLabel())
+	for _, note := range app.depSvc.JSRuntimeNotes() {
+		fmt.Fprintf(report, "  %s\n", note)
+	}
 }
 
 // jsonIndent returns value as indented JSON.

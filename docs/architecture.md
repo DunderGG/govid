@@ -61,7 +61,7 @@ govid/
 
 ├── ui_manager.go           UIManager — main window layout (createUI and its builders, createMainMenu), secondary window
 │                           singletons (focusOrCreate), the About window, and the yt-dlp update delegates
-├── help_window.go          UIManager.showConfigHelp — the Configuration Help window
+├── help_window.go          UIManager.showConfigHelp — the Configuration Help window, showing the helpItems topics
 ├── preferences_window.go   UIManager.showPreferences — the Preferences window; savePreferences, restoreDefaults, settings import/export
 ├── postprocess_window.go   UIManager.showPostProcessing — the Post-Processing window and its load indicator
 ├── log_view.go             UIManager.appendLogLine / flushLog — the batched Terminal Output log view
@@ -86,7 +86,7 @@ govid/
 ├── live.go                 Live and scheduled streams: MediaInfo.IsLive/IsUpcoming, prepareLive, monitorRecording, finishRecording (remux), recording view and free-space watch
 ├── live_dialog.go          UIManager.askLive — Record from now / from the start / Skip, or Wait and record / Skip
 ├── postprocess.go          PostProcessSettings, buildPostProcessFilters / applyFFmpegFilters — value struct + thin UI wrapper; shared format/scan helpers
-├── logscanner.go           DownloadEngine.watchOutput / parseProgress — yt-dlp stdout/stderr parsing goroutines
+├── logscanner.go           DownloadEngine.watchOutput (scanStdout / scanStderr) / parseProgress — yt-dlp stdout/stderr parsing goroutines
 │
 ├── ── UI ──────────────────────────────────────────────────────────
 ├── ui.go                   Thin DownloaderApp delegates to UIManager's secondary windows; shared roundedCard/accentBar helpers
@@ -176,7 +176,7 @@ Widgets are wired with callbacks in `UIManager.createUI()` and accessed through 
 Owns the primary window reference (`mainWindow`) plus the singleton secondary windows (About, Help, History, Preferences, Post-Processing, Components). Calling a `show*` method re-focuses an already-open window rather than opening a duplicate, via the shared `focusOrCreate`/`onWindowClosed` helpers. `UIManager` holds no direct service references — every service access is bridged through injected callbacks (`onLoadHistory`, `onCheckDependencies`, `onSavePreferences`, etc.), wired once in `newDownloaderApp`.
 
 Beyond the five `show*` methods, `UIManager` also owns:
-- **`createUI()`** — builds the main window layout, split into focused helpers (`buildHeader`, `configureEntryMode`, `wireToggleHandlers`, `wireActionButtons`, `buildInputCard`, `buildStatusCard`, `buildLogPane`, `buildFooter`).
+- **`createUI()`** — builds the main window layout, split into focused helpers (`buildHeader`, `configureEntryMode`, `wireToggleHandlers`, `wireActionButtons`, `buildInputCard` (with `buildURLRows`, `buildSelectorsRow`, and `buildTrimRow`), `buildStatusCard`, `buildLogPane`, `buildFooter`).
 - **`createMainMenu()`** — builds the menu bar.
 - **`showLoadURLFile` / `loadURLList`, `pasteURLs`, `handleDrop`** (`url_input.go`) — the "Load from file…" button, the paste button, and the window's drop handler (`SetOnDropped`, set in `createUI`). All go through `addURLs`, which appends to the URL field without duplicates (`mergeURLs`) and switches on batch mode when the field then holds more than one URL. `parseURLList` skips blank lines, `#` comments (which `collectURLs` also skips in batch mode), and lines that are not http(s) URLs (`looksLikeURL`), and the log says what was skipped. Paste takes the clipboard only if every non-blank line is a URL. A dropped `.txt` is loaded as a list, and a `.url` or `.desktop` shortcut adds its `URL=` line (`shortcutURL`). Links dragged straight from a browser do not arrive on Windows, because GLFW accepts only dropped files there (`WM_DROPFILES`).
 - **`savePreferences`, `restoreDefaults`** (`preferences_window.go`) — preference persistence and the "Restore Defaults" reset, used by `showPreferences`.
@@ -192,7 +192,7 @@ Beyond the five `show*` methods, `UIManager` also owns:
 
 A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg`, and the JavaScript runtime yt-dlp uses for YouTube (`JSRuntime`, from `DependencyService.JSRuntime`; `BuildArgs` and `Probe` both pass it as `--js-runtimes name:path`, because both extract the video). It provides these methods:
 
-- **`BuildArgs(DownloadRequest) DownloadArgs`** — pure function; assembles the yt-dlp command-line arguments from a request value struct. No I/O. The `-o` template comes from `outputTemplate` (`filename_template.go`): the request's `FilenameTemplate` (the Filename Template preference, in yt-dlp's syntax; `defaultFilenameTemplate`, `GoVid_%(title)s{quality}`, when empty or invalid) with `{quality}` replaced by the height label below for a capped download, then `_TRIM` for a trimmed one and `_<download ID>`, then `.%(ext)s`. A template may not hold `/` or ``, because `FinalizeFiles` only looks in the save folder. The format selector comes from `formatSelection(format, quality)`, which `Probe` shares; it also returns the height cap, which is empty for Best and for the audio formats. A capped video is labelled with the height actually downloaded, through the `heightLabel` template field `%(height&_{}p|)s` (nothing when the height is unknown). `embedArgs` adds `--embed-metadata`, `--embed-thumbnail --convert-thumbnails jpg` (except for WebM, which sets `DownloadArgs.ThumbnailSkipped` so `Run` can log why), and `--embed-chapters` from the request's `EmbedMetadata`/`EmbedThumbnail`/`EmbedChapters`. `subtitleArgs` adds `--write-subs [--write-auto-subs] --sub-langs <langs> --convert-subs srt` for every subtitle mode except Off, plus `--embed-subs` for Embed and Both. yt-dlp keeps the subtitle files after embedding when `--write-subs` is given, so Embed adds `--compat-options no-keep-subs` to delete them; `--write-subs` is needed because `--write-auto-subs` alone takes only auto-generated captions. Subtitles embedded in WebM stay WebVTT (`--convert-subs vtt`), the only format WebM holds, and audio formats skip subtitles (`DownloadArgs.SubtitlesSkipped`).
+- **`BuildArgs(DownloadRequest) DownloadArgs`** — pure function; assembles the yt-dlp command-line arguments from a request value struct. No I/O. Each group of flags has its own helper, in this order: `outputArgs` (progress, `--continue` or `--no-part`, the save folder and `-o` template), `formatArgs`, `ffmpegLocationArgs`, `jsRuntimeArgs`, `--limit-rate`, `cookieArgs`, `containerArgs` (extract audio, or merge and remux into the container), `trimArgs` (`--download-sections`), `liveArgs`, `embedArgs`, `subtitleArgs`, and `inputArgs` (the URL or `--load-info-json`). The `-o` template comes from `outputTemplate` (`filename_template.go`): the request's `FilenameTemplate` (the Filename Template preference, in yt-dlp's syntax; `defaultFilenameTemplate`, `GoVid_%(title)s{quality}`, when empty or invalid) with `{quality}` replaced by the height label below for a capped download, then `_TRIM` for a trimmed one and `_<download ID>`, then `.%(ext)s`. A template may not hold `/` or ``, because `FinalizeFiles` only looks in the save folder. The format selector comes from `formatSelection(format, quality)`, which `Probe` shares; it also returns the height cap, which is empty for Best and for the audio formats. A capped video is labelled with the height actually downloaded, through the `heightLabel` template field `%(height&_{}p|)s` (nothing when the height is unknown). `embedArgs` adds `--embed-metadata`, `--embed-thumbnail --convert-thumbnails jpg` (except for WebM, which sets `DownloadArgs.ThumbnailSkipped` so `Run` can log why), and `--embed-chapters` from the request's `EmbedMetadata`/`EmbedThumbnail`/`EmbedChapters`. `subtitleArgs` adds `--write-subs [--write-auto-subs] --sub-langs <langs> --convert-subs srt` for every subtitle mode except Off, plus `--embed-subs` for Embed and Both. yt-dlp keeps the subtitle files after embedding when `--write-subs` is given, so Embed adds `--compat-options no-keep-subs` to delete them; `--write-subs` is needed because `--write-auto-subs` alone takes only auto-generated captions. Subtitles embedded in WebM stay WebVTT (`--convert-subs vtt`), the only format WebM holds, and audio formats skip subtitles (`DownloadArgs.SubtitlesSkipped`).
 - **`Probe(ctx, DownloadRequest) (MediaInfo, error)`** — runs `yt-dlp -J --flat-playlist --no-warnings` with the download's `-f` selector and cookies, and without `--no-playlist` (`probe.go`). It returns `MediaInfo{Type, Title, Duration, Entries}`; `IsPlaylist()` is true for `_type == "playlist"`, and each `PlaylistEntry.DownloadURL()` is the video's URL. `--flat-playlist` lists a playlist's entries without extracting them, but a single video is still extracted in full. For a single video, `EstimatedSize()` adds up the `filesize` (or `filesize_approx`) of the requested formats, for the disk space check, and the `MediaInfo` keeps the JSON itself (`raw`) and when it was read (`probedAt`). `ProbeVideo` is the same probe with `--no-playlist`, for playlist entries and "Only this video" links. `isFresh(now)` is false once the answer is older than `probeMaxAge` (30 min), because the format URLs in it expire.
 - **`Execute(ctx, args []string, opts DownloadOptions, ProcessCallbacks) (scanResult, error)`** — starts the process, streams stdout/stderr through its own private `watchOutput` method (defined in `logscanner.go`), and retries on transient errors with 1 s / 5 s / 30 s back-off when `opts.AutoRetry` is set.
 - **`FinalizeFiles(savePath, downloadID string, onLog func(string, color.Color)) []string`** — finds the temp files written under `downloadID` (`filesWithID` lists the save folder; `filepath.Glob` would read brackets in its name as a pattern), strips the token, and renames each to its final conflict-free name via the private `uniquePath` helper, under `renameMu`. `uniquePath` counts a name as taken only when `os.Stat` finds a file there, so an error such as access denied cannot make every name taken, and it gives up with `errNoFreeName` after `maxUniquePathTries` (10 000) numbered names rather than search forever while holding `renameMu`; the file then keeps its temporary name, as after a failed rename. The rename goes through `renameWithRetry`, which retries for up to about 2 s as `removeWithRetry` does, because on Windows an antivirus scanner, the search indexer, or Explorer's thumbnails can briefly hold a new file open; `DownloadEngine.rename` (`os.Rename` when nil) is replaced in tests. A file that still cannot be renamed keeps its temporary name, and that path is returned, so history and post-processing get a file that exists. Reports rename events through `onLog` rather than touching the UI directly.
@@ -208,7 +208,7 @@ A stateless service that owns the resolved paths to `yt-dlp` and `ffmpeg`, and t
 
 `DownloadOptions{AutoRetry bool; Index, Total int}` bundles the retry policy and this URL's 1-based position within a batch (both 1 for single downloads) — the three runtime options shared by `Execute` and `Run`.
 
-The private `watchOutput(stdout, stderr, cb) scanResult` and `parseProgress(line, cb)` methods own all output-scanning; they hold no UI state and report every line and progress tick through `ProcessCallbacks`.
+The private `watchOutput(stdout, stderr, cb) scanResult` and `parseProgress(line, cb)` methods own all output-scanning. `watchOutput` reads the two streams at once, each into its own `scanResult` (`scanStdout`, and `scanStderr`, which records what each line shows through `classifyStderrLine` and colours it with `stderrColor`), and combines them once both reach EOF; they hold no UI state and report every line and progress tick through `ProcessCallbacks`.
 
 `scanResult` records the source extensions seen in `[download] Destination:` lines, whether yt-dlp converted or merged the media (a `[Merger]`/`[VideoConvertor]` line on either stream; real yt-dlp prints them to stdout), whether a retryable network/rate-limit error was observed, and whether an `ERROR:` line looked like a site change (`hadExtractorErr`: "Unable to extract", "Sign in to confirm", "HTTP Error 403"). The final result retains this metadata for the completion summary, the retry decision, and the "update yt-dlp" hint `reportDownloadResult` logs after such a failure.
 
@@ -223,16 +223,16 @@ The private `watchOutput(stdout, stderr, cb) scanResult` and `parseProgress(line
 
 Owns the resolved paths to `ffmpeg` and `ffprobe`, plus the GPU acceleration state needed for the final encode step: `GPUBackend` (the resolved backend selection), `GPUCapabilities` (the `map[GPUBackend]BackendCapability` copied from `GPUCapabilityService.Detect()`), and `gpuSem` (a semaphore with capacity `maxConcurrentGPUJobs = 2` — see §4.11). Construct it with `NewPPEngine(ffmpegPath, ffprobePath)`. Exposes one public method:
 
-- **`ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks)`** — builds one `PostProcessJob` per file, then runs them concurrently through a worker pool bounded to `runtime.NumCPU()` goroutines. Each worker calls the private `runJob()`.
+- **`ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks)`** — builds one `PostProcessJob` per file (`planJob`, which skips a file no filter applies to), logs the filters (`logFilterSummary`), then runs the jobs concurrently through a worker pool bounded to `runtime.NumCPU()` goroutines (`runWorkerPool`, which also gives each job its share of the threads and its FFmpeg args). Each worker calls the private `runJob()`.
 
 Internal flow per file:
-1. `resolveAutoCrop` — replaces the `__autocrop__` sentinel by running a 60-second `cropdetect` pass via `detectCropFilter`.
+1. `resolveAutoCrop` (in `planJob`) — replaces the `__autocrop__` sentinel by running a 60-second `cropdetect` pass via `detectCropFilter`.
 2. `resolveToneMap` — replaces the `__tonemap__` sentinel with `toneMapFilter(transfer)` for the file's HDR transfer (PQ or HLG), or drops it for SDR files. `probeColorInfo` reads the colour tags with ffprobe, falling back to parsing ffmpeg's input summary because ffprobe is not bundled; a BT.2020 file with no transfer tag is taken to be PQ. The chain states the input transfer, matrix, and primaries explicitly, and `buildFFmpegArgsForBackend` tags tone-mapped output as BT.709.
-3. `runJob` — runs the main FFmpeg encode. Streams stderr in real-time. On success, renames the `_pp` temp file over the original. On failure, deletes the temp file (CPU jobs) or retries once on the CPU (GPU jobs — see below).
+3. `runJob` — runs the main FFmpeg encode. `streamFFmpeg` streams stderr in real-time until FFmpeg exits. On success, `reportJobDone` renames the `_pp` temp file over the original and logs the summary. On failure, or when FFmpeg cannot start, `abandonJob` deletes the temp file (CPU jobs) or retries once on the CPU (GPU jobs — see below).
 
 Private probe methods (`probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, `parseRationalFPS`) use `engine.FFprobePath` to measure frame counts and durations for progress reporting. Private argument builders `buildFFmpegArgs`/`buildFFmpegArgsForBackend` assemble the FFmpeg command-line for each job, resolving the video encoder via the package-level `PlanEncoder(requested, capabilities, containerExt) EncoderPlan` function (§4.11), with the per-job thread count passed in once `ApplyFilters` has sized the worker pool. When the job's `streamLayout` is known (`probeStreamLayout` parses `ffmpeg -i`'s summary), streams are mapped explicitly: the main video stream first (filtered with `-filter:v:0` and encoded with the plan's `-c:v` scoped to `-c:v:0` by `encodeFirstVideoOnly`), then every cover (`(attached pic)`) stream-copied with `-disposition attached_pic`, plus `0:a?`, `0:s?`, `0:t?`, `-map_metadata 0`, and `-map_chapters 0`. Without video filters, `0:V?` copies the non-cover video. ffmpeg would write a mapped cover back into Matroska as an ordinary video track, so for `.mkv`/`.mka` outputs `extractCovers` saves each cover to a temporary image and `-attach` re-adds it with its file name and MIME type; `ApplyFilters` removes those files once all jobs have run. When the layout cannot be read, the job falls back to ffmpeg's default stream selection.
 
-**GPU job lifecycle:** `gpuSem` (buffered channel, capacity `maxConcurrentGPUJobs = 2`) caps how many GPU-encoded jobs run concurrently, since hardware encoders like NVENC enforce a low concurrent session limit. `runJob` wraps each job's GPU-only bookkeeping in a `gpuJobGuard` (`newGPUJobGuard`, `arm`, `pet`, `release`): it acquires a `gpuSem` slot up front (no-op for CPU jobs), arms a `gpuStallTimeout` (30 s) watchdog that is `pet()` on every stderr line, and `release()`s the slot/watchdog exactly once regardless of exit path. If a GPU-encoded job fails — `cmd.Start()` error or a non-zero exit — `retryWithCPU` rebuilds the job's args with `BackendOff` and re-runs `runJob` once, so a driver hiccup or hung encoder falls back to the CPU baseline instead of failing the file outright. A job stopped by a cancel is neither retried nor failed: when `ctx` is done, `runJob` hands it to `cancelJob`, which removes `tmpOutput` and logs the file as canceled without calling `OnFailure`, and the `ApplyFilters` workers start no further jobs.
+**GPU job lifecycle:** `gpuSem` (buffered channel, capacity `maxConcurrentGPUJobs = 2`) caps how many GPU-encoded jobs run concurrently, since hardware encoders like NVENC enforce a low concurrent session limit. `runJob` wraps each job's GPU-only bookkeeping in a `gpuJobGuard` (`newGPUJobGuard`, `arm`, `pet`, `release`): it acquires a `gpuSem` slot up front (no-op for CPU jobs), arms a `gpuStallTimeout` (30 s) watchdog that is `pet()` on every stderr line, and `release()`s the slot/watchdog exactly once regardless of exit path. If a GPU-encoded job fails — `cmd.Start()` error or a non-zero exit — `abandonJob` releases its slot and `retryWithCPU` rebuilds the job's args with `BackendOff` and re-runs `runJob` once, so a driver hiccup or hung encoder falls back to the CPU baseline instead of failing the file outright. A job stopped by a cancel is neither retried nor failed: when `ctx` is done, `abandonJob` hands it to `cancelJob`, which removes `tmpOutput` and logs the file as canceled without calling `OnFailure`, and the `ApplyFilters` workers start no further jobs.
 
 `DownloaderApp.applyFFmpegFilters()` in `postprocess.go` is the thin wrapper that constructs `PPEngine` and wires `PPCallbacks` back to UI helpers; it also sets `engine.GPUBackend` to the session's `gpuBackend` (the Post-Processing dialog's selector, read by `readSessionSettings` as the session starts) and `engine.GPUCapabilities` from `app.gpuSvc.Detect(ctx)` before calling `ApplyFilters`.
 
@@ -385,23 +385,30 @@ User clicks Download
        ├─ checkURLs()          engine.Probe per URL; a playlist → askPlaylist prompt → its chosen videos become queue items
        ├─ skipDownloaded()     history match by video ID + extractor (or URL) → askDuplicate: Download again / Skip / Skip all
        └─ runQueue()           QueueModel.Next() → the first waiting item, until none waits (the Queue panel may remove, move, or retry items meanwhile)
-            └─ downloadItem()    per item; status Checking → Downloading x% → Done / Failed / Skipped
-                 ├─ checkItem()          engine.ProbeVideo when the item has no fresh probe answer (playlist entries; answers over 30 min old)
-                 ├─ reportQualityFit()   qualityFit(format, quality, probe height) → log line + notice when it differs from the cap
-                 ├─ prepareLive()        live or scheduled stream → askLive: Record from now / from the start / Wait and record / Skip
-                 ├─ reportSubtitles()    the probe's subtitle languages; warns when none matches --sub-langs (matchSubLangs)
-                 ├─ checkDiskSpace()     probe size estimate × 1.1 (× 2 with post-processing) vs freeBytes(save folder) — not for live streams
+            └─ downloadItem()    per item; status Checking → Downloading x% → Done / Failed / Skipped (itemStatus)
+                 ├─ beginItem()          the item's own context in a batch (its Skip, and Cancel when one at a time)
+                 ├─ prepareItem()
+                 │    ├─ checkItem()          engine.ProbeVideo when the item has no fresh probe answer (playlist entries; answers over 30 min old)
+                 │    ├─ prepareLive()        live or scheduled stream → askLive: Record from now / from the start / Wait and record / Skip
+                 │    ├─ reportQualityFit()   qualityFit(format, quality, probe height) → log line + notice when it differs from the cap
+                 │    └─ reportSubtitles()    the probe's subtitle languages; warns when none matches --sub-langs (matchSubLangs)
+                 ├─ checkItemSpace()     checkDiskSpace(): probe size estimate × 1.1 (× 2 with post-processing) vs freeBytes(save folder) — not for live streams
+                 ├─ registerItemControls()  the row's Pause, or Stop recording for a live stream
                  └─ runYtDlp()
                       ├─ engine.BuildArgs(DownloadRequest)   → []string args (--load-info-json <probe JSON> instead of the URL)
                       ├─ engine.Execute(ctx, args, opts, cb)   → scanResult
                       │    ├─ cmd.StdoutPipe / StderrPipe
                       │    └─ engine.watchOutput() goroutines (parse % / phase) → cb.OnProgress, cb.OnPhase
                       ├─ engine.FinalizeFiles()               find → rename  (then RemoveLeftoverPartials; RemovePartialFiles on failure/cancel)
-                      └─ historySvc.AppendAll(DownloadRecord) JSON append
-  └─ applyFFmpegFilters()     if post-processing enabled
-       └─ PPEngine.ApplyFilters(ctx, files, vf, af, cb)
-              ├─ resolveAutoCrop() / resolveToneMap() per file (sentinels → crop / tone-map filters)
-              └─ runJob() per file (CPU worker pool; GPU jobs also use gpuSem, max 2)
+                      ├─ historySvc.AppendAll(DownloadRecord) JSON append
+                      └─ reportDownloadResult()               summaryFor(result) → the log's summary block, status, dot, progress bar
+  └─ finishDownloads()
+       └─ applyFFmpegFilters()     if post-processing enabled
+            └─ PPEngine.ApplyFilters(ctx, files, vf, af, cb)
+                   ├─ planJob() per file: resolveAutoCrop() / resolveToneMap() (sentinels → crop / tone-map filters)
+                   └─ runWorkerPool() → runJob() per file (CPU worker pool; GPU jobs also use gpuSem, max 2)
+                        ├─ streamFFmpeg()                    stderr → progress in the status, other lines to the log
+                        └─ reportJobDone() / abandonJob()    rename + summary, or cancel / CPU retry / fail
 ```
 
 ### 5.2 Preference flow
@@ -501,9 +508,9 @@ func classify(err error) Category {
 | Download workers (`runParallel`) | `runQueue` with Simultaneous Downloads > 1 | nothing waits, `queueCtx` ends, a disk-space Stop, or `backOff` lowers the limit below the worker's number | `wg.Wait` in `runParallel` | yes |
 | Progress smoother (`runProgressSmoother`, 33 ms ticker) | `startSession` | `queueCtx` cancelled (`runSession` cancels it when the session ends) | yes: `runSession` waits for `smootherDone` before it clears the session state, so two sessions' smoothers never run at once | yes |
 | Status dot pulse (50 ms ticker) | `setStatusIndicator` (UI thread), for the Active and Processing states | `stopStatusPulse`: every state change closes `stopPulse` | yes: `stopStatusPulse` waits for `pulseDone` | yes |
-| yt-dlp output readers (`watchOutput`, two goroutines) | `Execute` | EOF on stdout/stderr once the process tree exits (`cmd.WaitDelay` bounds a pipe a grandchild holds) | `waitGroup.Wait` in `watchOutput` | – |
+| yt-dlp output readers (`watchOutput`: `scanStdout` and `scanStderr` on two goroutines) | `Execute` | EOF on stdout/stderr once the process tree exits (`cmd.WaitDelay` bounds a pipe a grandchild holds) | `waitGroup.Wait` in `watchOutput` | – |
 | Recording monitor (1 s ticker) | `runArgs`, for live and scheduled streams | the function `monitorRecording` returns, called when `Execute` returns | yes: it waits for `finished` | yes |
-| FFmpeg progress reader (inline scanner in `runJob`) | each post-processing job | EOF when ffmpeg exits; the GPU stall watchdog kills a hung encoder | runs on the job's own worker | yes |
+| FFmpeg progress reader (`streamFFmpeg`, called by `runJob`) | each post-processing job | EOF when ffmpeg exits; the GPU stall watchdog kills a hung encoder | runs on the job's own worker | yes |
 | Post-processing worker pool | `PPEngine.ApplyFilters` | its jobs run out; the session context cancels ffmpeg | `ApplyFilters` waits | – |
 | Heartbeat (`runHeartbeat`, 10 s ticker) | `setDebug(true)` | `setDebug(false)` → `stopHeartbeat` cancels it | yes: `stopHeartbeat` waits | yes |
 | Throttles (status label, Pause button, Queue panel) | `latestValueThrottle.Set` | no goroutine: one `time.AfterFunc` per burst of changes, which `Flush` stops; nothing re-arms it without a new `Set` | – | – (one would fire on every change) |
@@ -549,11 +556,11 @@ process tree (`taskkill /T` on Windows, the process group on Unix) and
 `cmd.WaitDelay` so `Wait` cannot hang on pipes a surviving grandchild holds.
 This matters because yt-dlp runs its own ffmpeg for merging and trimming.
 The readers of a running tool's output (`watchOutput`'s two goroutines and
-`runJob`'s FFmpeg stderr loop) use `newOutputScanner`, which accepts lines up
+`streamFFmpeg`'s FFmpeg stderr loop) use `newOutputScanner`, which accepts lines up
 to `maxOutputLine` (1 MiB) instead of `bufio.Scanner`'s 64 KiB. If a scanner
 still stops early, the reader logs it and `drainOutput` reads the rest, since
 a tool blocked on a full pipe never exits and `WaitDelay` only starts once it
-has; `runJob` pets the GPU stall watchdog while it drains.
+has; `streamFFmpeg` pets the GPU stall watchdog while it drains.
 The file manager, which Open Folder (`openDownloadFolder`) and the History
 window's Show in folder (`revealHistoryFile`) start without waiting for it,
 goes through `startReaped`, which waits for it in the background so it does

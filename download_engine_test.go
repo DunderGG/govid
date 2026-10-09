@@ -456,15 +456,6 @@ func TestExecuteCancelWhileRunning(t *testing.T) {
 	}
 }
 
-// fileSize returns the size of the file at path, or 0 if it does not exist.
-func fileSize(path string) int64 {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0
-	}
-	return info.Size()
-}
-
 func TestExecuteCancelKillsChildProcesses(t *testing.T) {
 	_ = test.NewApp()
 	useFakeTool(t, "ytdlp-spawn-child")

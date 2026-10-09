@@ -114,84 +114,107 @@ func isConversionLine(line string) bool {
 // metadata. It blocks until both streams reach EOF. The engine owns no mutable
 // UI state itself — progress updates are reported through cb.OnProgress.
 func (engine *DownloadEngine) watchOutput(stdout, stderr io.Reader, cb ProcessCallbacks) scanResult {
+	// Each stream is scanned into its own result, so the goroutines never
+	// write the same field, and the two are combined once both are done.
 	var (
-		result scanResult
-		// Each stream records conversions separately so the goroutines never
-		// write the same field; yt-dlp prints [Merger] to stdout, but other
-		// steps may report on stderr.
-		stdoutConverted, stderrConverted bool
-		waitGroup                        sync.WaitGroup
+		stdoutResult, stderrResult scanResult
+		waitGroup                  sync.WaitGroup
 	)
-
-	waitGroup.Add(1)
-	go func() {
-		defer waitGroup.Done()
-		scanner := newOutputScanner(stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			engine.parseProgress(line, cb)
-			stdoutConverted = stdoutConverted || isConversionLine(line)
-			if phase := detectPhase(line); phase != "" {
-				cb.OnPhase(phase)
-			}
-			// Capture the extension of each file yt-dlp writes to disk.
-			if dest, found := strings.CutPrefix(line, "[download] Destination: "); found {
-				if ext := strings.TrimPrefix(filepath.Ext(dest), "."); ext != "" {
-					result.sourceExts = append(result.sourceExts, ext)
-				}
-			}
-			cb.OnLog(line, nil) // nil = default foreground, resolved by the UI
-		}
-		if err := scanner.Err(); err != nil {
-			cb.OnLog(fmt.Sprintf("[SYSTEM] stdout read error: %v; the rest of yt-dlp's output is not shown.", err), colWarning)
-			drainOutput(stdout, nil)
-		}
-	}()
-
-	waitGroup.Add(1)
-	go func() {
-		defer waitGroup.Done()
-		scanner := newOutputScanner(stderr)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if phase := detectPhase(line); phase != "" {
-				cb.OnPhase(phase)
-			}
-			stderrConverted = stderrConverted || isConversionLine(line)
-			// Detect transient network / rate-limit errors so the caller can retry.
-			result.hadTransientErr = result.hadTransientErr || containsAny(line, transientErrPatterns)
-			result.hadRateLimit = result.hadRateLimit || strings.Contains(line, "HTTP Error 429") || strings.Contains(line, "Too Many Requests")
-			// Detect errors a newer yt-dlp may fix, so the caller can say so.
-			isError := strings.Contains(line, "ERROR:")
-			result.hadExtractorErr = result.hadExtractorErr || (isError && containsAny(line, extractorErrPatterns))
-			result.hadExpiredLinkErr = result.hadExpiredLinkErr || (isError && containsAny(line, expiredLinkErrPatterns))
-			// yt-dlp reports this as an ERROR, or inside the WARNING it gives when
-			// it falls back from loaded info to the URL.
-			result.hadSubtitleErr = result.hadSubtitleErr || strings.Contains(line, subtitleErrPattern)
-			result.hadNoJSRuntime = result.hadNoJSRuntime || strings.Contains(line, noJSRuntimePattern)
-			if result.accessProblem == accessOK {
-				result.accessProblem = classifyAccessError(line)
-			}
-			var logColor color.Color // nil = default foreground, resolved by the UI
-			switch {
-			case strings.Contains(line, "ERROR:"):
-				logColor = colError
-			case strings.Contains(line, "WARNING:"):
-				logColor = colWarning
-			case strings.Contains(line, "[debug]"):
-				logColor = colDebug
-			}
-			cb.OnLog(line, logColor)
-		}
-		if err := scanner.Err(); err != nil {
-			cb.OnLog(fmt.Sprintf("[SYSTEM] stderr read error: %v; the rest of yt-dlp's output is not shown.", err), colWarning)
-			drainOutput(stderr, nil)
-		}
-	}()
-
+	waitGroup.Go(func() { stdoutResult = engine.scanStdout(stdout, cb) })
+	waitGroup.Go(func() { stderrResult = scanStderr(stderr, cb) })
 	waitGroup.Wait()
-	result.wasConverted = stdoutConverted || stderrConverted
+
+	result := stderrResult
+	result.sourceExts = stdoutResult.sourceExts
+	// yt-dlp prints [Merger] to stdout, but other steps may report on stderr.
+	result.wasConverted = stdoutResult.wasConverted || stderrResult.wasConverted
 	return result
+}
+
+// scanStdout reads yt-dlp's stdout until EOF: it reports each line's
+// progress and post-download step, logs the line, and returns the source
+// extensions it saw and whether a line showed a conversion.
+func (engine *DownloadEngine) scanStdout(stdout io.Reader, cb ProcessCallbacks) scanResult {
+	var result scanResult
+	scanner := newOutputScanner(stdout)
+	for scanner.Scan() {
+		line := scanner.Text()
+		engine.parseProgress(line, cb)
+		result.wasConverted = result.wasConverted || isConversionLine(line)
+		if phase := detectPhase(line); phase != "" {
+			cb.OnPhase(phase)
+		}
+		// Capture the extension of each file yt-dlp writes to disk.
+		if dest, found := strings.CutPrefix(line, "[download] Destination: "); found {
+			if ext := strings.TrimPrefix(filepath.Ext(dest), "."); ext != "" {
+				result.sourceExts = append(result.sourceExts, ext)
+			}
+		}
+		cb.OnLog(line, nil) // nil = default foreground, resolved by the UI
+	}
+	if err := scanner.Err(); err != nil {
+		cb.OnLog(fmt.Sprintf("[SYSTEM] stdout read error: %v; the rest of yt-dlp's output is not shown.", err), colWarning)
+		drainOutput(stdout, nil)
+	}
+	return result
+}
+
+// scanStderr reads yt-dlp's stderr until EOF: it reports each line's
+// post-download step, logs the line coloured by its kind, and returns what
+// the lines showed (see classifyStderrLine).
+func scanStderr(stderr io.Reader, cb ProcessCallbacks) scanResult {
+	var result scanResult
+	scanner := newOutputScanner(stderr)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if phase := detectPhase(line); phase != "" {
+			cb.OnPhase(phase)
+		}
+		classifyStderrLine(line, &result)
+		cb.OnLog(line, stderrColor(line))
+	}
+	if err := scanner.Err(); err != nil {
+		cb.OnLog(fmt.Sprintf("[SYSTEM] stderr read error: %v; the rest of yt-dlp's output is not shown.", err), colWarning)
+		drainOutput(stderr, nil)
+	}
+	return result
+}
+
+// classifyStderrLine records in result what a line of yt-dlp's stderr
+// shows: a conversion, and the errors the caller retries on, explains, or
+// works around.
+func classifyStderrLine(line string, result *scanResult) {
+	result.wasConverted = result.wasConverted || isConversionLine(line)
+	// Detect transient network / rate-limit errors so the caller can retry.
+	result.hadTransientErr = result.hadTransientErr || containsAny(line, transientErrPatterns)
+	result.hadRateLimit = result.hadRateLimit || strings.Contains(line, "HTTP Error 429") || strings.Contains(line, "Too Many Requests")
+	// Detect errors a newer yt-dlp may fix, so the caller can say so.
+	isError := strings.Contains(line, "ERROR:")
+	result.hadExtractorErr = result.hadExtractorErr || (isError && containsAny(line, extractorErrPatterns))
+	result.hadExpiredLinkErr = result.hadExpiredLinkErr || (isError && containsAny(line, expiredLinkErrPatterns))
+	// yt-dlp reports this as an ERROR, or inside the WARNING it gives when
+	// it falls back from loaded info to the URL.
+	result.hadSubtitleErr = result.hadSubtitleErr || strings.Contains(line, subtitleErrPattern)
+	result.hadNoJSRuntime = result.hadNoJSRuntime || strings.Contains(line, noJSRuntimePattern)
+	if result.accessProblem == accessOK {
+		result.accessProblem = classifyAccessError(line)
+	}
+}
+
+// stderrColor returns the log colour of a line of yt-dlp's stderr: errors,
+// warnings, and debug lines have their own, and any other line is nil, the
+// default foreground, resolved by the UI.
+func stderrColor(line string) color.Color {
+	switch {
+	case strings.Contains(line, "ERROR:"):
+		return colError
+	case strings.Contains(line, "WARNING:"):
+		return colWarning
+	case strings.Contains(line, "[debug]"):
+		return colDebug
+	default:
+		return nil
+	}
 }
 
 // progressLinePattern matches yt-dlp's per-update progress lines, e.g.

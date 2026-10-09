@@ -20,8 +20,10 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
+	"io"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -293,8 +295,9 @@ func removeTempOutput(job PostProcessJob, cb PPCallbacks) {
 // in real-time. Progress stats update the status bar; all other lines are
 // forwarded to the log. The original file is replaced only if FFmpeg succeeds.
 //
-// Phases: log/warn -> size-before -> acquire gpuJobGuard -> exec+stream ->
-// wait (retry on CPU if a GPU job failed) -> rename+report.
+// Phases: log/warn -> size-before -> acquire gpuJobGuard -> start ->
+// stream+wait (streamFFmpeg) -> on failure, retry on CPU if a GPU job failed
+// (abandonJob) -> rename+report (reportJobDone).
 func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCallbacks) {
 	cb.OnLog(
 		fmt.Sprintf("[SYSTEM] Post-processing: %s", filepath.Base(job.inputPath)),
@@ -310,10 +313,7 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	}
 
 	// sizeBefore is used to compute the delta in file size after post-processing.
-	var sizeBefore int64
-	if info, err := os.Stat(job.inputPath); err == nil {
-		sizeBefore = info.Size()
-	}
+	sizeBefore := fileSize(job.inputPath)
 
 	// guard releases its gpuSem slot explicitly before every CPU retry so the
 	// slot frees up immediately instead of staying held for the retry's
@@ -324,52 +324,36 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 
 	start := time.Now()
 	cmd := newToolCommand(ctx, engine.FFmpegPath, job.ffmpegArgs...)
-
-	stderrPipe, pipeErr := cmd.StderrPipe()
-	if pipeErr != nil {
-		// Fallback: run without streaming.
-		out, err := cmd.CombinedOutput()
-
-		// If FFmpeg fails, log the error and the captured output.
-		if err != nil {
-			if ctx.Err() != nil {
-				cancelJob(job, cb)
-				return
-			}
-			if job.usedGPU {
-				guard.release()
-				engine.retryWithCPU(ctx, job, cb, lastLine(string(out)))
-				return
-			}
-			failJob(job, cb, fmt.Sprintf("Post-processing failed: %v", err), strings.Split(string(out), "\n"))
-			return
-		}
-
-		// If FFmpeg succeeded, still need to promote the temp file to its final name.
-		if renameErr := os.Rename(job.tmpOutput, job.finalPath); renameErr != nil {
-			cb.OnLog(
-				fmt.Sprintf("[SYSTEM] Failed to rename output file: %v", renameErr),
-				colErrorSoft,
-			)
-			cb.OnFailure()
-		}
+	// StderrPipe fails only when Stderr is already set or the process has
+	// started, neither of which can happen here; it is handled as a failed
+	// start all the same.
+	stderrPipe, err := cmd.StderrPipe()
+	if err == nil {
+		err = cmd.Start()
+	}
+	if err != nil {
+		engine.abandonJob(ctx, job, guard, cb, err.Error(), fmt.Sprintf("Could not start FFmpeg: %v", err))
 		return
 	}
 
-	if err := cmd.Start(); err != nil {
-		if ctx.Err() != nil {
-			cancelJob(job, cb)
-			return
+	errLines, err := streamFFmpeg(cmd, stderrPipe, job, guard, cb)
+	if err != nil {
+		reason := err.Error()
+		if len(errLines) > 0 {
+			reason = errLines[len(errLines)-1]
 		}
-		if job.usedGPU {
-			guard.release()
-			engine.retryWithCPU(ctx, job, cb, err.Error())
-			return
-		}
-		failJob(job, cb, fmt.Sprintf("Could not start FFmpeg: %v", err), nil)
+		// The output was already streamed to the log line by line.
+		engine.abandonJob(ctx, job, guard, cb, reason, fmt.Sprintf("Post-processing failed: %v", err))
 		return
 	}
+	reportJobDone(job, sizeBefore, time.Since(start), cb)
+}
 
+// streamFFmpeg streams the stderr of cmd, a started FFmpeg running job, to
+// the log and the status bar until FFmpeg exits, and returns the lines it
+// logged (everything but the progress stats) and Wait's error. A GPU job's
+// stall watchdog is armed meanwhile and pet on every line.
+func streamFFmpeg(cmd *exec.Cmd, stderrPipe io.Reader, job PostProcessJob, guard *gpuJobGuard, cb PPCallbacks) ([]string, error) {
 	// GPU jobs get a stall watchdog: if a hung driver stops producing any
 	// output, kill the process so the existing CPU retry can take over
 	// instead of the batch hanging indefinitely.
@@ -384,7 +368,6 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	toolDone := trackTool(toolFFmpeg)
 	defer toolDone()
 	markLoop("ffmpeg progress reader ("+filepath.Base(job.finalPath)+")", "started")
-	// Stream FFmpeg's stderr in real-time to the log and status bar.
 	var errLines []string
 	scanner := newOutputScanner(stderrPipe)
 	scanner.Split(scanCRLF)
@@ -409,35 +392,33 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 
 	err := cmd.Wait()
 	markLoop("ffmpeg progress reader ("+filepath.Base(job.finalPath)+")", "stopped")
-	duration := time.Since(start)
+	return errLines, err
+}
 
-	if err != nil {
-		// A cancel kills FFmpeg, so Wait fails; that is not an encode failure.
-		if ctx.Err() != nil {
-			cancelJob(job, cb)
-			return
-		}
-		if job.usedGPU {
-			reason := err.Error()
-			if len(errLines) > 0 {
-				reason = errLines[len(errLines)-1]
-			}
-			guard.release()
-			engine.retryWithCPU(ctx, job, cb, reason)
-			return
-		}
-		// The output was already streamed to the log line by line.
-		failJob(job, cb, fmt.Sprintf("Post-processing failed: %v", err), nil)
+// abandonJob ends a job whose FFmpeg could not start or failed. A cancel
+// kills FFmpeg, so after one the job is reported as canceled (cancelJob),
+// not failed. A GPU job releases its gpuSem slot and is retried on the CPU,
+// with reason in the log; any other job fails with msg (failJob).
+func (engine *PPEngine) abandonJob(ctx context.Context, job PostProcessJob, guard *gpuJobGuard, cb PPCallbacks, reason, msg string) {
+	if ctx.Err() != nil {
+		cancelJob(job, cb)
 		return
 	}
-
-	// sizeAfter is used to compute the delta in file size after post-processing.
-	var sizeAfter int64
-	if info, err := os.Stat(job.tmpOutput); err == nil {
-		sizeAfter = info.Size()
+	if job.usedGPU {
+		guard.release()
+		engine.retryWithCPU(ctx, job, cb, reason)
+		return
 	}
+	failJob(job, cb, msg, nil)
+}
 
-	// Promote the temp file to its final name, replacing the original.
+// reportJobDone promotes a finished job's temp file to its final name,
+// replacing the original, and logs the POST-PROCESSING COMPLETE summary.
+// sizeBefore is the original's size and duration how long FFmpeg ran.
+func reportJobDone(job PostProcessJob, sizeBefore int64, duration time.Duration, cb PPCallbacks) {
+	// sizeAfter is used to compute the delta in file size after post-processing.
+	sizeAfter := fileSize(job.tmpOutput)
+
 	if err := os.Rename(job.tmpOutput, job.finalPath); err != nil {
 		cb.OnLog(
 			fmt.Sprintf("[SYSTEM] Failed to rename output file: %v", err),
@@ -445,17 +426,6 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 		)
 		cb.OnFailure()
 		return
-	}
-
-	sizeDelta := ""
-	if sizeBefore > 0 && sizeAfter > 0 {
-		deltaPct := (float64(sizeAfter) - float64(sizeBefore)) / float64(sizeBefore) * 100
-		sign := "+"
-		if deltaPct < 0 {
-			sign = ""
-		}
-		sizeDelta = fmt.Sprintf("%s → %s (%s%.1f%%)",
-			formatBytes(sizeBefore), formatBytes(sizeAfter), sign, deltaPct)
 	}
 
 	var filterNames []string
@@ -470,11 +440,34 @@ func (engine *PPEngine) runJob(ctx context.Context, job PostProcessJob, cb PPCal
 	cb.OnLog("────────────────────────────────────────", colPPBorder)
 	cb.OnLog(fmt.Sprintf("POST-PROCESSING COMPLETE: %s", filepath.Base(job.finalPath)), successColor)
 	cb.OnLog(fmt.Sprintf("   ├─ Duration:   %s", formatDuration(duration)), successColor)
-	cb.OnLog(fmt.Sprintf("   ├─ Size Delta: %s", sizeDelta), successColor)
+	cb.OnLog(fmt.Sprintf("   ├─ Size Delta: %s", describeSizeDelta(sizeBefore, sizeAfter)), successColor)
 	cb.OnLog(fmt.Sprintf("   ├─ Encoder:    %s", job.encodeMode), successColor)
 	cb.OnLog(fmt.Sprintf("   ├─ Threads:    %d", job.threads), successColor)
 	cb.OnLog(fmt.Sprintf("   └─ Filters:    %s", strings.Join(filterNames, ", ")), successColor)
 	cb.OnLog("────────────────────────────────────────", colPPBorder)
+}
+
+// describeSizeDelta formats how post-processing changed a file's size, e.g.
+// "45.2 MiB → 38.0 MiB (-15.9%)", or "" when either size is unknown.
+func describeSizeDelta(sizeBefore, sizeAfter int64) string {
+	if sizeBefore <= 0 || sizeAfter <= 0 {
+		return ""
+	}
+	deltaPct := (float64(sizeAfter) - float64(sizeBefore)) / float64(sizeBefore) * 100
+	sign := "+"
+	if deltaPct < 0 {
+		sign = ""
+	}
+	return fmt.Sprintf("%s → %s (%s%.1f%%)", formatBytes(sizeBefore), formatBytes(sizeAfter), sign, deltaPct)
+}
+
+// fileSize returns the size of the file at path, or 0 when it cannot be read.
+func fileSize(path string) int64 {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
 }
 
 // ── Probe helpers ────────────────────────────────────────────────────────────
@@ -999,54 +992,72 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 	}
 
 	// Plan one job per file, skipping files that need no processing. The
-	// FFmpeg args are built below, once the thread budget is known.
+	// FFmpeg args are built by runWorkerPool, once the thread budget is known.
 	var jobs []PostProcessJob
 	for _, inputPath := range filePaths {
-		ext := strings.ToLower(filepath.Ext(inputPath))
-
-		activeVF := vfFilters
-		if isAudioOnlyExt(ext) {
-			activeVF = nil // video filters do not apply to audio-only files
-		} else {
-			activeVF = engine.resolveAutoCrop(ctx, inputPath, activeVF, cb)
-			activeVF = engine.resolveToneMap(ctx, inputPath, activeVF, cb)
+		if job, ok := engine.planJob(ctx, inputPath, vfFilters, afFilters, cb); ok {
+			jobs = append(jobs, job)
 		}
-		if len(activeVF) == 0 && len(afFilters) == 0 {
-			continue
-		}
-
-		tmpOutput := strings.TrimSuffix(inputPath, ext) + "_pp" + ext
-		finalPath := inputPath
-		encodeMode := "Stream copy"
-		usedGPU := false
-		if len(activeVF) > 0 {
-			plan := PlanEncoder(engine.GPUBackend, engine.GPUCapabilities, ext)
-			encodeMode = plan.Label
-			usedGPU = plan.UsedGPU
-		}
-		frameCount := engine.probeFrameCount(ctx, inputPath)
-		totalFrames := engine.computeOutputFrameCount(ctx, inputPath, frameCount, activeVF)
-		jobs = append(jobs, PostProcessJob{
-			inputPath:   inputPath,
-			tmpOutput:   tmpOutput,
-			finalPath:   finalPath,
-			vfFilters:   activeVF,
-			afFilters:   afFilters,
-			encodeMode:  encodeMode,
-			usedGPU:     usedGPU,
-			totalFrames: totalFrames,
-			layout:      engine.probeStreamLayout(ctx, inputPath, len(activeVF) > 0),
-		})
-		engine.extractCovers(ctx, &jobs[len(jobs)-1], cb)
 	}
-
 	if len(jobs) == 0 {
 		return
 	}
 
-	// Log a summary of the active filters before starting any workers.
-	var filterSummary []string
-	filterSummary = append(filterSummary, fmt.Sprintf("files: %d", len(jobs)))
+	logFilterSummary(len(jobs), vfFilters, afFilters, cb)
+	engine.runWorkerPool(ctx, jobs, cb)
+
+	for _, job := range jobs {
+		if job.layout != nil {
+			removeFiles(job.layout.coverFiles)
+		}
+	}
+}
+
+// planJob resolves the session's filters for the file at inputPath and
+// returns its job, without FFmpeg args. Video filters do not apply to an
+// audio-only file. ok is false when no filter applies to the file, which
+// then needs no processing.
+func (engine *PPEngine) planJob(ctx context.Context, inputPath string, vfFilters, afFilters []string, cb PPCallbacks) (job PostProcessJob, ok bool) {
+	ext := strings.ToLower(filepath.Ext(inputPath))
+
+	activeVF := vfFilters
+	if isAudioOnlyExt(ext) {
+		activeVF = nil // video filters do not apply to audio-only files
+	} else {
+		activeVF = engine.resolveAutoCrop(ctx, inputPath, activeVF, cb)
+		activeVF = engine.resolveToneMap(ctx, inputPath, activeVF, cb)
+	}
+	if len(activeVF) == 0 && len(afFilters) == 0 {
+		return PostProcessJob{}, false
+	}
+
+	encodeMode := "Stream copy"
+	usedGPU := false
+	if len(activeVF) > 0 {
+		plan := PlanEncoder(engine.GPUBackend, engine.GPUCapabilities, ext)
+		encodeMode = plan.Label
+		usedGPU = plan.UsedGPU
+	}
+	frameCount := engine.probeFrameCount(ctx, inputPath)
+	job = PostProcessJob{
+		inputPath:   inputPath,
+		tmpOutput:   strings.TrimSuffix(inputPath, ext) + "_pp" + ext,
+		finalPath:   inputPath,
+		vfFilters:   activeVF,
+		afFilters:   afFilters,
+		encodeMode:  encodeMode,
+		usedGPU:     usedGPU,
+		totalFrames: engine.computeOutputFrameCount(ctx, inputPath, frameCount, activeVF),
+		layout:      engine.probeStreamLayout(ctx, inputPath, len(activeVF) > 0),
+	}
+	engine.extractCovers(ctx, &job, cb)
+	return job, true
+}
+
+// logFilterSummary logs the number of files and the session's filters
+// before any worker starts.
+func logFilterSummary(fileCount int, vfFilters, afFilters []string, cb PPCallbacks) {
+	filterSummary := []string{fmt.Sprintf("files: %d", fileCount)}
 	if len(vfFilters) > 0 {
 		filterSummary = append(filterSummary, "vf: "+strings.Join(vfFilters, ", "))
 	}
@@ -1057,19 +1068,19 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 		fmt.Sprintf("[SYSTEM] Starting post-processing (%s)", strings.Join(filterSummary, " | ")),
 		colSystem,
 	)
+}
 
+// runWorkerPool builds each job's FFmpeg args with an even share of the CPU
+// threads and runs the jobs on at most runtime.NumCPU() workers. After a
+// cancel the workers start no further jobs. It returns once every worker has
+// finished.
+func (engine *PPEngine) runWorkerPool(ctx context.Context, jobs []PostProcessJob, cb PPCallbacks) {
 	// Cap workers at the number of logical CPU cores and at the number of jobs.
-	numWorkers := runtime.NumCPU()
-	if numWorkers > len(jobs) {
-		numWorkers = len(jobs)
-	}
+	numWorkers := min(runtime.NumCPU(), len(jobs))
 
 	// Divide available cores evenly so concurrent FFmpeg processes do not
 	// fight each other for threads. Minimum 1 thread per process.
-	threadsPerJob := runtime.NumCPU() / numWorkers
-	if threadsPerJob < 1 {
-		threadsPerJob = 1
-	}
+	threadsPerJob := max(runtime.NumCPU()/numWorkers, 1)
 
 	for i := range jobs {
 		job := &jobs[i]
@@ -1101,10 +1112,4 @@ func (engine *PPEngine) ApplyFilters(ctx context.Context, filePaths, vfFilters, 
 		}()
 	}
 	wg.Wait()
-
-	for _, job := range jobs {
-		if job.layout != nil {
-			removeFiles(job.layout.coverFiles)
-		}
-	}
 }

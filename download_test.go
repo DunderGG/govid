@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"image/color"
 	"os"
 	"path/filepath"
@@ -268,6 +269,91 @@ func TestAverageSpeed(t *testing.T) {
 	for _, tt := range tests {
 		if got := averageSpeed(tt.byteCount, tt.seconds); got != tt.want {
 			t.Errorf("averageSpeed(%v, %v) = %q, want %q", tt.byteCount, tt.seconds, got, tt.want)
+		}
+	}
+}
+
+func TestSummaryFor(t *testing.T) {
+	const mib = 1024 * 1024
+	failure := errors.New("exit status 1")
+	tests := []struct {
+		name      string
+		dl        DownloadResult
+		canceled  bool
+		title     string
+		rows      []summaryRow
+		status    string
+		indicator StatusState
+		fillBar   bool
+		failed    bool
+	}{
+		{
+			name: "paused", dl: DownloadResult{Paused: true, Bytes: 3 * mib}, canceled: true,
+			title:  "DOWNLOAD PAUSED",
+			rows:   []summaryRow{{"Runtime", "4.00s"}, {"Downloaded", "3.0 MiB"}},
+			status: "Status: Paused.", indicator: StatusCanceled,
+		},
+		{
+			name: "recording saved", dl: DownloadResult{Stopped: true, Bytes: 5 * mib, FinalPaths: []string{"a.mp4", "b.mp4"}},
+			title:  "RECORDING SAVED",
+			rows:   []summaryRow{{"Duration", "4.00s"}, {"Recorded", "5.0 MiB"}, {"Files", "2"}},
+			status: "Status: Recording saved.", indicator: StatusSuccess, fillBar: true,
+		},
+		{
+			name: "complete, counting only this run's bytes", dl: DownloadResult{Bytes: 10 * mib, ResumedBytes: 2 * mib, Extension: "mp4"},
+			title:  "DOWNLOAD COMPLETE",
+			rows:   []summaryRow{{"Duration", "4.00s"}, {"Avg Speed", "2.0 MiB/s"}, {"Downloaded", "10.0 MiB"}, {"Format", "MP4"}},
+			status: "Status: Success!", indicator: StatusSuccess, fillBar: true,
+		},
+		{
+			name: "complete although cancelled after", dl: DownloadResult{Bytes: 4 * mib, Extension: "mkv"}, canceled: true,
+			title:  "DOWNLOAD COMPLETE",
+			rows:   []summaryRow{{"Duration", "4.00s"}, {"Avg Speed", "1.0 MiB/s"}, {"Downloaded", "4.0 MiB"}, {"Format", "MKV"}},
+			status: "Status: Success!", indicator: StatusSuccess, fillBar: true,
+		},
+		{
+			name: "aborted", dl: DownloadResult{Err: failure, Bytes: 2 * mib}, canceled: true,
+			title:  "DOWNLOAD ABORTED",
+			rows:   []summaryRow{{"Runtime", "4.00s"}, {"Avg Speed", "512.0 KiB/s"}, {"Downloaded", "2.0 MiB"}},
+			status: "Status: Canceled.", indicator: StatusCanceled,
+		},
+		{
+			name: "failed", dl: DownloadResult{Err: failure},
+			status: "Status: Failed. Check output below.", indicator: StatusFailed, failed: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := summaryFor(tt.dl, tt.canceled, 4*time.Second)
+			if got.title != tt.title || !slices.Equal(got.rows, tt.rows) {
+				t.Errorf("summary = %q %q, want %q %q", got.title, got.rows, tt.title, tt.rows)
+			}
+			if got.status != tt.status || got.indicator != tt.indicator {
+				t.Errorf("status = %q, %v; want %q, %v", got.status, got.indicator, tt.status, tt.indicator)
+			}
+			if got.fillBar != tt.fillBar || got.failed != tt.failed {
+				t.Errorf("fillBar, failed = %v, %v; want %v, %v", got.fillBar, got.failed, tt.fillBar, tt.failed)
+			}
+		})
+	}
+}
+
+func TestItemStatus(t *testing.T) {
+	tests := []struct {
+		name     string
+		dl       DownloadResult
+		canceled bool
+		want     queueStatus
+	}{
+		{"paused", DownloadResult{Paused: true}, true, queuePaused},
+		{"finished", DownloadResult{FinalPaths: []string{"a.mp4"}}, false, queueDone},
+		{"stopped recording kept", DownloadResult{Stopped: true, FinalPaths: []string{"a.mp4"}}, true, queueDone},
+		{"skipped", DownloadResult{Err: context.Canceled}, true, queueSkipped},
+		{"failed", DownloadResult{Err: errors.New("exit status 1")}, false, queueFailed},
+	}
+	for _, tt := range tests {
+		if got := itemStatus(tt.dl, tt.canceled); got != tt.want {
+			t.Errorf("%s: itemStatus() = %v, want %v", tt.name, got, tt.want)
 		}
 	}
 }

@@ -269,7 +269,17 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 	app.uiManager.showQueue(queue)
 	finalPaths := app.runQueue(queueCtx, session, queue)
 	app.finishQueue(queue)
+	app.finishDownloads(queueCtx, stopQueue, session, queue, finalPaths)
 
+	// Close the log file here, after post-processing, so FFmpeg output is captured.
+	app.logSvc.CloseSessionLog()
+}
+
+// finishDownloads post-processes the session's finalPaths, if the session
+// post-processes, and then sends the completion notification. A cancelled
+// session, or one that downloaded nothing, has nothing to process or
+// announce.
+func (app *DownloaderApp) finishDownloads(queueCtx context.Context, stopQueue context.CancelFunc, session downloadSession, queue *QueueModel, finalPaths []string) {
 	switch {
 	case queueCtx.Err() != nil || len(finalPaths) == 0:
 		// Cancelled, or nothing downloaded: nothing to process or announce.
@@ -283,9 +293,6 @@ func (app *DownloaderApp) runSession(queueCtx context.Context, stopQueue context
 	default:
 		app.notifyCompletion(session, len(finalPaths), queue.Len())
 	}
-
-	// Close the log file here, after post-processing, so FFmpeg output is captured.
-	app.logSvc.CloseSessionLog()
 }
 
 // finishSessionUI shows any log lines, status, and queue changes still
@@ -357,74 +364,22 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 	run := itemRun{id: id, position: position, total: total, parallel: mode.parallel}
 	defer app.unregister(id)
 
-	// In batch mode, give each URL its own child context so the Cancel
-	// button (or the Queue panel's Skip) skips only the active download
-	// without killing the queue. In single-URL mode, runCtx == queueCtx and
-	// Cancel stops all. With several at once, Cancel stops the session and
-	// only the row's Skip skips one.
-	runCtx := queueCtx
-	if mode.batch {
-		var skipItem context.CancelFunc
-		runCtx, skipItem = context.WithCancel(queueCtx)
-		defer skipItem() // release the per-item context whether it was cancelled or not
-		app.registerSkip(id, skipItem)
-		if !mode.parallel {
-			app.SetCancelFunc(skipItem)
-		}
-		app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", position, total), colInfo)
-	}
-	if !mode.parallel {
-		// Reset progress UI and stats from the previous item.
-		app.stats.reset()
-		fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
-	}
+	runCtx, endItem := app.beginItem(queueCtx, run, mode)
+	defer endItem()
 
-	item = app.checkItem(runCtx, item, position, total)
-	queue.SetItem(id, item)
-	if runCtx.Err() != nil {
-		if !mode.parallel {
-			app.updateStatus("Status: Canceled.")
-			app.setStatusIndicator(StatusCanceled)
-		}
-		queue.SetStatus(id, queueSkipped)
+	item, req, ok := app.prepareItem(runCtx, queue, item, run)
+	if !ok {
 		return nil, false
-	}
-	req := item.downloadRequest()
-	app.promptMu.Lock()
-	record := app.prepareLive(runCtx, item, &req)
-	app.promptMu.Unlock()
-	if !record {
-		queue.SetStatus(id, queueSkipped)
-		return nil, false
-	}
-	app.reportQualityFit(item, req)
-	app.reportSubtitles(item, req)
-	if item.info != nil && !req.Live {
-		if text := describeDownload(*item.info, req.FormatPick, formatExtension(req.Format)); text != "" {
-			app.appendOutput(fmt.Sprintf("%s[SYSTEM] Will download %s: %s", run.prefix(), selectedIDs(*item.info, req.FormatPick), text), colInfo)
-		}
 	}
 
 	// A live stream has no size to check; recordingCallback watches the
 	// free space while it records instead.
 	if !req.Live {
-		// The check reserves the space it approves before promptMu is
-		// released, so a download checking at the same time counts it.
-		app.promptMu.Lock()
-		decision, releaseSpace := app.checkDiskSpace(queueCtx, req, session.hasPostProcess(), item, queue.HasWaiting(), continueLowSpace)
-		app.promptMu.Unlock()
+		decision, releaseSpace := app.checkItemSpace(queueCtx, session, queue, item, req, continueLowSpace)
 		defer releaseSpace()
-		switch decision {
-		case spaceSkip:
-			app.appendOutput(fmt.Sprintf("[SYSTEM] Skipped %s: not enough disk space.", item.url), colWarning)
+		if decision != spaceProceed {
 			queue.SetStatus(id, queueSkipped)
-			return nil, false
-		case spaceStop:
-			app.appendOutput("[SYSTEM] Queue stopped: not enough disk space.", colWarning)
-			app.updateStatus("Status: Stopped (not enough disk space).")
-			app.setStatusIndicator(StatusCanceled)
-			queue.SetStatus(id, queueSkipped)
-			return nil, true
+			return nil, decision == spaceStop
 		}
 	}
 
@@ -437,17 +392,10 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 	downloadCtx, stopDownload, release := app.downloadContext(runCtx, req.Live)
 	defer release()
 	stopRecording := func() { stopDownload(errStopKeep) }
-	switch {
-	case req.Live && mode.parallel:
-		app.registerSkip(id, stopRecording)
-	case req.Live:
-		app.registerSkip(id, stopRecording)
-		app.SetCancelFunc(stopRecording)
-		app.setRecordingView(true)
-		defer app.setRecordingView(false)
-	default:
-		app.registerPause(id, func() { stopDownload(errPaused) })
-	}
+	pause := func() { stopDownload(errPaused) }
+	endControls := app.registerItemControls(id, req.Live, mode.parallel, stopRecording, pause)
+	defer endControls()
+
 	dl := app.runYtDlp(downloadCtx, session, req, item, run, stopRecording)
 	// The JSON can be large and is not needed again once used, unless the
 	// download was paused: resuming it within probeMaxAge reuses it.
@@ -455,17 +403,126 @@ func (app *DownloaderApp) downloadItem(queueCtx context.Context, session downloa
 		item.info.raw = nil
 	}
 	app.backOff(mode, dl.Scan)
+	queue.SetStatus(id, itemStatus(dl, downloadCtx.Err() != nil))
+	return dl.FinalPaths, false
+}
+
+// beginItem starts run's item: it returns the context the item runs under
+// and the function that releases it once the item ends. In batch mode, each
+// URL gets its own child context so the Cancel button (or the Queue panel's
+// Skip) skips only the active download without killing the queue. In
+// single-URL mode, runCtx is queueCtx and Cancel stops all. With several at
+// once, Cancel stops the session and only the row's Skip skips one.
+func (app *DownloaderApp) beginItem(queueCtx context.Context, run itemRun, mode queueMode) (runCtx context.Context, release func()) {
+	runCtx, release = queueCtx, func() {}
+	if mode.batch {
+		var skipItem context.CancelFunc
+		runCtx, skipItem = context.WithCancel(queueCtx)
+		release = func() { skipItem() } // release the per-item context whether it was cancelled or not
+		app.registerSkip(run.id, skipItem)
+		if !mode.parallel {
+			app.SetCancelFunc(skipItem)
+		}
+		app.appendOutput(fmt.Sprintf("[SYSTEM] ── URL %d of %d ──", run.position, run.total), colInfo)
+	}
+	if !mode.parallel {
+		// Reset progress UI and stats from the previous item.
+		app.stats.reset()
+		fyne.Do(func() { app.ui.download.cancelBtn.Enable() })
+	}
+	return runCtx, release
+}
+
+// prepareItem gets run's item ready to download: it probes the item if it
+// needs it (see checkItem), asks how to record a live stream (prepareLive),
+// and reports how the download fits the quality cap, its subtitles, and the
+// formats it will fetch. It returns the probed item and its download
+// request; ok is false, with the item marked Skipped, when the item was
+// cancelled or the user chose not to record it.
+func (app *DownloaderApp) prepareItem(runCtx context.Context, queue *QueueModel, item queueItem, run itemRun) (queueItem, DownloadRequest, bool) {
+	item = app.checkItem(runCtx, item, run.position, run.total)
+	queue.SetItem(run.id, item)
+	if runCtx.Err() != nil {
+		if !run.parallel {
+			app.updateStatus("Status: Canceled.")
+			app.setStatusIndicator(StatusCanceled)
+		}
+		queue.SetStatus(run.id, queueSkipped)
+		return item, DownloadRequest{}, false
+	}
+	req := item.downloadRequest()
+	app.promptMu.Lock()
+	record := app.prepareLive(runCtx, item, &req)
+	app.promptMu.Unlock()
+	if !record {
+		queue.SetStatus(run.id, queueSkipped)
+		return item, req, false
+	}
+	app.reportQualityFit(item, req)
+	app.reportSubtitles(item, req)
+	if item.info != nil && !req.Live {
+		if text := describeDownload(*item.info, req.FormatPick, formatExtension(req.Format)); text != "" {
+			app.appendOutput(fmt.Sprintf("%s[SYSTEM] Will download %s: %s", run.prefix(), selectedIDs(*item.info, req.FormatPick), text), colInfo)
+		}
+	}
+	return item, req, true
+}
+
+// checkItemSpace checks that item fits on the save folder's drive (see
+// checkDiskSpace), and logs and shows the user's choice when it does not:
+// skip the item, or stop the queue. The check reserves the space it
+// approves before promptMu is released, so a download checking at the same
+// time counts it; the caller calls releaseSpace once the item has ended.
+func (app *DownloaderApp) checkItemSpace(queueCtx context.Context, session downloadSession, queue *QueueModel, item queueItem, req DownloadRequest, continueLowSpace *bool) (decision diskSpaceDecision, releaseSpace func()) {
+	app.promptMu.Lock()
+	decision, releaseSpace = app.checkDiskSpace(queueCtx, req, session.hasPostProcess(), item, queue.HasWaiting(), continueLowSpace)
+	app.promptMu.Unlock()
+	switch decision {
+	case spaceSkip:
+		app.appendOutput(fmt.Sprintf("[SYSTEM] Skipped %s: not enough disk space.", item.url), colWarning)
+	case spaceStop:
+		app.appendOutput("[SYSTEM] Queue stopped: not enough disk space.", colWarning)
+		app.updateStatus("Status: Stopped (not enough disk space).")
+		app.setStatusIndicator(StatusCanceled)
+	}
+	return decision, releaseSpace
+}
+
+// registerItemControls hands the downloading item id's controls to the
+// Queue panel's row and, unless other items download at the same time
+// (parallel), to the main window's Cancel button. A live recording gets
+// stopRecording as its Skip (and Cancel, which then reads "Stop recording"
+// in the recording view); any other download gets pause as its Pause. It
+// returns the function that ends the recording view once the item ends.
+func (app *DownloaderApp) registerItemControls(id int, live, parallel bool, stopRecording, pause func()) (end func()) {
+	switch {
+	case live && parallel:
+		app.registerSkip(id, stopRecording)
+	case live:
+		app.registerSkip(id, stopRecording)
+		app.SetCancelFunc(stopRecording)
+		app.setRecordingView(true)
+		return func() { app.setRecordingView(false) }
+	default:
+		app.registerPause(id, pause)
+	}
+	return func() {}
+}
+
+// itemStatus returns the queue status a download ends with: Paused, Done
+// when it finalized files, Skipped when its context was cancelled
+// (canceled), and Failed otherwise.
+func itemStatus(dl DownloadResult, canceled bool) queueStatus {
 	switch {
 	case dl.Paused:
-		queue.SetStatus(id, queuePaused)
+		return queuePaused
 	case len(dl.FinalPaths) > 0:
-		queue.SetStatus(id, queueDone)
-	case downloadCtx.Err() != nil:
-		queue.SetStatus(id, queueSkipped)
+		return queueDone
+	case canceled:
+		return queueSkipped
 	default:
-		queue.SetStatus(id, queueFailed)
+		return queueFailed
 	}
-	return dl.FinalPaths, false
 }
 
 // qualityNoticeID identifies the notice that says a video is downloaded at a
@@ -721,7 +778,6 @@ func (app *DownloaderApp) recordHistory(req DownloadRequest, item queueItem, fin
 // caller starts post-processing and overwrites the status.
 // After a failure it logs hints, which say what may fix it (see failureHints).
 func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadResult, elapsed time.Duration, hints []string, run itemRun) {
-	downloaded := formatBytes(dl.Bytes)
 	// With other downloads running, the status label, dot, and progress bar
 	// show the whole queue (showParallelProgress), not this item's end.
 	updateStatus, setIndicator, setProgressNow := app.updateStatus, app.setStatusIndicator, app.setProgressNow
@@ -729,64 +785,24 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 		updateStatus, setIndicator, setProgressNow = func(string) {}, func(StatusState) {}, func(float64) {}
 	}
 	prefix := run.prefix()
-	elapsedStr := fmt.Sprintf("%.2fs", elapsed.Seconds())
-	avgSpeed := averageSpeed(dl.Bytes-dl.ResumedBytes, elapsed.Seconds())
 
 	uiDone := make(chan struct{})
 	fyne.Do(func() {
 		defer close(uiDone)
+		summary := summaryFor(dl, ctx.Err() == context.Canceled, elapsed)
 		if !run.parallel {
 			app.ui.download.cancelBtn.Disable()
 		}
-
-		switch {
-		case dl.Paused:
-			app.logDownloadSummary(prefix+"DOWNLOAD PAUSED", []summaryRow{
-				{"Runtime", elapsedStr},
-				{"Downloaded", downloaded},
-			}, colWarning, colAbortedBorder)
-			updateStatus("Status: Paused.")
-			setIndicator(StatusCanceled)
-		case dl.Stopped:
-			app.logDownloadSummary(prefix+"RECORDING SAVED", []summaryRow{
-				{"Duration", elapsedStr},
-				{"Recorded", downloaded},
-				{"Files", strconv.Itoa(len(dl.FinalPaths))},
-			}, colSuccess, colSuccessBorder)
-			updateStatus("Status: Recording saved.")
+		if summary.title != "" {
+			app.logDownloadSummary(prefix+summary.title, summary.rows, summary.textCol, summary.borderCol)
+		}
+		updateStatus(summary.status)
+		if summary.fillBar {
 			setProgressNow(1)
-			setIndicator(StatusSuccess)
-		case dl.Err == nil:
-			app.logDownloadSummary(prefix+"DOWNLOAD COMPLETE", []summaryRow{
-				{"Duration", elapsedStr},
-				{"Avg Speed", avgSpeed},
-				{"Downloaded", downloaded},
-				{"Format", describeOutputFormat(dl.Extension, dl.Scan)},
-			}, colSuccess, colSuccessBorder)
-			updateStatus("Status: Success!")
-			setProgressNow(1)
-			setIndicator(StatusSuccess)
-		case ctx.Err() == context.Canceled:
-			app.logDownloadSummary(prefix+"DOWNLOAD ABORTED", []summaryRow{
-				{"Runtime", elapsedStr},
-				{"Avg Speed", avgSpeed},
-				{"Downloaded", downloaded},
-			}, colWarning, colAbortedBorder)
-			updateStatus("Status: Canceled.")
-			setIndicator(StatusCanceled)
-		default:
-			updateStatus("Status: Failed. Check output below.")
-			setIndicator(StatusFailed)
-			app.sessionFailed.Store(true)
-			for _, hint := range hints {
-				app.appendOutput(prefix+hint, colInfo)
-			}
-			if app.ui.download.notify.Checked {
-				fyne.CurrentApp().SendNotification(&fyne.Notification{
-					Title:   "GoVid — Download Failed",
-					Content: "The download encountered an error. Check the log for details.",
-				})
-			}
+		}
+		setIndicator(summary.indicator)
+		if summary.failed {
+			app.reportDownloadFailure(prefix, hints)
 		}
 	})
 	<-uiDone
@@ -796,6 +812,97 @@ func (app *DownloaderApp) reportDownloadResult(ctx context.Context, dl DownloadR
 		}
 	}
 	app.statusThrottle.Flush()
+}
+
+// downloadSummary is how the end of a download is shown: the summary block
+// in the log, the status label, the status dot, and whether the progress
+// bar fills.
+type downloadSummary struct {
+	title     string // the summary block's title; "" for a failure, which has none
+	rows      []summaryRow
+	textCol   color.Color
+	borderCol color.Color
+	status    string
+	indicator StatusState
+	fillBar   bool // the download finished, so the progress bar shows 100%
+	failed    bool // the download failed: the session fails, and hints follow
+}
+
+// summaryFor returns how the end of dl is shown, elapsed after it started.
+// canceled is true when its context was cancelled, which makes a download
+// that did not finish, pause, or stop ABORTED rather than failed.
+func summaryFor(dl DownloadResult, canceled bool, elapsed time.Duration) downloadSummary {
+	downloaded := formatBytes(dl.Bytes)
+	elapsedStr := fmt.Sprintf("%.2fs", elapsed.Seconds())
+	avgSpeed := averageSpeed(dl.Bytes-dl.ResumedBytes, elapsed.Seconds())
+
+	switch {
+	case dl.Paused:
+		return downloadSummary{
+			title:     "DOWNLOAD PAUSED",
+			rows:      []summaryRow{{"Runtime", elapsedStr}, {"Downloaded", downloaded}},
+			textCol:   colWarning,
+			borderCol: colAbortedBorder,
+			status:    "Status: Paused.",
+			indicator: StatusCanceled,
+		}
+	case dl.Stopped:
+		return downloadSummary{
+			title:     "RECORDING SAVED",
+			rows:      []summaryRow{{"Duration", elapsedStr}, {"Recorded", downloaded}, {"Files", strconv.Itoa(len(dl.FinalPaths))}},
+			textCol:   colSuccess,
+			borderCol: colSuccessBorder,
+			status:    "Status: Recording saved.",
+			indicator: StatusSuccess,
+			fillBar:   true,
+		}
+	case dl.Err == nil:
+		return downloadSummary{
+			title: "DOWNLOAD COMPLETE",
+			rows: []summaryRow{
+				{"Duration", elapsedStr},
+				{"Avg Speed", avgSpeed},
+				{"Downloaded", downloaded},
+				{"Format", describeOutputFormat(dl.Extension, dl.Scan)},
+			},
+			textCol:   colSuccess,
+			borderCol: colSuccessBorder,
+			status:    "Status: Success!",
+			indicator: StatusSuccess,
+			fillBar:   true,
+		}
+	case canceled:
+		return downloadSummary{
+			title:     "DOWNLOAD ABORTED",
+			rows:      []summaryRow{{"Runtime", elapsedStr}, {"Avg Speed", avgSpeed}, {"Downloaded", downloaded}},
+			textCol:   colWarning,
+			borderCol: colAbortedBorder,
+			status:    "Status: Canceled.",
+			indicator: StatusCanceled,
+		}
+	default:
+		return downloadSummary{
+			status:    "Status: Failed. Check output below.",
+			indicator: StatusFailed,
+			failed:    true,
+		}
+	}
+}
+
+// reportDownloadFailure marks the session failed, logs hints with the
+// item's log prefix, and sends the failure notification when Notify on
+// Completion is on. Must be called on the UI thread.
+func (app *DownloaderApp) reportDownloadFailure(prefix string, hints []string) {
+	app.sessionFailed.Store(true)
+	for _, hint := range hints {
+		app.appendOutput(prefix+hint, colInfo)
+	}
+	if app.ui.download.notify.Checked {
+		fyne.CurrentApp().SendNotification(&fyne.Notification{
+			Title:   "GoVid — Download Failed",
+			Content: "The download encountered an error. Check the log for details.",
+		})
+	}
 }
 
 // summaryBorder frames the post-download summary block in the log.

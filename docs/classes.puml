@@ -60,6 +60,7 @@ package "Application Core" #F0F4F8 {
         --
         -setDebug(on bool)
         -diagnosticsReport(prefs) : string
+        -writeToolsSection(report *strings.Builder)
         +SetCancelFunc(cancel context.CancelFunc)
         +RequestCancel() : bool
         +StopSession()
@@ -71,7 +72,11 @@ package "Application Core" #F0F4F8 {
         -skipDownloaded(ctx, items) : []queueItem
         -checkItem(ctx, session, item, position, total) : queueItem
         -runQueue(queueCtx, session, queue *QueueModel) : []string
-        -downloadItem(queueCtx, session, queue, id, item, batch, continueAll) : ([]string, bool)
+        -downloadItem(queueCtx, session, queue, id, item, mode, continueLowSpace) : ([]string, bool)
+        -beginItem(queueCtx, run itemRun, mode) : (runCtx, release func())
+        -prepareItem(runCtx, queue, item, run itemRun) : (queueItem, DownloadRequest, bool)
+        -checkItemSpace(queueCtx, session, queue, item, req, continueLowSpace) : (diskSpaceDecision, release func())
+        -registerItemControls(id, live, parallel, stopRecording, pause) : func()
         -checkDiskSpace(ctx, req, postProcess, item, moreQueued, continueAll) : (diskSpaceDecision, release func())
         -decideDiskSpace(ctx, req, item, needed, moreQueued, continueAll) : diskSpaceDecision
         +runYtDlp(ctx, session, req DownloadRequest, item queueItem, run itemRun, stop) : DownloadResult
@@ -289,6 +294,8 @@ package "Download Engine" #FFF8F0 {
         +RemovePartialFiles(savePath, downloadID, onLog)
         +RemoveLeftoverPartials(savePath, downloadID, onLog)
         -watchOutput(stdout, stderr, cb) : scanResult
+        -scanStdout(stdout, cb) : scanResult
+        -ffmpegLocationArgs() : []string
         -parseProgress(line, cb)
         -monitorRecording(req, downloadID, onRecording) : func()
         -finishRecording(paths, ext, onLog) : []string
@@ -491,10 +498,13 @@ package "Post-Processing Engine" #F8F0FF {
         --
         +NewPPEngine(ffmpegPath, ffprobePath) : *PPEngine
         +ApplyFilters(ctx, files, vf, af, cb)
+        -planJob(ctx, input, vf, af, cb) : (PostProcessJob, bool)
+        -runWorkerPool(ctx, jobs, cb)
         -detectCropFilter(ctx, input, cb) : string
         -resolveAutoCrop(ctx, input, filters, cb) : []string
         -resolveToneMap(ctx, input, filters, cb) : []string
         -runJob(ctx, job, cb)
+        -abandonJob(ctx, job, guard, cb, reason, msg)
         -retryWithCPU(ctx, job, cb, reason)
         -probeFrameCount(ctx, input) : int64
         -probeDuration(ctx, input) : float64

@@ -66,7 +66,26 @@ func (manager *UIManager) showPlaylistDialog(prompt playlistPrompt, onAnswer fun
 		return err
 	}
 
-	var dlg *dialog.CustomDialog
+	content := container.NewVBox(
+		title,
+		details,
+		widget.NewLabel("Videos to download:"),
+		rangeEntry,
+	)
+	dlg := dialog.NewCustomWithoutButtons("Playlist detected", content, manager.mainWindow)
+	dlg.SetButtons(playlistButtons(prompt.hasVideo, rangeEntry, count, answer, dlg.Hide))
+	dlg.SetOnClosed(func() { answer(playlistDecision{}) })
+	dlg.Resize(fyne.NewSize(480, 0))
+	dlg.Show()
+	return dlg
+}
+
+// playlistButtons returns the playlist prompt's buttons. Cancel only hides
+// the prompt (hide), which answers that nothing is chosen. Download answers
+// with the positions rangeEntry selects out of count, or shows on the entry
+// why the selection does not parse. For a link to one video of the
+// playlist (hasVideo), "Only this video" is added and highlighted.
+func playlistButtons(hasVideo bool, rangeEntry *widget.Entry, count int, answer func(playlistDecision), hide func()) []fyne.CanvasObject {
 	downloadBtn := widget.NewButton("Download", func() {
 		positions, err := parsePlaylistSelection(rangeEntry.Text, count)
 		if err != nil {
@@ -74,37 +93,21 @@ func (manager *UIManager) showPlaylistDialog(prompt playlistPrompt, onAnswer fun
 			return
 		}
 		answer(playlistDecision{positions: positions})
-		dlg.Hide()
+		hide()
 	})
-	cancelBtn := widget.NewButton("Cancel", func() {
-		dlg.Hide()
-	})
+	cancelBtn := widget.NewButton("Cancel", hide)
 	buttons := []fyne.CanvasObject{cancelBtn}
 
 	// For watch?v=…&list=… links the user most likely meant the one video,
 	// so that is the highlighted choice.
-	if prompt.hasVideo {
+	if hasVideo {
 		onlyBtn := widget.NewButton("Only this video", func() {
 			answer(playlistDecision{onlyVideo: true})
-			dlg.Hide()
+			hide()
 		})
 		onlyBtn.Importance = widget.HighImportance
-		buttons = append(buttons, downloadBtn, onlyBtn)
-	} else {
-		downloadBtn.Importance = widget.HighImportance
-		buttons = append(buttons, downloadBtn)
+		return append(buttons, downloadBtn, onlyBtn)
 	}
-
-	content := container.NewVBox(
-		title,
-		details,
-		widget.NewLabel("Videos to download:"),
-		rangeEntry,
-	)
-	dlg = dialog.NewCustomWithoutButtons("Playlist detected", content, manager.mainWindow)
-	dlg.SetButtons(buttons)
-	dlg.SetOnClosed(func() { answer(playlistDecision{}) })
-	dlg.Resize(fyne.NewSize(480, 0))
-	dlg.Show()
-	return dlg
+	downloadBtn.Importance = widget.HighImportance
+	return append(buttons, downloadBtn)
 }

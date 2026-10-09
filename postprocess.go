@@ -134,17 +134,7 @@ type PostProcessSettings struct {
 // settings.
 func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilters []string) {
 	if ppSetting.SmoothMotion {
-		fps := int(ppSetting.SmoothMotionFPS)
-		switch ppSetting.SmoothMotionMode {
-		case smoothModeFast:
-			// Frame blending — multi-threaded, much faster, slightly less precise.
-			vfFilters = append(vfFilters, fmt.Sprintf("minterpolate=fps=%d:mi_mode=blend", fps))
-		case smoothModeBalanced:
-			// MCI without variant-size blocks — ~40% faster than Precise, similar quality.
-			vfFilters = append(vfFilters, fmt.Sprintf("minterpolate=fps=%d:mi_mode=mci:vsbmc=0:mc_mode=obmc", fps))
-		default: // smoothModePrecise
-			vfFilters = append(vfFilters, fmt.Sprintf("minterpolate=fps=%d:mi_mode=mci", fps))
-		}
+		vfFilters = append(vfFilters, smoothMotionFilter(ppSetting.SmoothMotionMode, int(ppSetting.SmoothMotionFPS)))
 	}
 	if ppSetting.Sharpen {
 		amount := ppSetting.SharpenAmount
@@ -174,16 +164,7 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 		vfFilters = append(vfFilters, toneMapSentinel)
 	}
 	if ppSetting.Denoise {
-		switch ppSetting.DenoiseMode {
-		case denoiseModeNLMeans:
-			// s=2.0 is noticeably more effective on compressed web video than the
-			// default s=1.0. Research size (15) must always exceed patch size (7).
-			vfFilters = append(vfFilters, "nlmeans=2.0:7:5:15:9")
-		default: // denoiseModeHQDN3D
-			// hqdn3d applies both spatial and temporal denoising in one pass.
-			// luma_spatial=4, chroma_spatial=3, luma_tmp=6, chroma_tmp=4.5
-			vfFilters = append(vfFilters, "hqdn3d=4:3:6:4.5")
-		}
+		vfFilters = append(vfFilters, denoiseFilter(ppSetting.DenoiseMode))
 	}
 	if ppSetting.Deinterlace {
 		vfFilters = append(vfFilters, "bwdif")
@@ -196,20 +177,7 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 		vfFilters = append(vfFilters, autoCropSentinel)
 	}
 	if ppSetting.UpscaleVideo {
-		// Use FFmpeg's if() expression to skip rescaling when the video is already
-		// at or above the target height, avoiding a pointless re-encode.
-		// -2 keeps width proportional and divisible by 2.
-		// if(gte(ih,TARGET),ih,TARGET) → keep original height when input >= target.
-		switch ppSetting.UpscaleTarget {
-		case upscale1080p:
-			vfFilters = append(vfFilters, "scale=-2:if(gte(ih\\,1080)\\,ih\\,1080):flags=lanczos")
-		case upscale1440p:
-			vfFilters = append(vfFilters, "scale=-2:if(gte(ih\\,1440)\\,ih\\,1440):flags=lanczos")
-		case upscale4K:
-			vfFilters = append(vfFilters, "scale=-2:if(gte(ih\\,2160)\\,ih\\,2160):flags=lanczos")
-		default: // upscaleDouble — no meaningful ceiling; always doubles
-			vfFilters = append(vfFilters, "scale=iw*2:ih*2:flags=lanczos")
-		}
+		vfFilters = append(vfFilters, upscaleFilter(ppSetting.UpscaleTarget))
 	}
 	if ppSetting.NormalizeAudio {
 		afFilters = append(afFilters, "loudnorm")
@@ -218,6 +186,54 @@ func buildPostProcessFilters(ppSetting PostProcessSettings) (vfFilters, afFilter
 		afFilters = append(afFilters, "dynaudnorm=f=300:g=5:p=0.95")
 	}
 	return
+}
+
+// smoothMotionFilter returns the minterpolate filter that raises the frame
+// rate to fps in the Smooth Motion mode given.
+func smoothMotionFilter(mode string, fps int) string {
+	switch mode {
+	case smoothModeFast:
+		// Frame blending — multi-threaded, much faster, slightly less precise.
+		return fmt.Sprintf("minterpolate=fps=%d:mi_mode=blend", fps)
+	case smoothModeBalanced:
+		// MCI without variant-size blocks — ~40% faster than Precise, similar quality.
+		return fmt.Sprintf("minterpolate=fps=%d:mi_mode=mci:vsbmc=0:mc_mode=obmc", fps)
+	default: // smoothModePrecise
+		return fmt.Sprintf("minterpolate=fps=%d:mi_mode=mci", fps)
+	}
+}
+
+// denoiseFilter returns the filter of the Denoise mode given.
+func denoiseFilter(mode string) string {
+	switch mode {
+	case denoiseModeNLMeans:
+		// s=2.0 is noticeably more effective on compressed web video than the
+		// default s=1.0. Research size (15) must always exceed patch size (7).
+		return "nlmeans=2.0:7:5:15:9"
+	default: // denoiseModeHQDN3D
+		// hqdn3d applies both spatial and temporal denoising in one pass.
+		// luma_spatial=4, chroma_spatial=3, luma_tmp=6, chroma_tmp=4.5
+		return "hqdn3d=4:3:6:4.5"
+	}
+}
+
+// upscaleFilter returns the scale filter that upscales to target.
+//
+// It uses FFmpeg's if() expression to skip rescaling when the video is
+// already at or above the target height, avoiding a pointless re-encode.
+// -2 keeps width proportional and divisible by 2.
+// if(gte(ih,TARGET),ih,TARGET) → keep original height when input >= target.
+func upscaleFilter(target string) string {
+	switch target {
+	case upscale1080p:
+		return "scale=-2:if(gte(ih\\,1080)\\,ih\\,1080):flags=lanczos"
+	case upscale1440p:
+		return "scale=-2:if(gte(ih\\,1440)\\,ih\\,1440):flags=lanczos"
+	case upscale4K:
+		return "scale=-2:if(gte(ih\\,2160)\\,ih\\,2160):flags=lanczos"
+	default: // upscaleDouble — no meaningful ceiling; always doubles
+		return "scale=iw*2:ih*2:flags=lanczos"
+	}
 }
 
 // All PPEngine methods and helpers (detectCropFilter, resolveAutoCrop, runJob,
@@ -373,6 +389,13 @@ func filterShortName(filterStr string) string {
 // description based on the currently selected filters. The score is unbounded
 // so callers can show it as-is rather than normalising to 0–1.
 func computeProcessingLoad(ppSettings PostProcessSettings) (int, string) {
+	cost := processingCost(ppSettings)
+	return cost, describeLoad(cost)
+}
+
+// processingCost returns the summed cost score of the filters ppSettings
+// turns on (the cost* constants).
+func processingCost(ppSettings PostProcessSettings) int {
 	cost := 0
 
 	if ppSettings.SmoothMotion {
@@ -428,19 +451,24 @@ func computeProcessingLoad(ppSettings PostProcessSettings) (int, string) {
 	if ppSettings.NightMode {
 		cost += costNightMode
 	}
+	return cost
+}
 
+// describeLoad returns the human-readable description of a cost score, by
+// the loadThreshold* constants.
+func describeLoad(cost int) string {
 	switch {
 	case cost == 0:
-		return 0, "No post-processing active"
+		return "No post-processing active"
 	case cost < loadThresholdLight:
-		return cost, "Light — minimal overhead"
+		return "Light — minimal overhead"
 	case cost < loadThresholdModerate:
-		return cost, "Moderate — noticeable extra time"
+		return "Moderate — noticeable extra time"
 	case cost < loadThresholdHeavy:
-		return cost, "Heavy — significant re-encode time"
+		return "Heavy — significant re-encode time"
 	case cost < loadThresholdVeryHeavy:
-		return cost, "Very Heavy — expect long processing"
+		return "Very Heavy — expect long processing"
 	default:
-		return cost, "Intensive — expect very long processing"
+		return "Intensive — expect very long processing"
 	}
 }
