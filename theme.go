@@ -68,6 +68,8 @@ var (
 	}
 )
 
+// Color returns GoVid's dark colour for name, or Fyne's dark one where GoVid
+// sets none, whatever the variant.
 func (t *darkTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
 	// We always render in dark mode regardless of the OS system variant.
 	// The variant argument is intentionally ignored here.
@@ -121,14 +123,18 @@ func (t *darkTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.C
 	return theme.DefaultTheme().Color(name, theme.VariantDark)
 }
 
+// Font returns Fyne's default font for style.
 func (t *darkTheme) Font(style fyne.TextStyle) fyne.Resource {
 	return theme.DefaultTheme().Font(style)
 }
 
+// Icon returns Fyne's default icon for name.
 func (t *darkTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
 	return theme.DefaultTheme().Icon(name)
 }
 
+// Size returns GoVid's size for name where it sets one (text, padding, line
+// spacing, scroll bars), else Fyne's default.
 func (t *darkTheme) Size(name fyne.ThemeSizeName) float32 {
 	if name == theme.SizeNameText {
 		return 13 // slightly larger than default (12)
@@ -155,18 +161,22 @@ type lightTheme struct{}
 
 var _ fyne.Theme = (*lightTheme)(nil)
 
+// Color returns Fyne's light colour for name, whatever the variant.
 func (t *lightTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
 	return theme.DefaultTheme().Color(name, theme.VariantLight)
 }
 
+// Font returns Fyne's default font for style.
 func (t *lightTheme) Font(style fyne.TextStyle) fyne.Resource {
 	return theme.DefaultTheme().Font(style)
 }
 
+// Icon returns Fyne's default icon for name.
 func (t *lightTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
 	return theme.DefaultTheme().Icon(name)
 }
 
+// Size returns Fyne's default size for name.
 func (t *lightTheme) Size(name fyne.ThemeSizeName) float32 {
 	return theme.DefaultTheme().Size(name)
 }
@@ -191,18 +201,22 @@ func (t *systemTheme) current() fyne.Theme {
 	return t.forVariant(systemVariant())
 }
 
+// Color returns the colour for name of the theme for variant.
 func (t *systemTheme) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {
 	return t.forVariant(variant).Color(name, variant)
 }
 
+// Font returns the font for style of the theme the system uses now.
 func (t *systemTheme) Font(style fyne.TextStyle) fyne.Resource {
 	return t.current().Font(style)
 }
 
+// Icon returns the icon for name of the theme the system uses now.
 func (t *systemTheme) Icon(name fyne.ThemeIconName) fyne.Resource {
 	return t.current().Icon(name)
 }
 
+// Size returns the size for name of the theme the system uses now.
 func (t *systemTheme) Size(name fyne.ThemeSizeName) float32 {
 	return t.current().Size(name)
 }

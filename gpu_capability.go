@@ -29,14 +29,16 @@ import (
 // pipeline, as defined in docs/gpu-acceleration.md §3.
 type GPUBackend string
 
+// The GPU backends. Each hardware backend is named after its H.264 encoder
+// (see backendDefs) and applies only to the systems listed there.
 const (
-	BackendAuto         GPUBackend = "auto"
-	BackendOff          GPUBackend = "off"
-	BackendNVIDIA       GPUBackend = "nvidia"
-	BackendIntel        GPUBackend = "intel"
-	BackendAMD          GPUBackend = "amd"
-	BackendVAAPI        GPUBackend = "vaapi"
-	BackendVideoToolbox GPUBackend = "videotoolbox"
+	BackendAuto         GPUBackend = "auto"         // the first available backend in backendPriority, else the CPU
+	BackendOff          GPUBackend = "off"          // no GPU: always the CPU encoder
+	BackendNVIDIA       GPUBackend = "nvidia"       // NVENC (h264_nvenc), on Windows and Linux
+	BackendIntel        GPUBackend = "intel"        // Quick Sync (h264_qsv), on Windows and Linux
+	BackendAMD          GPUBackend = "amd"          // AMF (h264_amf), on Windows
+	BackendVAAPI        GPUBackend = "vaapi"        // VA-API (h264_vaapi), on Linux
+	BackendVideoToolbox GPUBackend = "videotoolbox" // VideoToolbox (h264_videotoolbox), on macOS
 )
 
 // BackendCapability records what was found for a single backend.

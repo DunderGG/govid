@@ -131,8 +131,10 @@ func (store *fileStore) get(key string) (any, bool) {
 	return value, ok
 }
 
+// Bool returns the bool stored under key, or false.
 func (store *fileStore) Bool(key string) bool { return store.BoolWithFallback(key, false) }
 
+// BoolWithFallback returns the bool stored under key, or fallback.
 func (store *fileStore) BoolWithFallback(key string, fallback bool) bool {
 	if value, ok := store.get(key); ok {
 		if b, ok := value.(bool); ok {
@@ -142,10 +144,13 @@ func (store *fileStore) BoolWithFallback(key string, fallback bool) bool {
 	return fallback
 }
 
+// SetBool stores value under key.
 func (store *fileStore) SetBool(key string, value bool) { store.set(key, value) }
 
+// Float returns the number stored under key, or 0.
 func (store *fileStore) Float(key string) float64 { return store.FloatWithFallback(key, 0) }
 
+// FloatWithFallback returns the number stored under key, or fallback.
 func (store *fileStore) FloatWithFallback(key string, fallback float64) float64 {
 	if value, ok := store.get(key); ok {
 		if f, ok := value.(float64); ok {
@@ -155,10 +160,14 @@ func (store *fileStore) FloatWithFallback(key string, fallback float64) float64 
 	return fallback
 }
 
+// SetFloat stores value under key.
 func (store *fileStore) SetFloat(key string, value float64) { store.set(key, value) }
 
+// Int returns the number stored under key as an int, or 0.
 func (store *fileStore) Int(key string) int { return store.IntWithFallback(key, 0) }
 
+// IntWithFallback returns the number stored under key as an int, or
+// fallback.
 func (store *fileStore) IntWithFallback(key string, fallback int) int {
 	if value, ok := store.get(key); ok {
 		if f, ok := value.(float64); ok {
@@ -168,10 +177,13 @@ func (store *fileStore) IntWithFallback(key string, fallback int) int {
 	return fallback
 }
 
+// SetInt stores value under key, as JSON stores numbers.
 func (store *fileStore) SetInt(key string, value int) { store.set(key, float64(value)) }
 
+// String returns the string stored under key, or "".
 func (store *fileStore) String(key string) string { return store.StringWithFallback(key, "") }
 
+// StringWithFallback returns the string stored under key, or fallback.
 func (store *fileStore) StringWithFallback(key, fallback string) string {
 	if value, ok := store.get(key); ok {
 		if s, ok := value.(string); ok {
@@ -181,6 +193,7 @@ func (store *fileStore) StringWithFallback(key, fallback string) string {
 	return fallback
 }
 
+// SetString stores value under key.
 func (store *fileStore) SetString(key string, value string) { store.set(key, value) }
 
 // list returns the list stored under key, converted by convert, or
@@ -229,34 +242,56 @@ func convertSlice[A, B any](in []A, f func(A) B) []B {
 	return out
 }
 
+// BoolList returns the bools stored under key, or none.
 func (store *fileStore) BoolList(key string) []bool { return store.BoolListWithFallback(key, []bool{}) }
+
+// BoolListWithFallback returns the bools stored under key, or fallback.
 func (store *fileStore) BoolListWithFallback(key string, fallback []bool) []bool {
 	return list(store, key, fallback, toBool)
 }
+
+// SetBoolList stores value under key.
 func (store *fileStore) SetBoolList(key string, value []bool) { setList(store, key, value) }
 
+// FloatList returns the numbers stored under key, or none.
 func (store *fileStore) FloatList(key string) []float64 {
 	return store.FloatListWithFallback(key, []float64{})
 }
+
+// FloatListWithFallback returns the numbers stored under key, or fallback.
 func (store *fileStore) FloatListWithFallback(key string, fallback []float64) []float64 {
 	return list(store, key, fallback, toFloat)
 }
+
+// SetFloatList stores value under key.
 func (store *fileStore) SetFloatList(key string, value []float64) { setList(store, key, value) }
 
+// IntList returns the numbers stored under key as ints, or none.
 func (store *fileStore) IntList(key string) []int { return store.IntListWithFallback(key, []int{}) }
+
+// IntListWithFallback returns the numbers stored under key as ints, or
+// fallback.
 func (store *fileStore) IntListWithFallback(key string, fallback []int) []int {
 	return list(store, key, fallback, toInt)
 }
+
+// SetIntList stores value under key, as JSON stores numbers.
 func (store *fileStore) SetIntList(key string, value []int) {
 	setList(store, key, intsAsFloats(value))
 }
 
+// StringList returns the strings stored under key, or none.
 func (store *fileStore) StringList(key string) []string {
 	return store.StringListWithFallback(key, []string{})
 }
+
+// StringListWithFallback returns the strings stored under key, or
+// fallback.
 func (store *fileStore) StringListWithFallback(key string, fallback []string) []string {
 	return list(store, key, fallback, toString)
 }
+
+// SetStringList stores value under key.
 func (store *fileStore) SetStringList(key string, value []string) { setList(store, key, value) }
 
 // RemoveValue deletes key.

@@ -20,11 +20,13 @@ type iconDarkLight struct {
 // IconName identifies a named icon in the GoVid icon set.
 type IconName int
 
+// The icons of the GoVid icon set; themedIcon returns each in the colour of
+// the theme showing.
 const (
-	IconDownload IconName = iota
-	IconFolderOpen
-	IconFolder
-	IconCancel
+	IconDownload   IconName = iota // a downward arrow onto a line, for Download Now!
+	IconFolderOpen                 // an open folder, for browsing to the save folder
+	IconFolder                     // a closed folder, for Open Folder
+	IconCancel                     // a cross in a circle, for Cancel
 )
 
 // Fill colours for the two theme variants.

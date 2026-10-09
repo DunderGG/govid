@@ -203,10 +203,12 @@ type fixedWidthLayout struct {
 	width float32
 }
 
+// MinSize is the layout's width by the height its object needs.
 func (layout *fixedWidthLayout) MinSize(objects []fyne.CanvasObject) fyne.Size {
 	return fyne.NewSize(layout.width, objects[0].MinSize().Height)
 }
 
+// Layout fills size with the object.
 func (layout *fixedWidthLayout) Layout(objects []fyne.CanvasObject, size fyne.Size) {
 	objects[0].Resize(size)
 	objects[0].Move(fyne.NewPos(0, 0))

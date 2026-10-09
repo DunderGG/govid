@@ -85,6 +85,8 @@ type progressWriter struct {
 	onProgress  func(done, total int64)
 }
 
+// Write counts p and reports the bytes written so far to onProgress; it
+// never fails.
 func (writer *progressWriter) Write(p []byte) (int, error) {
 	writer.done += int64(len(p))
 	if writer.onProgress != nil {
