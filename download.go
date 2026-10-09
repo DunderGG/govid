@@ -980,6 +980,11 @@ func describeOutputFormat(extension string, scan scanResult) string {
 	}
 }
 
+// timestampPattern matches a trim time in one of the formats yt-dlp accepts.
+// It is compiled once, since validateTimestamp runs on every keystroke in
+// the trim fields.
+var timestampPattern = regexp.MustCompile(`^\d+:\d{2}:\d{2}$|^\d+:\d{2}$|^\d+(\.\d+)?$`)
+
 // validateTimestamp checks that a trim time entry is either empty (meaning no trim)
 // or a valid timestamp in one of the formats yt-dlp accepts:
 //   - HH:MM:SS  (e.g. 01:30:00)
@@ -989,8 +994,7 @@ func validateTimestamp(timestamp string) error {
 	if timestamp == "" {
 		return nil
 	}
-	matched, _ := regexp.MatchString(`^\d+:\d{2}:\d{2}$|^\d+:\d{2}$|^\d+(\.\d+)?$`, timestamp)
-	if !matched {
+	if !timestampPattern.MatchString(timestamp) {
 		return fmt.Errorf("use HH:MM:SS, MM:SS or seconds (e.g. 90)")
 	}
 	return nil

@@ -49,6 +49,18 @@ func TestRebuildingMainWindowKeepsUnsavedSelections(t *testing.T) {
 
 // walkObjects calls visit for obj and everything inside it, including the
 // parts widgets such as dialogs are rendered from.
+func TestMustParseURL(t *testing.T) {
+	if got := mustParseURL("https://dunder.gg").Host; got != "dunder.gg" {
+		t.Errorf("mustParseURL(https://dunder.gg).Host = %q", got)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("mustParseURL did not panic on a URL that does not parse")
+		}
+	}()
+	mustParseURL("https://dunder.gg/%zz")
+}
+
 func walkObjects(obj fyne.CanvasObject, visit func(fyne.CanvasObject)) {
 	visit(obj)
 	switch o := obj.(type) {

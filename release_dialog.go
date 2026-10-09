@@ -11,6 +11,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net/url"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -64,10 +65,18 @@ func (manager *UIManager) showGoVidRelease(release Release) {
 
 	var dlg *dialog.CustomDialog
 	openBtn := widget.NewButton("Open download page", func() {
-		if err := fyne.CurrentApp().OpenURL(parseURL(release.HTMLURL)); err != nil {
+		// Hide first: hiding a dialog also removes every overlay shown
+		// after it, which would include the error below.
+		dlg.Hide()
+		// The page's URL comes from GitHub, so it may not parse; OpenURL
+		// cannot be given the nil URL url.Parse then returns.
+		pageURL, err := url.Parse(release.HTMLURL)
+		if err == nil {
+			err = fyne.CurrentApp().OpenURL(pageURL)
+		}
+		if err != nil {
 			dialog.ShowError(fmt.Errorf("could not open %s: %w", release.HTMLURL, err), manager.mainWindow)
 		}
-		dlg.Hide()
 	})
 	openBtn.Importance = widget.HighImportance
 	closeBtn := widget.NewButton("Close", func() { dlg.Hide() })

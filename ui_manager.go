@@ -166,9 +166,14 @@ func onWindowClosed(window *fyne.Window) func() {
 	return func() { *window = nil }
 }
 
-// parseURL is a small helper to safely parse a URL string for use in hyperlinks.
-func parseURL(rawURL string) *url.URL {
-	parsed, _ := url.Parse(rawURL)
+// mustParseURL parses rawURL for a hyperlink. It is for the constant URLs
+// GoVid links to, which parse, so like regexp.MustCompile it panics if one
+// does not; a URL from elsewhere goes through url.Parse and its error.
+func mustParseURL(rawURL string) *url.URL {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		panic(fmt.Sprintf("mustParseURL(%q): %v", rawURL, err))
+	}
 	return parsed
 }
 
@@ -321,8 +326,8 @@ func (manager *UIManager) showAbout() {
 	}()
 	tagline := widget.NewLabelWithStyle("A high-performance video downloader\nbuilt with Go and Fyne.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
 	author := widget.NewLabelWithStyle("Created by David Bennehag", fyne.TextAlignCenter, fyne.TextStyle{})
-	website := widget.NewHyperlink("dunder.gg", parseURL("https://dunder.gg"))
-	github := widget.NewHyperlink("github.com/DunderGG/govid", parseURL("https://github.com/DunderGG/govid"))
+	website := widget.NewHyperlink("dunder.gg", mustParseURL("https://dunder.gg"))
+	github := widget.NewHyperlink("github.com/DunderGG/govid", mustParseURL("https://github.com/DunderGG/govid"))
 	links := container.NewHBox(layout.NewSpacer(), website, widget.NewLabel("•"), github, layout.NewSpacer())
 
 	content := container.NewVBox(
