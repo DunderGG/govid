@@ -59,8 +59,13 @@ govid/
 ├── components.go           componentStatuses / installComponent / checkTools — Tools → Components actions, startup "missing tool" notices, FFmpeg filter check
 ├── components_window.go    UIManager.showComponents — the Components window (installed / latest / Install · Update · Reinstall)
 
-├── ui_manager.go           UIManager — main window layout (createUI, createMainMenu), secondary window lifecycle
-│                           (About, Help, History, Prefs, PP), and preference/dependency UI wrapper methods
+├── ui_manager.go           UIManager — main window layout (createUI and its builders, createMainMenu), secondary window
+│                           singletons (focusOrCreate), the About window, and the yt-dlp update delegates
+├── help_window.go          UIManager.showConfigHelp — the Configuration Help window
+├── preferences_window.go   UIManager.showPreferences — the Preferences window; savePreferences, restoreDefaults, settings import/export
+├── postprocess_window.go   UIManager.showPostProcessing — the Post-Processing window and its load indicator
+├── log_view.go             UIManager.appendLogLine / flushLog — the batched Terminal Output log view
+├── notices.go              UIManager.showNotice / dismissNotice — the notices above the input card
 ├── gpu_capability.go       GPUCapabilityService — GPU backend capability detection and cache (see docs/gpu-acceleration.md)
 ├── release_service.go      ReleaseService — latest GitHub release lookups with a daily cache; version comparison
 ├── update_check.go         Startup yt-dlp and GoVid update checks, their notices, installed/latest yt-dlp versions
@@ -166,7 +171,7 @@ Widgets are wired with callbacks in `UIManager.createUI()` and accessed through 
 ---
 
 ### 4.3 `UIManager` — main window and secondary window owner  
-*Defined in:* `ui_manager.go`
+*Defined in:* `ui_manager.go`; its windows and parts of the main window have their own files: `help_window.go`, `preferences_window.go`, `postprocess_window.go`, `history_window.go`, `components_window.go`, `formats_window.go`, `queue_panel.go`, `log_view.go`, and `notices.go`
 
 Owns the primary window reference (`mainWindow`) plus the singleton secondary windows (About, Help, History, Preferences, Post-Processing, Components). Calling a `show*` method re-focuses an already-open window rather than opening a duplicate, via the shared `focusOrCreate`/`onWindowClosed` helpers. `UIManager` holds no direct service references — every service access is bridged through injected callbacks (`onLoadHistory`, `onCheckDependencies`, `onSavePreferences`, etc.), wired once in `newDownloaderApp`.
 
@@ -174,9 +179,9 @@ Beyond the five `show*` methods, `UIManager` also owns:
 - **`createUI()`** — builds the main window layout, split into focused helpers (`buildHeader`, `configureEntryMode`, `wireToggleHandlers`, `wireActionButtons`, `buildInputCard`, `buildStatusCard`, `buildLogPane`, `buildFooter`).
 - **`createMainMenu()`** — builds the menu bar.
 - **`showLoadURLFile` / `loadURLList`, `pasteURLs`, `handleDrop`** (`url_input.go`) — the "Load from file…" button, the paste button, and the window's drop handler (`SetOnDropped`, set in `createUI`). All go through `addURLs`, which appends to the URL field without duplicates (`mergeURLs`) and switches on batch mode when the field then holds more than one URL. `parseURLList` skips blank lines, `#` comments (which `collectURLs` also skips in batch mode), and lines that are not http(s) URLs (`looksLikeURL`), and the log says what was skipped. Paste takes the clipboard only if every non-blank line is a URL. A dropped `.txt` is loaded as a list, and a `.url` or `.desktop` shortcut adds its `URL=` line (`shortcutURL`). Links dragged straight from a browser do not arrive on Windows, because GLFW accepts only dropped files there (`WM_DROPFILES`).
-- **`savePreferences`, `resetPreferences`, `rebuildUI`** — preference persistence and full UI-rebuild-on-reset, used by `showPreferences`.
+- **`savePreferences`, `restoreDefaults`** (`preferences_window.go`) — preference persistence and the "Restore Defaults" reset, used by `showPreferences`.
 - **`checkDependencies`, `runUpdateInUI`** — thin delegates to the injected `onCheckDependencies`/`onUpdateYtDlp` callbacks for the startup tool check and the "Update yt-dlp" menu action. `runUpdateInUI` shows an error when `DownloaderApp.updateYtDlp` refuses; `runUpdateThen` sets up the status and calls `onRunUpdate`.
-- **`appendLogLine` / `flushLog`** — batched log rendering. `appendLogLine` is safe to call from any goroutine: it queues the line under `logMu` and, for the first queued line, arms a `logFlushInterval` (100 ms) timer. `flushLog` then renders every queued line in a single `fyne.Do`: it adds the lines, trims once to `screenLogLimit` (the Log Buffer Limit from `onLogBufferLimit`, but never more than `maxScreenLogLines` = 5000, even for "Unlimited"), refreshes once, and scrolls to the bottom only if the view was already there (`isScrolledToBottom`), so a user who scrolled up is not pulled back down. `finishSessionUI` calls `flushLog` directly so the session summary appears at once, and `clearTerminalOutput` drops lines still queued (see §4.7).
+- **`appendLogLine` / `flushLog`** (`log_view.go`) — batched log rendering. `appendLogLine` is safe to call from any goroutine: it queues the line under `logMu` and, for the first queued line, arms a `logFlushInterval` (100 ms) timer. `flushLog` then renders every queued line in a single `fyne.Do`: it adds the lines, trims once to `screenLogLimit` (the Log Buffer Limit from `onLogBufferLimit`, but never more than `maxScreenLogLines` = 5000, even for "Unlimited"), refreshes once, and scrolls to the bottom only if the view was already there (`isScrolledToBottom`), so a user who scrolled up is not pulled back down. `finishSessionUI` calls `flushLog` directly so the session summary appears at once, and `clearTerminalOutput` drops lines still queued (see §4.7).
 
 `ui.go` is what remains outside `UIManager`: thin one-line `DownloaderApp` delegates to the `show*` methods above (`showHistory`, `showPostProcessing`, `showPreferences`, `showConfigHelp`), plus the shared `roundedCard`/`accentBar` container helpers `UIManager` uses when building widgets.
 
