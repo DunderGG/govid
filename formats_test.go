@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -250,46 +251,65 @@ func TestWillDownloadMatchesWhatYtDlpDownloads(t *testing.T) {
 	}
 }
 
-// probeFormatsAndWait runs probeFormatsForURL on the URL field's URL and
-// returns the status label right after it starts and once it has shown the
-// formats.
-func probeFormatsAndWait(t *testing.T, h *downloadHarness) (during, after string) {
+// recordStatuses makes the status throttle record each status it applies
+// instead of writing the label: the test driver runs fyne.Do on the
+// throttle's timer goroutine, so reading the label would race with it. It
+// returns the statuses applied so far.
+func recordStatuses(h *downloadHarness) func() []string {
+	var mu sync.Mutex
+	var applied []string
+	h.app.statusThrottle = newLatestValueThrottle(statusThrottleInterval, func(status string) {
+		mu.Lock()
+		defer mu.Unlock()
+		applied = append(applied, status)
+	})
+	return func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(applied)
+	}
+}
+
+// probeFormatsAndWait runs probeFormatsForURL and waits until it has shown
+// the formats. It flushes the status throttle as the probe starts and once
+// it has finished, so every status it set is applied.
+func probeFormatsAndWait(t *testing.T, h *downloadHarness) {
 	t.Helper()
 	url := "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 	req := h.app.newDownloadRequest(url, h.saveDir, "", "")
 
 	shown := h.app.probeFormatsForURL(url, req)
 	h.app.statusThrottle.Flush()
-	during = h.app.ui.download.status.Text
 	select {
 	case <-shown:
 	case <-time.After(30 * time.Second):
 		t.Fatal("the formats were not shown")
 	}
 	h.app.statusThrottle.Flush()
-	return during, h.app.ui.download.status.Text
 }
 
 func TestFormatsShowsItsStatusOutsideASession(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-formats")
+	statuses := recordStatuses(h)
 
-	during, after := probeFormatsAndWait(t, h)
+	probeFormatsAndWait(t, h)
 
-	if during != checkingFormatsStatus || after != "Status: Idle" {
-		t.Errorf("status = %q during the probe and %q after, want %q and Status: Idle", during, after, checkingFormatsStatus)
+	if got, want := statuses(), []string{checkingFormatsStatus, "Status: Idle"}; !slices.Equal(got, want) {
+		t.Errorf("statuses = %q, want %q", got, want)
 	}
 }
 
 func TestFormatsKeepsARunningSessionsStatus(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-formats")
+	statuses := recordStatuses(h)
 	const sessionStatus = "Status: Downloading 1 of 2…"
 	h.app.isRunning.Store(true)
 	h.app.updateStatus(sessionStatus)
 	h.app.statusThrottle.Flush()
 
-	during, after := probeFormatsAndWait(t, h)
+	probeFormatsAndWait(t, h)
 
-	if during != sessionStatus || after != sessionStatus {
-		t.Errorf("status = %q during the probe and %q after, want the session's %q", during, after, sessionStatus)
+	if got, want := statuses(), []string{sessionStatus}; !slices.Equal(got, want) {
+		t.Errorf("statuses = %q, want only the session's", got)
 	}
 }
