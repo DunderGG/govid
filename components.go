@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
@@ -253,10 +252,11 @@ const ffmpegFiltersNoticeID = "ffmpeg-filters"
 // checkFFmpegFilters checks that the installed ffmpeg still has the filters
 // HDR to SDR needs, and says so in the log and a notice when it does not.
 func (app *DownloaderApp) checkFFmpegFilters() {
-	cmd := exec.Command(app.depSvc.Resolve(toolFFmpeg), "-hide_banner", "-filters")
-	hideWindow(cmd)
-	out, err := cmd.Output()
+	ctx, cancel := context.WithTimeout(context.Background(), toolCommandTimeout)
+	defer cancel()
+	out, err := newToolCommand(ctx, app.depSvc.Resolve(toolFFmpeg), "-hide_banner", "-filters").Output()
 	if err != nil {
+		err = commandError(ctx, err, toolCommandTimeout)
 		app.appendOutput(fmt.Sprintf("[WARNING] Could not list FFmpeg's filters: %v", err), colWarning)
 		return
 	}

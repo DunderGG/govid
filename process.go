@@ -17,6 +17,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os/exec"
 	"time"
@@ -34,6 +36,16 @@ func newToolCommand(ctx context.Context, path string, args ...string) *exec.Cmd 
 	hideWindow(cmd)
 	configureProcessTree(cmd)
 	return cmd
+}
+
+// commandError returns err, the error of a command run under ctx, saying
+// that the command took longer than timeout when that is why ctx killed it.
+// Otherwise the error would only say "exit status 1" or "signal: killed".
+func commandError(ctx context.Context, err error, timeout time.Duration) error {
+	if err == nil || !errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return err
+	}
+	return fmt.Errorf("did not finish within %v: %w", timeout, err)
 }
 
 // maxOutputLine is the longest line read from a running tool's output.

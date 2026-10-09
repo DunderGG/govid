@@ -66,6 +66,26 @@ func TestMissingFilters(t *testing.T) {
 	}
 }
 
+func TestCheckFFmpegFiltersGivesUpOnAHungFFmpeg(t *testing.T) {
+	h := newDownloadHarness(t, "ffmpeg-hang")
+	installFakeTool(t, h.app.depSvc.binDir, "ffmpeg")
+	shortenTimeout(t, &toolCommandTimeout, 500*time.Millisecond)
+
+	finished := make(chan struct{})
+	go func() {
+		h.app.checkFFmpegFilters()
+		close(finished)
+	}()
+	select {
+	case <-finished:
+	case <-time.After(30 * time.Second):
+		t.Fatal("checkFFmpegFilters did not give up on a hung ffmpeg")
+	}
+	if logs := h.joinedLogs(); !strings.Contains(logs, "Could not list FFmpeg's filters: did not finish within 500ms") {
+		t.Errorf("the timeout was not logged:\n%s", logs)
+	}
+}
+
 func TestCheckToolsShowsANoticeForEachMissingTool(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-download") // bin/ holds yt-dlp only, and PATH is empty
 

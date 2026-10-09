@@ -100,23 +100,24 @@ func (svc *DependencyService) available(toolName string) bool {
 	return err == nil
 }
 
-// Version runs "<toolName> --version" (resolved via Resolve) and returns its
-// trimmed output. Used to display the installed version alongside the latest
-// available one.
+// Version returns the version toolName (resolved via Resolve) reports, as
+// runVersion does. Used to display the installed version alongside the
+// latest available one.
 func (svc *DependencyService) Version(toolName string) (string, error) {
-	cmd := exec.Command(svc.Resolve(toolName), "--version")
-	hideWindow(cmd)
-	out, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("%s --version failed: %w", toolName, err)
-	}
-	return strings.TrimSpace(string(out)), nil
+	return runVersion(svc.Resolve(toolName), toolName)
 }
 
-// toolCommandTimeout bounds how long a version query of a tool may take. A
-// freshly downloaded executable can be slow to start the first time while
-// antivirus software scans it.
-const toolCommandTimeout = 15 * time.Second
+// toolCommandTimeout bounds how long a query of a tool, such as its version
+// or FFmpeg's filter list, may take. A freshly downloaded executable can be
+// slow to start the first time while antivirus software scans it. A
+// variable so that tests can shorten it.
+var toolCommandTimeout = 15 * time.Second
+
+// ytDlpUpdateTimeout bounds how long "yt-dlp -U" may take. It downloads the
+// new yt-dlp, so a hung connection would otherwise leave the update, and
+// the status saying so, running until GoVid exits. A variable so that tests
+// can shorten it.
+var ytDlpUpdateTimeout = 5 * time.Minute
 
 // versionPattern finds a dotted version number, e.g. "8.1" in "ffmpeg
 // version 8.1-essentials_build", "2.9.7" in "deno 2.9.7 (stable, …)", or
@@ -164,14 +165,16 @@ func versionArgs(toolName string) []string {
 }
 
 // runVersion runs the executable at path with toolName's version arguments
-// and returns the version it reports.
+// and returns the version it reports. It gives up after toolCommandTimeout.
 func runVersion(path, toolName string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), toolCommandTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, path, versionArgs(toolName)...)
-	hideWindow(cmd)
+	// newToolCommand, so that a timeout also kills the second process of the
+	// Windows yt-dlp.exe, which would otherwise keep Output waiting on its pipe.
+	cmd := newToolCommand(ctx, path, versionArgs(toolName)...)
 	out, err := cmd.Output()
 	if err != nil {
+		err = commandError(ctx, err, toolCommandTimeout)
 		return "", fmt.Errorf("%s %s failed: %w", toolName, strings.Join(versionArgs(toolName), " "), err)
 	}
 	version := parseToolVersion(string(out))
@@ -372,16 +375,22 @@ type UpdateCallbacks struct {
 	OnFailure func()
 }
 
+// runYtDlpUpdate runs "yt-dlp -U" and returns its output, stdout and stderr
+// together. It kills yt-dlp, and returns an error that says so, after
+// ytDlpUpdateTimeout. A failed update's error is typically an
+// *exec.ExitError.
+func (svc *DependencyService) runYtDlpUpdate() ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), ytDlpUpdateTimeout)
+	defer cancel()
+	out, err := newToolCommand(ctx, svc.Resolve("yt-dlp"), "-U").CombinedOutput()
+	return out, commandError(ctx, err, ytDlpUpdateTimeout)
+}
+
 // RunUpdate executes 'yt-dlp -U' in a background goroutine and reports
 // progress through cb. It returns immediately.
 func (svc *DependencyService) RunUpdate(cb UpdateCallbacks) {
 	go func() {
-		ytDlpPath := svc.Resolve("yt-dlp")
-		cmd := exec.Command(ytDlpPath, "-U")
-		hideWindow(cmd)
-
-		// If the subprocess exits non-zero, CombinedOutput() returns an error that is typically *exec.ExitError.
-		out, err := cmd.CombinedOutput()
+		out, err := svc.runYtDlpUpdate()
 
 		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 			cb.OnLog(line, colOutputLine)
@@ -409,9 +418,7 @@ func (svc *DependencyService) RunUpdate(cb UpdateCallbacks) {
 // --update CLI flag; does not require a running Fyne application.
 func (svc *DependencyService) UpdateCLI() error {
 	fmt.Println("Updating yt-dlp...")
-	cmd := exec.Command(svc.Resolve("yt-dlp"), "-U")
-	hideWindow(cmd)
-	out, err := cmd.CombinedOutput()
+	out, err := svc.runYtDlpUpdate()
 	fmt.Print(string(out))
 	if err != nil {
 		if hint := svc.updateFailureHint(); hint != "" {

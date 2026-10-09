@@ -17,7 +17,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 
 // The GitHub repository yt-dlp is released from.
@@ -138,12 +137,7 @@ func (app *DownloaderApp) checkYtDlpUpdate(ctx context.Context) {
 
 // installedYtDlpVersion returns the version the installed yt-dlp reports.
 func (app *DownloaderApp) installedYtDlpVersion() (string, error) {
-	output, err := app.depSvc.Version("yt-dlp")
-	if err != nil {
-		return "", err
-	}
-	version, _, _ := strings.Cut(output, "\n")
-	return strings.TrimSpace(version), nil
+	return app.depSvc.Version("yt-dlp")
 }
 
 // ytDlpVersions returns the installed yt-dlp version and the latest release,

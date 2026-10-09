@@ -236,6 +236,40 @@ func TestDependencyRunUpdateExplainsUnwritableFolder(t *testing.T) {
 	}
 }
 
+// shortenTimeout sets *timeout to d for the rest of the test.
+func shortenTimeout(t *testing.T, timeout *time.Duration, d time.Duration) {
+	t.Helper()
+	saved := *timeout
+	*timeout = d
+	t.Cleanup(func() { *timeout = saved })
+}
+
+func TestYtDlpCommandsGiveUpOnAHungYtDlp(t *testing.T) {
+	binDir := t.TempDir()
+	installFakeTool(t, binDir, "yt-dlp")
+	useFakeTool(t, "ytdlp-hang") // sleeps for a minute, then succeeds
+	shortenTimeout(t, &toolCommandTimeout, 500*time.Millisecond)
+	shortenTimeout(t, &ytDlpUpdateTimeout, 500*time.Millisecond)
+	svc := &DependencyService{binDir: binDir}
+	const gaveUp = "did not finish within 500ms"
+
+	if got, err := svc.Version("yt-dlp"); err == nil || !strings.Contains(err.Error(), gaveUp) {
+		t.Errorf("Version() = %q, %v; want an error saying it %s", got, err, gaveUp)
+	}
+
+	result := runUpdateAndWait(t, svc)
+	if result.success {
+		t.Error("RunUpdate reported success for a hung yt-dlp")
+	}
+	if joined := strings.Join(result.lines, "\n"); !strings.Contains(joined, "[ERROR] Update failed: "+gaveUp) {
+		t.Errorf("RunUpdate's log does not say it %s:\n%s", gaveUp, joined)
+	}
+
+	if err := svc.UpdateCLI(); err == nil || !strings.Contains(err.Error(), gaveUp) {
+		t.Errorf("UpdateCLI() = %v, want an error saying it %s", err, gaveUp)
+	}
+}
+
 func TestDirWritable(t *testing.T) {
 	dir := t.TempDir()
 	if !dirWritable(dir) {

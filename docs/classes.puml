@@ -771,6 +771,7 @@ package "Dependency Service" #FFFFF0 {
         +ResetJSRuntime()
         +RunUpdate(cb UpdateCallbacks)
         +UpdateCLI() : error
+        -runYtDlpUpdate() : ([]byte, error)
         -updateFailureHint() : string
     }
 
