@@ -185,6 +185,22 @@ This document outlines planned features, improvements, and known limitations for
 - [ ] Add "Minimize to Tray" support.
 - [ ] Right-click menu for tray icon (Pause/Resume, Open Folder, Exit).
 
+### Custom Title Bar (Windows)
+> Replace the native Windows frame with a title bar drawn in the app, with its own minimize, maximize and close buttons, like most modern Windows apps.
+
+Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is frameless, but it loses resizing, dragging, Aero Snap, the shadow and the rounded corners. The plan is the approach Chrome, VS Code and Windows Terminal use: keep the native frame and hide its caption through Win32. Windows-only behind build tags (next to `sys_windows.go` / `sys_others.go`); macOS and Linux keep the native frame. Estimated at 200–300 lines.
+
+- [ ] Get the main window's `HWND` through `driver.NativeWindow.RunNative` (`WindowsWindowContext`, available since Fyne 2.5).
+- [ ] Subclass the window procedure (`SetWindowLongPtr(GWLP_WNDPROC)`, forwarding everything else to GLFW's procedure with `CallWindowProc`):
+  - `WM_NCCALCSIZE`: extend the client area over the caption, so resize borders, shadow, rounded corners and Snap stay.
+  - `WM_NCHITTEST`: return `HTCAPTION` for the empty title-bar strip (drag, double-click to maximize), the resize codes for the edges, and `HTCLIENT` for the Fyne buttons so they still receive clicks.
+- [ ] Draw the title bar in Fyne: app icon, title, and minimize / maximize-restore / close buttons (`ShowWindow` for minimize and maximize, `window.Close()` for close).
+- [ ] Inset the content while maximized, since Windows pushes the frame past the screen edge and would clip it.
+- [ ] Convert the title-bar height to physical pixels with `Canvas().Scale()`, and check it when the window moves between monitors with different DPI.
+- [ ] Optional: Windows 11 Snap Layouts flyout on the maximize button. It needs `HTMAXBUTTON` from the hit test, after which Windows owns the clicks and the app must handle `WM_NCLBUTTONDOWN`/`UP` itself.
+- [ ] Decide whether the secondary windows (Preferences, History, About, Components, …) get the same treatment or keep the native frame.
+- [ ] Hand-check resizing from every edge, maximize and restore, Snap, multi-monitor moves, and mixed-DPI setups.
+
 ---
 
 ## 🔧 Technical Improvements
