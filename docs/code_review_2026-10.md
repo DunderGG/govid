@@ -30,10 +30,10 @@ Each finding has an ID (`CR-nn`), a severity, every place it applies, what goes 
 ✅ | [CR-06](#cr-06-cancelling-post-processing-is-reported-as-a-failure) | Medium | Cancelling post-processing is reported as a failure | pp_engine.go |
 ✅ | [CR-07](#cr-07-yt-dlp-updates-are-not-guarded-against-running-downloads) | Medium | yt-dlp updates are not guarded against running downloads | components.go, update_check.go, ui_manager.go |
 ✅ | [CR-08](#cr-08-output-readers-hang-on-a-line-longer-than-64-kib) | Medium | Output readers hang on a line longer than 64 KiB | logscanner.go, pp_engine.go |
-❌ | [CR-09](#cr-09-the-pre-session-log-buffer-is-unbounded-with-unlimited) | Medium | The pre-session log buffer is unbounded with "Unlimited" | log_service.go |
-❌ | [CR-10](#cr-10-blocking-file-io-on-the-ui-thread) | Medium | Blocking file I/O on the UI thread | history_window.go, others |
-❌ | [CR-11](#cr-11-the-download-summarys-sizes-are-wrong) | Low | The download summary's sizes are wrong | logscanner.go, types.go |
-❌ | [CR-12](#cr-12-portable-settings-can-be-saved-out-of-order) | Low | Portable settings can be saved out of order | portable.go |
+✅ | [CR-09](#cr-09-the-pre-session-log-buffer-is-unbounded-with-unlimited) | Medium | The pre-session log buffer is unbounded with "Unlimited" | log_service.go |
+✅ | [CR-10](#cr-10-blocking-file-io-on-the-ui-thread) | Medium | Blocking file I/O on the UI thread | history_window.go, others |
+✅ | [CR-11](#cr-11-the-download-summarys-sizes-are-wrong) | Low | The download summary's sizes are wrong | logscanner.go, types.go |
+✅ | [CR-12](#cr-12-portable-settings-can-be-saved-out-of-order) | Low | Portable settings can be saved out of order | portable.go |
 ❌ | [CR-13](#cr-13-removeoldtools-can-delete-the-only-copy-of-a-tool) | Low | `removeOldTools` can delete the only copy of a tool | tool_installer.go |
 ❌ | [CR-14](#cr-14-uniquepath-can-loop-forever-while-holding-renamemu) | Low | `uniquePath` can loop forever while holding `renameMu` | download_engine.go |
 ❌ | [CR-15](#cr-15-the-disk-space-check-and-reservation-are-not-atomic) | Low | The disk-space check and reservation are not atomic | download.go, disk_space.go |
@@ -268,7 +268,7 @@ if err := scanner.Err(); err != nil {
 
 ---
 
-### CR-09: The pre-session log buffer is unbounded with "Unlimited"
+### ✅ CR-09: The pre-session log buffer is unbounded with "Unlimited"
 
 **Where.** [log_service.go:110-113](../log_service.go#L110-L113). The cap is `bufferLimit`, and [ParseBufferLimit](../log_service.go#L263-L272) turns "Unlimited" into `math.MaxInt32`.
 
@@ -278,9 +278,11 @@ if err := scanner.Err(); err != nil {
 - Cap `preSession` with its own constant, such as `preSessionMaxLines = 500`, instead of the UI limit. The buffer exists for startup diagnostics, not as a second scrollback.
 - Optionally, once the first session has started, stop buffering, or clear the buffer in `CloseSessionLog`, so a session log holds only its own lines plus the startup lines.
 
+**Status.** Fixed in `361e458`, with both parts of the suggestion. `preSession` has its own cap, `preSessionMaxLines` (500), whatever the Log Buffer Limit is. A new `LogService.EndStartup`, which `openSessionLog` calls as every session starts, with or without a log file, stops the buffering. Lines already buffered stay for the next session log, so a session log holds the startup lines and its own lines. The Log Buffer Limit help said that "Unlimited" affects the lines kept for the log file; it now says the limit does not apply to the log file. `TestSessionLogHoldsOnlyStartupAndItsOwnLines` runs a session without a log file and then one with it, and it fails against the old code. `TestPreSessionBufferIsCapped` (with a limit of 3 and with "Unlimited") and `TestEndStartupStopsBuffering` are also new. architecture.md, classes.puml, and sequence-full.puml were updated.
+
 ---
 
-### CR-10: Blocking file I/O on the UI thread
+### ✅ CR-10: Blocking file I/O on the UI thread
 
 Guideline §2.2: anything that can block runs off the UI thread.
 
@@ -300,11 +302,13 @@ Smaller cases, each usually fast but on the UI thread all the same:
 - **`discardPausedItem`:** call `newDownloadEngine` inside the goroutine it already starts.
 - The rest can stay as they are; move them only if they show up in the heartbeat log.
 
+**Status.** Fixed in `5acc920` for the History window and `discardPausedItem`, as suggested. The smaller cases are unchanged, as the suggestion allows. `showHistory` opens the window at once through `openHistory`, with "Loading the download history…" over the list and the search and Clear History disabled. `loadHistory` reads the history and checks the files in a goroutine, then fills the new `historyPanel` through `fyne.DoAndWait`, unless the window has been closed meanwhile. A history that could not be read used to show an error dialog and no window. The window now says why, and Clear History stays enabled so a damaged file can still be cleared. `discardPausedItem` now builds its engine inside the goroutine: `go app.newDownloadEngine().RemovePartialFiles(…)` evaluated `newDownloadEngine()` before the goroutine started. `TestShowHistoryOpensBeforeTheHistoryLoads` and `TestDiscardPausedItemDoesNotWaitForTheRuntimeSearch` fail against the old code. `TestHistoryWindowSaysWhyTheHistoryFailedToLoad` and `TestHistoryClosedWhileLoadingIsNotFilled` are also new. `TestShortcutsOpenTheirWindows` now holds the load until it has closed the window, as `TestEscClosesTheOtherWindows` already did for About and Components. `showHistory` is no longer over 60 lines (CR-22). architecture.md and classes.puml were updated.
+
 ---
 
 ## Low
 
-### CR-11: The download summary's sizes are wrong
+### ✅ CR-11: The download summary's sizes are wrong
 
 **Where.**
 - [logscanner.go:221-237](../logscanner.go#L221-L237) `parseProgress`;
@@ -318,15 +322,19 @@ Smaller cases, each usually fast but on the UI thread all the same:
 
 **Suggested fix.** For the summary, add up the sizes of `DownloadResult.FinalPaths` with `os.Stat` once the download has finished; this is exact and needs no parsing. Keep `parseProgress` for the percentage only, or parse the size with a regex that allows `~`: `of\s+~?\s*([\d.]+\s*[KMGT]?i?B)`.
 
+**Status.** Fixed in `de184e0` with the first suggestion, applied to every summary, not only a finished download's. `Run` measures what each run wrote. `DownloadResult.Bytes` is the size of the finished files or, when the download was paused, failed, or cancelled, of its partial files, measured before they are removed. `ResumedBytes` is what a paused earlier run had already written, so Avg Speed (`averageSpeed(Bytes-ResumedBytes, elapsed)`) counts only this run's bytes. Downloaded, and Recorded for a live stream, show `formatBytes(Bytes)`. For a download converted to another format, such as MP3, that is the converted file's size. Nothing else used the parsed sizes, so `OnProgress` now takes only the percentage, and `DownloadStats` keeps only the progress target: `recordSize`, `sizeSnapshot`, and `itemRun.stats` are gone. `TestPausedSummaryGivesTheBytesDownloaded` and the updated `TestRunYtDlpSuccessRecordsHistory` compare the summary with the files on disk; the old code printed the progress lines' "10.00MiB" in both. `TestRunMeasuresTheBytesDownloaded` covers a resumed download. architecture.md, classes.puml, and sequence-full.puml were updated. This also fixes CR-23's logscanner.go and types.go items.
+
 ---
 
-### CR-12: Portable settings can be saved out of order
+### ✅ CR-12: Portable settings can be saved out of order
 
 **Where.** [portable.go:78-92](../portable.go#L78-L92) `fileStore.Flush`.
 
 **Problem.** `Flush` marshals the values under `mu` but writes the file after releasing it. Two flushes can overlap: a timer flush whose snapshot is older, and the flush on quit, which has the latest change. If the older write finishes last, `settings.json` loses the latest change.
 
 **Suggested fix.** Add a `writeMu sync.Mutex`, held from before the marshal until `writeFileAtomic` returns. Alternatively, keep a version number and skip a write whose snapshot is older than the one written last.
+
+**Status.** Fixed in `5629457` with the first suggestion. `Flush` holds a new `writeMu` from checking for a pending save until the file is written, so flushes write one at a time, in the order they took the values. The write goes through an injectable `fileStore.write` (`writeFileAtomic`). `TestFileStoreFlushesWriteInOrder` holds the first write open while a newer flush runs. It failed 3 of 3 runs without `writeMu`. architecture.md and classes.puml were updated.
 
 ---
 
@@ -467,7 +475,7 @@ Update the file map in architecture.md §3 at the same time.
 | 77 | [logscanner.go `watchOutput`](../logscanner.go#L116) | Move each goroutine body into `scanStdout` and `scanStderr`, with stderr's classification in `classifyStderrLine(line, *scanResult)`. Fold in CR-08. |
 | 71 | [postprocess.go `computeProcessingLoad`](../postprocess.go#L374) | Extract `processingCost(settings) int` and `describeLoad(cost) string`. |
 | 69 | [ui_manager.go `buildInputCard`](../ui_manager.go#L1262) | Extract `buildURLRow` and `buildSelectorsRow`. |
-| 64 | [history_window.go `showHistory`](../history_window.go#L173) | Extract `buildHistoryList(view, actions)`. Fold in CR-10. |
+| 64 | [history_window.go `showHistory`](../history_window.go#L173) | Extract `buildHistoryList(view, actions)`. Fold in CR-10. **Done** with CR-10 in `5acc920`: `newHistoryPanel`, `openHistory`, and `loadHistory`. |
 | 61 | [ui_manager.go `showPreferences`](../ui_manager.go#L532) | Extract `buildPreferencesForm()` and the Portable Mode toggle wiring. |
 | 61 | [playlist_dialog.go `showPlaylistDialog`](../playlist_dialog.go#L49) | Borderline; extract the button list. |
 | 61 | [diagnostics.go `diagnosticsReport`](../diagnostics.go#L284) | Borderline; extract `writeToolsSection(report)`. |
@@ -483,6 +491,8 @@ Update the file map in architecture.md §3 at the same time.
 - [logscanner.go:227](../logscanner.go#L227) `fmt.Sscanf(field, "%f%%", &val)`: on failure `val` stays 0, and a progress of 0 % is reported. Use `strconv.ParseFloat(strings.TrimSuffix(field, "%"), 64)` and skip the field on error.
 - [types.go:266](../types.go#L266) `fmt.Sscanf(size, "%f%s", …)`: on failure the previous `downloadedRaw`/`unit` survive next to the new `lastSize`. Parse first, and update all three only on success (see also CR-11).
 - [ui_manager.go:176](../ui_manager.go#L176) `parseURL`: `url.Parse` errors are ignored. It is only called with constant URLs, so this is acceptable; say so in its doc comment, or panic on error as `MustCompile` would.
+
+**Status.** Partly fixed. The logscanner.go and types.go items were fixed with [CR-11](#cr-11-the-download-summarys-sizes-are-wrong) in `de184e0`: `parseProgress` uses `strconv.ParseFloat` and skips a field that is not a number, and `recordSize` was removed. `validateTimestamp` and `parseURL` are still open.
 
 ---
 
