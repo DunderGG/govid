@@ -36,6 +36,11 @@ func typeKey(window fyne.Window, key fyne.KeyName) {
 func TestShortcutsOpenTheirWindows(t *testing.T) {
 	h := shortcutHarness(t)
 	manager := h.app.uiManager
+	// History loads in the background; hold the load until the test has
+	// closed the window (see TestEscClosesTheOtherWindows).
+	closed := make(chan struct{})
+	defer close(closed)
+	manager.onLoadHistory = func() ([]DownloadHistoryEntry, error) { <-closed; return nil, nil }
 	tests := []struct {
 		name   string
 		open   func()

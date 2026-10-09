@@ -248,6 +248,8 @@ package "UI Layer" #F0F8F0 {
         -handleDrop(items []fyne.URI)
         +showAbout()
         +showHistory()
+        -openHistory() : <-chan struct{}
+        -loadHistory(window, panel) : <-chan struct{}
         +showConfigHelp()
         +showPreferences()
         +showPostProcessing()

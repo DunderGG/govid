@@ -187,7 +187,11 @@ func (app *DownloaderApp) discardPausedItem(id int) {
 		return
 	}
 	req := item.downloadRequest()
-	go app.newDownloadEngine().RemovePartialFiles(req.SavePath, req.DownloadID, app.appendOutput)
+	// newDownloadEngine can wait for the JavaScript runtime search, so it
+	// runs in the goroutine too, off the UI thread.
+	go func() {
+		app.newDownloadEngine().RemovePartialFiles(req.SavePath, req.DownloadID, app.appendOutput)
+	}()
 }
 
 // offerQueueRestore asks, when queue.json holds items from the last run,

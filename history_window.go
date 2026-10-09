@@ -4,7 +4,8 @@
 //   - UIManager.showHistory: a searchable list of past downloads, newest
 //     first, each with Re-add, Show in folder, and Copy URL actions, and a
 //     Clear History button. Entries whose file no longer exists are greyed
-//     out.
+//     out. The window opens at once; the history is loaded off the UI thread.
+//   - historyPanel: the window's widgets, loading until the history arrives.
 //   - historyView: the list's state (entries, which files are missing, the
 //     search result), kept apart from the widgets so it can be tested.
 //   - historyRow: one row of the list.
@@ -168,72 +169,140 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
+// historyPanel is the History window's content: the search field, the
+// count, the list, and Clear History. It starts out loading (see
+// loadHistory) and shows a historyView once the history has been read.
+type historyPanel struct {
+	view       *historyView
+	list       *widget.List
+	status     *widget.Label // over the list: loading, no history, or why it failed to load
+	countLabel *widget.Label
+	search     *widget.Entry
+	clearBtn   *widget.Button
+	content    fyne.CanvasObject
+}
+
+// newHistoryPanel returns the panel in its loading state, with the search
+// and Clear History disabled. Clear History confirms over window.
+func (manager *UIManager) newHistoryPanel(window fyne.Window) *historyPanel {
+	panel := &historyPanel{view: newHistoryView(nil, fileExists)}
+	actions := historyActions{
+		readd:   manager.readdHistoryURL,
+		reveal:  manager.revealHistoryFile,
+		copyURL: func(url string) { fyne.CurrentApp().Clipboard().SetContent(url) },
+	}
+	panel.list = widget.NewList(
+		func() int { return len(panel.view.shown) },
+		func() fyne.CanvasObject { return newHistoryRow() },
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			entry, missing := panel.view.shownEntry(id)
+			obj.(*historyRow).show(entry, missing, actions)
+		},
+	)
+	panel.status = widget.NewLabelWithStyle("Loading the download history…", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
+	panel.status.Wrapping = fyne.TextWrapWord
+	panel.countLabel = widget.NewLabel("")
+
+	panel.search = widget.NewEntry()
+	panel.search.SetPlaceHolder("Search title, URL, or file name…")
+	panel.search.OnChanged = func(text string) {
+		panel.view.search(text)
+		panel.refresh()
+	}
+	panel.search.Disable()
+
+	panel.clearBtn = widget.NewButton("Clear History", func() {
+		manager.confirmClearHistory(window, func() { panel.show(newHistoryView(nil, fileExists)) })
+	})
+	panel.clearBtn.Importance = widget.DangerImportance
+	panel.clearBtn.Disable()
+
+	top := container.NewBorder(nil, nil, nil, panel.countLabel, panel.search)
+	bottomBar := container.NewHBox(layout.NewSpacer(), panel.clearBtn)
+	panel.content = container.NewBorder(top, bottomBar, nil, nil, container.NewStack(panel.list, container.NewCenter(panel.status)))
+	return panel
+}
+
+// show replaces the panel's entries with view's and enables the search and
+// Clear History. Must be called on the UI thread.
+func (panel *historyPanel) show(view *historyView) {
+	panel.view = view
+	panel.view.search(panel.search.Text)
+	panel.status.SetText("No download history yet.")
+	panel.search.Enable()
+	panel.clearBtn.Enable()
+	panel.refresh()
+}
+
+// showLoadError says why the history could not be loaded. Clear History
+// stays available, so a damaged history file can still be cleared.
+func (panel *historyPanel) showLoadError(err error) {
+	panel.status.SetText(fmt.Sprintf("Failed to load the download history: %v", err))
+	panel.clearBtn.Enable()
+}
+
+// refresh redraws the count and the list after the view has changed.
+func (panel *historyPanel) refresh() {
+	panel.countLabel.SetText(panel.view.count())
+	panel.list.UnselectAll()
+	panel.list.Refresh()
+	if len(panel.view.entries) == 0 {
+		panel.status.Show()
+	} else {
+		panel.status.Hide()
+	}
+}
+
 // showHistory opens a window listing previously downloaded URLs from disk.
 // It is a singleton: if already open, the existing window is focused instead.
 func (manager *UIManager) showHistory() {
 	if focusOrCreate(&manager.historyWindow) {
 		return
 	}
+	manager.openHistory()
+}
 
-	entries, err := manager.onLoadHistory()
-	if err != nil {
-		dialog.ShowError(fmt.Errorf("failed to load download history: %v", err), manager.mainWindow)
-		return
-	}
-	view := newHistoryView(entries, fileExists)
+// openHistory opens the History window, at once, and starts loading the
+// history into it (see loadHistory). The returned channel is closed once
+// the window shows the history, or why it could not be loaded.
+func (manager *UIManager) openHistory() <-chan struct{} {
+	window := fyne.CurrentApp().NewWindow("Download History")
+	manager.historyWindow = window
+	panel := manager.newHistoryPanel(window)
+	window.SetContent(container.NewPadded(panel.content))
+	window.Resize(fyne.NewSize(900, 520))
+	window.SetOnClosed(onWindowClosed(&manager.historyWindow))
+	closeOnEscape(window)
+	window.Show()
+	return manager.loadHistory(window, panel)
+}
 
-	actions := historyActions{
-		readd:   manager.readdHistoryURL,
-		reveal:  manager.revealHistoryFile,
-		copyURL: func(url string) { fyne.CurrentApp().Clipboard().SetContent(url) },
-	}
-	list := widget.NewList(
-		func() int { return len(view.shown) },
-		func() fyne.CanvasObject { return newHistoryRow() },
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			entry, missing := view.shownEntry(id)
-			obj.(*historyRow).show(entry, missing, actions)
-		},
-	)
-	empty := widget.NewLabelWithStyle("No download history yet.", fyne.TextAlignCenter, fyne.TextStyle{Italic: true})
-	countLabel := widget.NewLabel(view.count())
-	refresh := func() {
-		countLabel.SetText(view.count())
-		list.UnselectAll()
-		list.Refresh()
-		if len(view.entries) == 0 {
-			empty.Show()
-		} else {
-			empty.Hide()
+// loadHistory reads the history and checks which entries' files still
+// exist, off the UI thread (§2.2): a file on a disconnected drive or network
+// share can take seconds to answer, and every entry is checked. It then
+// fills panel, unless window has been closed meanwhile. The returned channel
+// is closed once that is done.
+func (manager *UIManager) loadHistory(window fyne.Window, panel *historyPanel) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		entries, err := manager.onLoadHistory()
+		var view *historyView
+		if err == nil {
+			view = newHistoryView(entries, fileExists)
 		}
-	}
-
-	search := widget.NewEntry()
-	search.SetPlaceHolder("Search title, URL, or file name…")
-	search.OnChanged = func(text string) {
-		view.search(text)
-		refresh()
-	}
-
-	clearBtn := widget.NewButton("Clear History", func() {
-		manager.confirmClearHistory(manager.historyWindow, func() {
-			view = newHistoryView(nil, fileExists)
-			refresh()
+		fyne.DoAndWait(func() {
+			switch {
+			case manager.historyWindow != window:
+				// Closed while loading.
+			case err != nil:
+				panel.showLoadError(err)
+			default:
+				panel.show(view)
+			}
 		})
-	})
-	clearBtn.Importance = widget.DangerImportance
-
-	top := container.NewBorder(nil, nil, nil, countLabel, search)
-	bottomBar := container.NewHBox(layout.NewSpacer(), clearBtn)
-	content := container.NewBorder(top, bottomBar, nil, nil, container.NewStack(list, container.NewCenter(empty)))
-	refresh()
-
-	manager.historyWindow = fyne.CurrentApp().NewWindow("Download History")
-	manager.historyWindow.SetContent(container.NewPadded(content))
-	manager.historyWindow.Resize(fyne.NewSize(900, 520))
-	manager.historyWindow.SetOnClosed(onWindowClosed(&manager.historyWindow))
-	closeOnEscape(manager.historyWindow)
-	manager.historyWindow.Show()
+	}()
+	return done
 }
 
 // confirmClearHistory asks, over parent, whether to delete the download

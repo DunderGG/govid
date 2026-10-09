@@ -1,10 +1,13 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
@@ -112,22 +115,137 @@ func TestShowHistoryListsEntries(t *testing.T) {
 		}
 	}
 
-	h.app.uiManager.showHistory()
+	loaded := h.app.uiManager.openHistory()
 	window := h.app.uiManager.historyWindow
 	if window == nil {
 		t.Fatal("History window not opened")
 	}
 	defer window.Close()
+	waitLoaded(t, loaded)
 
+	if list := historyListIn(t, window); list.Length() != 3 {
+		t.Fatalf("history list has %d rows, want 3", list.Length())
+	}
+}
+
+// The window opens before the history has been read and its files checked,
+// which can take seconds on a disconnected drive or network share, so the
+// UI thread does not wait for them (CR-10).
+func TestShowHistoryOpensBeforeTheHistoryLoads(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	entries := historyFixture(t)
+	release := make(chan struct{})
+	h.app.uiManager.onLoadHistory = func() ([]DownloadHistoryEntry, error) {
+		<-release
+		return entries, nil
+	}
+
+	opened := make(chan (<-chan struct{}))
+	go func() { opened <- h.app.uiManager.openHistory() }()
+	var loaded <-chan struct{}
+	select {
+	case loaded = <-opened:
+	case <-time.After(10 * time.Second):
+		close(release)
+		t.Fatal("opening the History window waited for the history to load")
+	}
+	window := h.app.uiManager.historyWindow
+	defer window.Close()
+
+	list := historyListIn(t, window)
+	status := historyStatusIn(t, window)
+	if list.Length() != 0 || !strings.HasPrefix(status.Text, "Loading") || !status.Visible() {
+		t.Errorf("while loading: %d rows, status %q (visible %v)", list.Length(), status.Text, status.Visible())
+	}
+	if clearBtn := findButton(t, window.Content(), "Clear History"); !clearBtn.Disabled() {
+		t.Error("Clear History is enabled before the history has loaded")
+	}
+
+	close(release)
+	waitLoaded(t, loaded)
+	if list.Length() != 3 || status.Visible() {
+		t.Errorf("after loading: %d rows, status %q (visible %v)", list.Length(), status.Text, status.Visible())
+	}
+}
+
+func TestHistoryWindowSaysWhyTheHistoryFailedToLoad(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	h.app.uiManager.onLoadHistory = func() ([]DownloadHistoryEntry, error) {
+		return nil, errors.New("unexpected end of JSON input")
+	}
+
+	loaded := h.app.uiManager.openHistory()
+	window := h.app.uiManager.historyWindow
+	defer window.Close()
+	waitLoaded(t, loaded)
+
+	if status := historyStatusIn(t, window); !strings.Contains(status.Text, "unexpected end of JSON input") {
+		t.Errorf("status = %q, want the load error", status.Text)
+	}
+	if findButton(t, window.Content(), "Clear History").Disabled() {
+		t.Error("Clear History is disabled, so a damaged history cannot be cleared")
+	}
+}
+
+func TestHistoryClosedWhileLoadingIsNotFilled(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	entries := historyFixture(t)
+	release := make(chan struct{})
+	h.app.uiManager.onLoadHistory = func() ([]DownloadHistoryEntry, error) {
+		<-release
+		return entries, nil
+	}
+
+	loaded := h.app.uiManager.openHistory()
+	window := h.app.uiManager.historyWindow
+	list := historyListIn(t, window)
+	window.Close()
+	close(release)
+	waitLoaded(t, loaded)
+
+	if list.Length() != 0 || h.app.uiManager.historyWindow != nil {
+		t.Errorf("closed window filled with %d rows, historyWindow = %v", list.Length(), h.app.uiManager.historyWindow)
+	}
+}
+
+// waitLoaded waits for openHistory's channel to close.
+func waitLoaded(t *testing.T, loaded <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-loaded:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the history did not load")
+	}
+}
+
+// historyListIn returns the list in the History window.
+func historyListIn(t *testing.T, window fyne.Window) *widget.List {
+	t.Helper()
 	var list *widget.List
 	walkObjects(window.Content(), func(obj fyne.CanvasObject) {
 		if found, ok := obj.(*widget.List); ok {
 			list = found
 		}
 	})
-	if list == nil || list.Length() != 3 {
-		t.Fatalf("history list = %v, want 3 rows", list)
+	if list == nil {
+		t.Fatal("no list in the History window")
 	}
+	return list
+}
+
+// historyStatusIn returns the label shown over the History window's list.
+func historyStatusIn(t *testing.T, window fyne.Window) *widget.Label {
+	t.Helper()
+	var status *widget.Label
+	walkObjects(window.Content(), func(obj fyne.CanvasObject) {
+		if label, ok := obj.(*widget.Label); ok && label.TextStyle.Italic {
+			status = label
+		}
+	})
+	if status == nil {
+		t.Fatal("no status label in the History window")
+	}
+	return status
 }
 
 func TestTurningHistoryOffOffersToClearIt(t *testing.T) {

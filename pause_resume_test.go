@@ -253,6 +253,43 @@ func TestCancellingAPausedDownloadRemovesItsFiles(t *testing.T) {
 	}
 }
 
+// Removing a paused row runs on the UI thread, which must not wait for a
+// JavaScript runtime search that is still running: it can take seconds
+// (CR-10).
+func TestDiscardPausedItemDoesNotWaitForTheRuntimeSearch(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	part := filepath.Join(h.saveDir, "GoVid_Fake Video_GOVID123.mp4.part")
+	if err := os.WriteFile(part, []byte("partial"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	queue := NewQueueModel([]queueItem{{url: "https://example.com/v", downloadID: "GOVID123", request: &DownloadRequest{SavePath: h.saveDir}}})
+	id := queue.Snapshot()[0].id
+	queue.SetStatus(id, queuePaused)
+	h.app.queue.Store(queue)
+
+	h.app.depSvc.runtimeMu.Lock() // as while the runtime search runs
+	returned := make(chan struct{})
+	go func() {
+		h.app.discardPausedItem(id)
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-time.After(10 * time.Second):
+		h.app.depSvc.runtimeMu.Unlock()
+		t.Fatal("discardPausedItem waited for the runtime search")
+	}
+	h.app.depSvc.runtimeMu.Unlock()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for len(h.savedFiles(t)) > 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if files := h.savedFiles(t); len(files) != 0 {
+		t.Errorf("saved files = %q, want the partial download removed", files)
+	}
+}
+
 func TestQueueStoreRoundTrip(t *testing.T) {
 	store := &QueueStore{filePath: filepath.Join(t.TempDir(), queueFileName)}
 	if saved, err := store.Load(); err != nil || saved != nil {

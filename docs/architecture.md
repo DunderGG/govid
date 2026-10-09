@@ -45,7 +45,7 @@ govid/
 ├── presets.go              Preset — starter presets, groups, list edits; LoadPresets / SavePresets / ReadPresetFile / WritePresetFile
 ├── preset_ui.go            UIManager preset dropdown, "(modified)" marker, Save / Manage / Import / Export dialogs
 ├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadRecord and DownloadHistoryEntry types
-├── history_window.go       UIManager.showHistory — the searchable History list with Re-add / Show in folder / Copy URL
+├── history_window.go       UIManager.showHistory — the searchable History list with Re-add / Show in folder / Copy URL, loaded off the UI thread
 ├── duplicates.go           skipDownloaded / askDuplicate — "Already downloaded" check before a session downloads
 ├── queue_model.go          QueueModel — the session's queue: items, per-item status, Next / Move / Remove / Retry
 ├── queue_panel.go          UIManager.showQueue — the collapsible Queue panel above the log
@@ -294,7 +294,7 @@ The private `buildEntries` helper and `inferOriginalTitle` live here; neither ha
 
 **Repeat downloads** (`duplicates.go`). After `checkURLs`, `runSession` calls `skipDownloaded`, which reads the history once and, for each queued item that `findDownloaded` matches, asks through `askDuplicate`: "Already downloaded on <date> as <file>" with Download again / Skip, plus "Skip all duplicates" in a batch. Skipped items are logged and dropped from the queue.
 
-**History window** (`history_window.go`). `showHistory` shows a `widget.List` of `historyRow`s, newest first, built from a `historyView` (the entries, which of their files no longer exist, and the search result). Each row has the title, a details line (date, format/quality, file name), and **Re-add** (`readdHistoryURL` → `addURLs`, switching on batch mode when the field already has a URL), **Show in folder** (`revealFileCommand`: `explorer /select,"<file>"` on Windows, `open -R` on macOS, the folder on Linux), and **Copy URL**. Rows whose file is gone are greyed out (`LowImportance`) with Show in folder disabled. The search field filters on title, URL, file name, and format.
+**History window** (`history_window.go`). `showHistory` opens the window at once (`openHistory`) with a `historyPanel` in its loading state: "Loading the download history…" over the empty list, the search and Clear History disabled. `loadHistory` then reads the history and checks every entry's file off the UI thread, since a file on a disconnected drive or network share can take seconds to answer, and fills the panel through `fyne.DoAndWait` unless the window was closed meanwhile; if the history cannot be read, the panel says why and enables Clear History. The panel shows a `widget.List` of `historyRow`s, newest first, built from a `historyView` (the entries, which of their files no longer exist, and the search result). Each row has the title, a details line (date, format/quality, file name), and **Re-add** (`readdHistoryURL` → `addURLs`, switching on batch mode when the field already has a URL), **Show in folder** (`revealFileCommand`: `explorer /select,"<file>"` on Windows, `open -R` on macOS, the folder on Linux), and **Copy URL**. Rows whose file is gone are greyed out (`LowImportance`) with Show in folder disabled. The search field filters on title, URL, file name, and format.
 
 
 ---
@@ -503,7 +503,7 @@ func classify(err error) Category {
 | Log flush timer | `appendLogLine` | no goroutine: one `time.AfterFunc` per burst; `flushLog` clears it | – | – |
 | GPU stall watchdog | `gpuJobGuard.arm` | `release` stops the timer once per job | – | – |
 | Download context hooks (`context.AfterFunc` in `downloadContext`) | `downloadItem` | `release` unhooks them when the item ends | – | – |
-| Short-lived workers: update checks, tool checks, installs, probes for Formats…, Components statuses, self-update, `cleanUpAfterUpdate` (15 retries) | their UI actions or startup | they finish their one task | – | – |
+| Short-lived workers: update checks, tool checks, installs, probes for Formats…, Components statuses, the History window's load, partial-file removal for a discarded paused row, self-update, `cleanUpAfterUpdate` (15 retries) | their UI actions or startup | they finish their one task | – | – |
 
 No loop is shared between owners, and none outlives its owner: those without a wait end on their own once their context or pipe closes.
 
