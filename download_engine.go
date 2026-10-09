@@ -732,14 +732,17 @@ func (engine *DownloadEngine) FinalizeFiles(savePath, downloadID string, onLog f
 		}
 		cleanBase := strings.Replace(filepath.Base(tmpPath), "_"+downloadID, "", 1)
 		cleanPath := filepath.Join(savePath, cleanBase)
-		finalPath := uniquePath(cleanPath)
-		if finalPath != cleanPath {
+		finalPath, err := uniquePath(cleanPath)
+		if err == nil && finalPath != cleanPath {
 			onLog(
 				fmt.Sprintf("[SYSTEM] File already exists — saving as: %s", filepath.Base(finalPath)),
 				colSystem,
 			)
 		}
-		if err := engine.renameFile(tmpPath, finalPath); err != nil {
+		if err == nil {
+			err = engine.renameFile(tmpPath, finalPath)
+		}
+		if err != nil {
 			onLog(
 				fmt.Sprintf("[SYSTEM] Failed to rename file (%v); it keeps its temporary name: %s", err, filepath.Base(tmpPath)),
 				colErrorSoft,
@@ -832,24 +835,38 @@ func renameWithRetry(rename func(from, to string) error, from, to string) error 
 	return err
 }
 
+// maxUniquePathTries bounds how many numbered names uniquePath tries. It
+// runs with renameMu held, so an endless search would block every other
+// download from finishing.
+const maxUniquePathTries = 10000
+
+// errNoFreeName is returned by uniquePath when every name it tried is taken.
+var errNoFreeName = errors.New("no free file name")
+
 // uniquePath returns path unchanged when no file exists at that location.
 // If the path is already taken, it appends an incrementing numeric suffix
 // to the base (e.g. "Video.mp4" → "Video 1.mp4" → "Video 2.mp4") until it
-// finds a name that does not conflict with an existing file.
-func uniquePath(path string) string {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return path
+// finds a name that does not conflict with an existing file. Only a file
+// os.Stat finds counts as taken: any other error (access denied, a name too
+// long) leaves the name to the rename, which then fails and is reported.
+// After maxUniquePathTries numbered names it returns errNoFreeName rather
+// than path, because a rename onto path would replace the file there.
+func uniquePath(path string) (string, error) {
+	return freePath(path, fileExists)
+}
+
+// freePath is uniquePath with taken deciding whether a name is in use.
+func freePath(path string, taken func(string) bool) (string, error) {
+	if !taken(path) {
+		return path, nil
 	}
 	ext := filepath.Ext(path)
 	base := strings.TrimSuffix(path, ext)
-
-	// Loop until we find a filename that doesn't exist.
-	// Theoretically this could run indefinitely if there are always conflicting files,
-	// but in practice it's unlikely anyone will have dozens of duplicates in the same folder.
-	for i := 1; ; i++ {
+	for i := 1; i <= maxUniquePathTries; i++ {
 		candidate := fmt.Sprintf("%s %d%s", base, i, ext)
-		if _, err := os.Stat(candidate); os.IsNotExist(err) {
-			return candidate
+		if !taken(candidate) {
+			return candidate, nil
 		}
 	}
+	return "", fmt.Errorf("%w for %s: it and %d numbered names are taken", errNoFreeName, filepath.Base(path), maxUniquePathTries)
 }

@@ -914,26 +914,65 @@ func TestFinalizeFilesNoMatches(t *testing.T) {
 func TestUniquePath(t *testing.T) {
 	dir := t.TempDir()
 	video := filepath.Join(dir, "Video.mp4")
-
-	if got := uniquePath(video); got != video {
-		t.Errorf("uniquePath(free) = %q, want unchanged", got)
+	check := func(label, path, want string) {
+		t.Helper()
+		if got, err := uniquePath(path); got != want || err != nil {
+			t.Errorf("uniquePath(%s) = %q, %v; want %q", label, got, err, want)
+		}
 	}
+
+	check("free", video, video)
 
 	touch(t, video)
-	if got, want := uniquePath(video), filepath.Join(dir, "Video 1.mp4"); got != want {
-		t.Errorf("uniquePath(taken) = %q, want %q", got, want)
-	}
+	check("taken", video, filepath.Join(dir, "Video 1.mp4"))
 
 	touch(t, filepath.Join(dir, "Video 1.mp4"))
 	touch(t, filepath.Join(dir, "Video 2.mp4"))
-	if got, want := uniquePath(video), filepath.Join(dir, "Video 3.mp4"); got != want {
-		t.Errorf("uniquePath(3 taken) = %q, want %q", got, want)
-	}
+	check("3 taken", video, filepath.Join(dir, "Video 3.mp4"))
 
 	noExt := filepath.Join(dir, "README")
 	touch(t, noExt)
-	if got, want := uniquePath(noExt), filepath.Join(dir, "README 1"); got != want {
-		t.Errorf("uniquePath(no extension) = %q, want %q", got, want)
+	check("no extension", noExt, filepath.Join(dir, "README 1"))
+}
+
+// A Stat error other than "not found", such as access denied, used to make
+// every name taken, and uniquePath searched forever while holding renameMu.
+// Here a NUL byte, which os.Stat rejects as invalid on every system.
+func TestUniquePathTreatsAStatErrorAsFree(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "Video\x00.mp4")
+	if _, err := os.Stat(path); err == nil || errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("os.Stat() error = %v, want one other than not found", err)
+	}
+	done := make(chan struct{})
+	var got string
+	var err error
+
+	go func() {
+		defer close(done)
+		got, err = uniquePath(path)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("uniquePath() did not return")
+	}
+	if got != path || err != nil {
+		t.Errorf("uniquePath() = %q, %v; want the path itself, for the rename to report", got, err)
+	}
+}
+
+func TestUniquePathGivesUpAfterItsBound(t *testing.T) {
+	checks := 0
+	allTaken := func(string) bool { checks++; return true }
+
+	got, err := freePath("Video.mp4", allTaken)
+
+	if !errors.Is(err, errNoFreeName) || got != "" {
+		t.Errorf("freePath() = %q, %v; want errNoFreeName and no path, so nothing is replaced", got, err)
+	}
+	if checks != maxUniquePathTries+1 {
+		t.Errorf("checked %d names, want %d", checks, maxUniquePathTries+1)
 	}
 }
 

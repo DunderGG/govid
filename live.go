@@ -229,8 +229,10 @@ func (engine *DownloadEngine) finishRecording(paths []string, ext string, onLog 
 			}
 		}
 		renameMu.Lock()
-		final := uniquePath(target)
-		err = engine.renameFile(tmp, final)
+		final, err := uniquePath(target)
+		if err == nil {
+			err = engine.renameFile(tmp, final)
+		}
 		renameMu.Unlock()
 		if err != nil {
 			onLog(fmt.Sprintf("[SYSTEM] Failed to rename the recording: %v", err), colErrorSoft)
@@ -245,8 +247,10 @@ func (engine *DownloadEngine) finishRecording(paths []string, ext string, onLog 
 		return paths
 	}
 	renameMu.Lock()
-	ts := uniquePath(strings.TrimSuffix(paths[0], filepath.Ext(paths[0])) + ".ts")
-	err := engine.renameFile(paths[0], ts)
+	ts, err := uniquePath(strings.TrimSuffix(paths[0], filepath.Ext(paths[0])) + ".ts")
+	if err == nil {
+		err = engine.renameFile(paths[0], ts)
+	}
 	renameMu.Unlock()
 	if err != nil {
 		return paths

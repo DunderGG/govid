@@ -195,7 +195,7 @@ group loop [while QueueModel.Next() returns a waiting item]
         end
 
         alt cmdErr == nil, or stopped with errStopKeep (a kept recording)
-            App -> OS  : engine.FinalizeFiles(savePath, downloadID)\n  — filesWithID(*downloadID*), skipping .part / .ytdl\n  — strip token, uniquePath (under renameMu)\n  — renameWithRetry(tmp → final); still locked → keeps tmp\n  — a kept recording: finishRecording remuxes it
+            App -> OS  : engine.FinalizeFiles(savePath, downloadID)\n  — filesWithID(*downloadID*), skipping .part / .ytdl\n  — strip token, uniquePath (under renameMu; at most 10 000 tries)\n  — renameWithRetry(tmp → final); still locked or no free name → keeps tmp\n  — a kept recording: finishRecording remuxes it
             OS  --> App : []finalPaths
             App -> OS  : engine.RemoveLeftoverPartials(savePath, downloadID)\n  — only .part / .ytdl / .temp files
         else paused (errPaused)
