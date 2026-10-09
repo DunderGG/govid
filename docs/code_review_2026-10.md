@@ -34,10 +34,10 @@ Each finding has an ID (`CR-nn`), a severity, every place it applies, what goes 
 ✅ | [CR-10](#cr-10-blocking-file-io-on-the-ui-thread) | Medium | Blocking file I/O on the UI thread | history_window.go, others |
 ✅ | [CR-11](#cr-11-the-download-summarys-sizes-are-wrong) | Low | The download summary's sizes are wrong | logscanner.go, types.go |
 ✅ | [CR-12](#cr-12-portable-settings-can-be-saved-out-of-order) | Low | Portable settings can be saved out of order | portable.go |
-❌ | [CR-13](#cr-13-removeoldtools-can-delete-the-only-copy-of-a-tool) | Low | `removeOldTools` can delete the only copy of a tool | tool_installer.go |
-❌ | [CR-14](#cr-14-uniquepath-can-loop-forever-while-holding-renamemu) | Low | `uniquePath` can loop forever while holding `renameMu` | download_engine.go |
-❌ | [CR-15](#cr-15-the-disk-space-check-and-reservation-are-not-atomic) | Low | The disk-space check and reservation are not atomic | download.go, disk_space.go |
-❌ | [CR-16](#cr-16-the-cookies-privacy-claim-about-the-session-log-is-inaccurate) | Low | The cookies privacy claim about the session log is inaccurate | ui_manager.go, log_service.go |
+✅ | [CR-13](#cr-13-removeoldtools-can-delete-the-only-copy-of-a-tool) | Low | `removeOldTools` can delete the only copy of a tool | tool_installer.go |
+✅ | [CR-14](#cr-14-uniquepath-can-loop-forever-while-holding-renamemu) | Low | `uniquePath` can loop forever while holding `renameMu` | download_engine.go |
+✅ | [CR-15](#cr-15-the-disk-space-check-and-reservation-are-not-atomic) | Low | The disk-space check and reservation are not atomic | download.go, disk_space.go |
+✅ | [CR-16](#cr-16-the-cookies-privacy-claim-about-the-session-log-is-inaccurate) | Low | The cookies privacy claim about the session log is inaccurate | ui_manager.go, log_service.go |
 ✅ | [CR-17](#cr-17-runsession-re-enables-the-ui-before-it-resets-session-state) | Low | `runSession` re-enables the UI before it resets session state | download.go |
 ❌ | [CR-18](#cr-18-open-folder-leaves-a-zombie-process-on-linux) | Low | Open Folder leaves a zombie process on Linux | helpers.go |
 ❌ | [CR-19](#cr-19-formats-overwrites-a-running-sessions-status) | Low | Formats… overwrites a running session's status | formats_window.go |
@@ -338,7 +338,7 @@ Smaller cases, each usually fast but on the UI thread all the same:
 
 ---
 
-### CR-13: `removeOldTools` can delete the only copy of a tool
+### ✅ CR-13: `removeOldTools` can delete the only copy of a tool
 
 **Where.** [tool_installer.go:452-460](../tool_installer.go#L452-L460).
 
@@ -348,9 +348,11 @@ Smaller cases, each usually fast but on the UI thread all the same:
 - In `removeOldTools`, when `final` is missing and `final.old` exists, rename `.old` back instead of deleting it.
 - Optionally, make the close intercept in [main.go:184](../main.go#L184) also confirm while `installing` or `updating` is set.
 
+**Status.** Fixed in `980dac7`, with both parts of the suggestion. When a tool is missing and its `.old` file exists, `removeOldTools` moves the `.old` file back instead of deleting it. It returns the paths it restored, and startup logs a warning for each. The close intercept now asks for confirmation during a session, a tool install or yt-dlp update (`installing`), or a GoVid update (`updating`). A new `quitWarning` gives the reason for each. `TestRemoveOldToolsRestoresAToolLeftOnlyAsOld` covers the case the old code deleted, and `TestQuitWarningCoversInstallsAndUpdates` is new. architecture.md, classes.puml, and sequence-full.puml were updated.
+
 ---
 
-### CR-14: `uniquePath` can loop forever while holding `renameMu`
+### ✅ CR-14: `uniquePath` can loop forever while holding `renameMu`
 
 **Where.** [download_engine.go:761-777](../download_engine.go#L761-L777). It is called with `renameMu` held from `FinalizeFiles` ([:693](../download_engine.go#L693)) and `finishRecording` ([live.go:226](../live.go#L226), [:242](../live.go#L242)).
 
@@ -358,9 +360,11 @@ Smaller cases, each usually fast but on the UI thread all the same:
 
 **Suggested fix.** Treat a candidate as taken only when `Stat` succeeds (`err == nil`), and stop after a bound such as 10 000 tries, returning the original path. The rename then fails and is reported, so it does not hang.
 
+**Status.** Fixed in `6fde12f`, with one change to the suggestion. A name now counts as taken only when `fileExists` finds a file there. The search stops after `maxUniquePathTries` (10 000) numbered names. When no name is free, `uniquePath` returns `errNoFreeName` instead of the original path. On both Windows and Linux, `os.Rename` replaces an existing file, so renaming onto the original path would not fail; it would overwrite the user's file. `FinalizeFiles` and `finishRecording` treat the error like a failed rename, so the file keeps its temporary name. The search runs through `freePath` so a test can set which names are taken. `TestUniquePathTreatsAStatErrorAsFree` uses a name with a NUL byte, which `os.Stat` rejects as invalid on every system. It hangs against the old code. `TestUniquePathGivesUpAfterItsBound` is also new. architecture.md and sequence-full.puml were updated.
+
 ---
 
-### CR-15: The disk-space check and reservation are not atomic
+### ✅ CR-15: The disk-space check and reservation are not atomic
 
 **Where.**
 - [download.go:382-399](../download.go#L382-L399): the check runs under `promptMu`, but `reserveSpace` runs after it is released;
@@ -371,9 +375,11 @@ Smaller cases, each usually fast but on the UI thread all the same:
 
 **Suggested fix.** Reserve inside the `promptMu` section: either have `checkDiskSpace` return the release function when it decides to proceed, or call `reserveSpace` before `promptMu.Unlock()`.
 
+**Status.** Fixed in `0d7bd9b` with the first suggestion. When `checkDiskSpace` proceeds with a known size, it reserves the space itself and returns the release function. When it does not proceed, the function it returns does nothing. `downloadItem` defers the release, and its separate `reserveSpace` call is gone. The decision moved to `decideDiskSpace`. `TestDiskCheckReservesTheSpaceItApproves` runs two checks one after the other with room for one download, and checks that the second check finds the space taken. architecture.md and classes.puml were updated.
+
 ---
 
-### CR-16: The cookies privacy claim about the session log is inaccurate
+### ✅ CR-16: The cookies privacy claim about the session log is inaccurate
 
 **Where.**
 - The help text at [ui_manager.go:463](../ui_manager.go#L463): "The session log names only the source … never the file's path".
@@ -385,6 +391,8 @@ Smaller cases, each usually fast but on the UI thread all the same:
 **Suggested fix.** Choose one:
 1. Hide the path in `appendOutput`, before the line reaches `WriteToFile`, by replacing the cookies path (all three slash forms, as `newAnonymizer.addPath` does) with `<cookies file>`. Keep the current path in an `atomic.Pointer[string]` that is updated whenever the preference is saved.
 2. Correct the help text to say the log file may contain the path, but not the cookies.
+
+**Status.** Fixed in `6fdfd11` with option 1. The suggestion was to keep one path, updated when the preference is saved. Instead, `newDownloadRequest` adds each cookies file it passes to yt-dlp to a new `DownloaderApp.cookiesMask` (`cookiesPathMask`). The mask keeps every path from this run, because the preference can change while a download that uses the old file is still logging. `appendOutput` hides those paths before a line reaches the log view, the session log, or the error log. The mask uses the diagnostics `anonymizer`, which now accepts several cookies paths, so all three slash forms are hidden, in any case. The help text now says that where yt-dlp prints the path, the log shows `<cookies file>`. The fake yt-dlp now prints its real arguments in its Command-line config line, as yt-dlp does. `TestSessionLogHidesTheCookiesFilePath` downloads with a cookies file and checks the session log and the log view; it fails against the old code. `TestCookiesPathMask` is also new. architecture.md and classes.puml were updated.
 
 ---
 
