@@ -9,6 +9,9 @@
 //
 // newOutputScanner and drainOutput read a running tool's output so that a
 // long line cannot leave the tool blocked on a full pipe.
+//
+// startReaped starts a program GoVid hands work to and does not wait for,
+// such as the file manager, and still collects it once it exits.
 package main
 
 import (
@@ -61,4 +64,22 @@ func drainOutput(output io.Reader, onRead func()) {
 			return
 		}
 	}
+}
+
+// startReaped starts cmd and waits for it in the background, so that a
+// program GoVid hands work to, such as the file manager, is collected when
+// it exits. Left alone, it would stay a zombie on Linux until GoVid exits,
+// and on Windows its process handle would stay open. Its exit status is
+// ignored: explorer.exe, for one, exits with 1 when it succeeds. The
+// returned channel is closed once the process has been collected.
+func startReaped(cmd *exec.Cmd) (<-chan struct{}, error) {
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	reaped := make(chan struct{})
+	go func() {
+		defer close(reaped)
+		_ = cmd.Wait()
+	}()
+	return reaped, nil
 }

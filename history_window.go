@@ -336,10 +336,7 @@ func (manager *UIManager) readdHistoryURL(url string) {
 
 // revealHistoryFile shows a downloaded file in the system file manager.
 func (manager *UIManager) revealHistoryFile(path string) {
-	cmd := revealFileCommand(path)
-	if err := cmd.Start(); err != nil {
+	if _, err := startReaped(revealFileCommand(path)); err != nil {
 		dialog.ShowError(fmt.Errorf("could not show %s: %w", path, err), manager.historyWindow)
-		return
 	}
-	go cmd.Wait() // reap the process; the file manager reports nothing useful
 }

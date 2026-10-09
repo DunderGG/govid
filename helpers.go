@@ -134,14 +134,15 @@ func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
 // ── File I/O ─────────────────────────────────────────────────────────────────
 
 // openDownloadFolder launches the system file manager pointing at the current
-// save destination. The platform-specific command is provided by openFolderCommand.
+// save destination. The platform-specific command is provided by
+// openFolderCommand, and startReaped collects it once it exits.
 func (app *DownloaderApp) openDownloadFolder() {
 	savePath := strings.TrimSpace(app.ui.download.path.Text)
 	if savePath == "" {
 		dialog.ShowError(fmt.Errorf("no save path set"), app.window)
 		return
 	}
-	if err := openFolderCommand(savePath).Start(); err != nil {
+	if _, err := startReaped(openFolderCommand(savePath)); err != nil {
 		dialog.ShowError(fmt.Errorf("could not open folder: %v", err), app.window)
 	}
 }
