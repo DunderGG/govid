@@ -55,6 +55,19 @@ func newDownloadHarness(t *testing.T, mode string) *downloadHarness {
 	// The same goes for the Pause button's timed updates; tests read
 	// awaitingResume instead, and TestShowPauseControl checks the button.
 	app.pauseThrottle = newLatestValueThrottle(statusThrottleInterval, func(pauseControl) {})
+	// Tests read the status label, so its throttle stays, but a status set
+	// just before a test ends would otherwise reach the label from the timer
+	// goroutine during the next test, racing with that test's UI on Fyne's
+	// shared font cache. Waiting for the lock lets a running apply finish.
+	t.Cleanup(func() {
+		throttle := app.statusThrottle
+		throttle.mu.Lock()
+		defer throttle.mu.Unlock()
+		if throttle.timer != nil {
+			throttle.timer.Stop()
+		}
+		throttle.apply = func(string) {}
+	})
 
 	// Anchor the error log in a temp dir rather than beside the test binary.
 	if _, err := app.logSvc.OpenSessionLog(t.TempDir()); err != nil {
