@@ -76,7 +76,7 @@ external/
 └── yt-dlp.exe
 ```
 
-The packaging tooling builds GoVid, places these dependencies under `bin/` in the package, and creates a versioned release archive, `GoVid_<tag>_Ready.zip`. It stops without creating an archive when either executable is missing. The archive contains a `VERSIONS.txt` that names the GoVid commit and the yt-dlp and FFmpeg builds it bundles. Next to the archive, the tooling writes `SHA256SUMS` in the standard `<hash>  <file name>` format (`sha256sum -c SHA256SUMS` checks it). Upload both files to the GitHub release: GoVid's in-app update downloads the archive and refuses it unless its hash matches `SHA256SUMS`. The private packaging script is not part of the repository; use the normal build commands above when validating a contribution.
+The packaging tooling builds GoVid, places these dependencies under `bin/` in the package, and creates a versioned release archive, `GoVid_<tag>_Ready.zip`. It stops without creating an archive when either executable is missing. The archive contains a `VERSIONS.txt` that names the GoVid commit and the yt-dlp and FFmpeg builds it bundles. Next to the archive, the tooling writes `SHA256SUMS` in the standard `<hash>  <file name>` format (`sha256sum -c SHA256SUMS` checks it). Upload both files to the GitHub release: GoVid's in-app update downloads the archive and refuses it unless its hash matches `SHA256SUMS`. The private packaging script is not part of the repository; use the normal build commands above when validating a contribution. The full release checklist, from tagging to checking that **Update now** works, is in [docs/dev/releasing.md](docs/dev/releasing.md).
 
 The `external/` executables are local packaging inputs. They are ignored by the repository's `*.exe` rule and should not be force-added to Git.
 
@@ -93,4 +93,4 @@ Never commit cookies, account sessions, API keys, download history, logs, genera
 
 ## Pull requests
 
-Keep changes focused, follow the existing Go style, and update documentation when behavior or setup changes. Include a short description of the change and the validation you performed.
+Keep changes focused, follow the existing Go style, and update documentation when behavior or setup changes. The user guide exists twice, in [docs/user-guide.md](docs/user-guide.md) and in the in-app guide (`helpItems` in `help_window.go`): a change to a feature or setting updates both. Before changing something that looks roundabout, check [docs/dev/design_decisions.md](docs/dev/design_decisions.md) for the reason; if your change rests on a non-obvious choice or on how an external tool behaves, add an entry there. Include a short description of the change and the validation you performed.

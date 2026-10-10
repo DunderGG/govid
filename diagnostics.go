@@ -15,7 +15,7 @@
 //     goroutine count, the tools running, and the log lines waiting to be
 //     shown.
 //   - markLoop: with Debug Output on, start and stop markers of the
-//     background loops (see the ticker-loop table in docs/architecture.md).
+//     background loops (see the ticker-loop table in docs/dev/architecture.md).
 package main
 
 import (

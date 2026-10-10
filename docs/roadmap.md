@@ -1,6 +1,6 @@
 # GoVid — Development Roadmap
 
-This document outlines planned features, improvements, and known limitations for GoVid. Items are organized by category and priority.
+This document outlines planned features, improvements, and known limitations for GoVid. Items are organized by category and priority. The reasons behind choices that are not obvious from the code are in [design_decisions.md](dev/design_decisions.md).
 
 ---
 
@@ -21,6 +21,7 @@ This document outlines planned features, improvements, and known limitations for
 - [x] Add a "Download playlist index X to Y" range option. (The prompt takes ranges such as `1-10`, `5-`, or `3,5,8`.)
 - [ ] Show total playlist size and estimated time before starting. (Partly done: the prompt shows the video count and total length. The size is shown as "unknown", because sizing every video would need a full probe of each one.)
 - [x] Use `--yes-playlist` / `--no-playlist` flags in yt-dlp automatically based on user choice. (Done differently: the chosen videos are queued as separate URLs, each downloaded with `--no-playlist`, so each gets its own progress row, cancel, retry, and history entry.)
+- [x] Extract each video only once. (The URL check's probe already extracts the video, so the download loads that answer with `--load-info-json` instead of passing the URL again; the second extraction cost a few seconds per video and doubled the requests that set off YouTube's bot check. A video picked from a playlist is probed just before it downloads, which gives it a title and a disk space check. An answer older than 30 minutes is probed again, and a download from a loaded answer that fails with HTTP 403 or 410, because its format links expired, runs once more from the URL.)
 
 ### In-App yt-dlp Updater
 > Let users update yt-dlp from inside the app.
@@ -78,7 +79,7 @@ This document outlines planned features, improvements, and known limitations for
 > Save common download setups for quick reuse.
 
 - [x] Let users save named presets for common workflows like audio-only, 1080p MP4, and playlist downloads. (A Preset dropdown in the input card, with "Save current as preset…" and "Manage presets…" (rename, delete). Three starters: Audio (MP3, metadata + cover), 1080p MP4, and Archive (MKV, Best, subtitles, chapters). "(modified)" shows once a setting of the applied preset changes.)
-- [x] Allow presets to store format, quality, output path, subtitles, metadata, and speed-limit settings. (A preset is a name plus a partial `AppConfig` from the config file; saving one offers groups of settings to include, also the main window's toggles and post-processing. Applying it is `MergeConfig` onto the current settings.)
+- [x] Allow presets to store format, quality, output path, subtitles, metadata, and speed-limit settings. (A preset is a name plus a partial `AppConfig` from the config file; saving one offers groups of settings to include, also the main window's toggles and post-processing. Applying it validates the preset's settings (`ValidateConfig`) and sets only those (`applyConfig`), so every other setting stays as it is.)
 - [x] Add preset import/export so users can move their settings between machines. (One JSON file of presets, validated like `govid.json`: a value that is invalid on this machine is dropped from its preset and reported.)
 
 ### yt-dlp Auto-Update
@@ -87,6 +88,7 @@ This document outlines planned features, improvements, and known limitations for
 - [x] Check whether yt-dlp is outdated when the app starts or on demand. (A background check at startup, at most once a day via the GitHub Releases API, shows a notice with an "Update now" button; it can be turned off with the "Check for updates on startup" preference. Tools → Update yt-dlp checks on demand.)
 - [x] Add a one-click update action for yt-dlp in the Tools menu.
 - [x] Show the currently installed yt-dlp version alongside the latest available version. (In the Update yt-dlp dialog and the About window.)
+- [x] Say what to do when yt-dlp is the likely cause of a failure. (A download that fails with "Unable to extract", "Sign in to confirm", or "HTTP Error 403" logs a hint to update yt-dlp. A failed `yt-dlp -U` checks whether the yt-dlp folder is writable and, if not, explains how to fix it, in the GUI and with `--update`.)
 
 ### Format Browser
 > Make yt-dlp format selection easier to understand.
@@ -201,6 +203,12 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 - [ ] Decide whether the secondary windows (Preferences, History, About, Components, …) get the same treatment or keep the native frame.
 - [ ] Hand-check resizing from every edge, maximize and restore, Snap, multi-monitor moves, and mixed-DPI setups.
 
+### Miscellaneous Improvements
+> Whatever UI improvements that don't fit in above categories.
+
+- [ ] The guide window should be searchable.
+- [ ] Allow for changing color themes. Load a json file where each app color is defined, and apply it to the UI elements dynamically. Also provide a few default color themes in a themes folder.
+
 ---
 
 ## 🔧 Technical Improvements
@@ -232,7 +240,7 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 
 - [x] Inject version at build time via `go build -ldflags "-X main.version=1.0.0"`.
 - [x] Display the version in the Help → About dialog.
-- [x] Use the version string when querying the GitHub Releases API. (Sent as the `GoVid/<version>` User-Agent and compared with the latest release tag. `build.bat`/`build.sh` now take the version from the git tag on the built commit, falling back to `dev`.)
+- [x] Use the version string when querying the GitHub Releases API. (Sent as the `GoVid/<version>` User-Agent and compared with the latest release tag. `build.bat`/`build.sh` now take the version from the git tag on the built commit, falling back to `dev`. `package.ps1` reads the same tag and refuses to package an untagged commit, so the ZIP name and the version GoVid reports always match.)
 
 ### Error Recovery & Retry Logic
 > Handle transient network failures more gracefully.
@@ -292,17 +300,17 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 - [ ] The code for the guide window needs improving. Get rid of extremely long text strings.
 - [X] Errors from ffmpeg sometimes gets buried in the verbose logs. Maybe Errors should be logged to separate file?
 - [ ] Investigate GPU acceleration for FFmpeg.
-	- [X] Identify [target acceleration backends](gpu-acceleration.md) per OS: `nvenc`/`cuda` (NVIDIA), `qsv` (Intel), `amf` (AMD), and `vaapi` (Linux).
-	- [X] Verify which backends are available in our [current bundled FFmpeg build](gpu-acceleration.md#5-current-bundled-build-inventory) (`ffmpeg -hide_banner -encoders`, `-hwaccels`, `-decoders`, `-filters`). 
+	- [X] Identify [target acceleration backends](dev/gpu-acceleration.md) per OS: `nvenc`/`cuda` (NVIDIA), `qsv` (Intel), `amf` (AMD), and `vaapi` (Linux).
+	- [X] Verify which backends are available in our [current bundled FFmpeg build](dev/gpu-acceleration.md#5-current-bundled-build-inventory) (`ffmpeg -hide_banner -encoders`, `-hwaccels`, `-decoders`, `-filters`). 
 		- [ ] Re-run for future Linux artifacts.
-	- [X] Decide [feature scope](gpu-acceleration.md#7-feature-scope-decision): which post-processing operations should use GPU first (e.g. scaling, tone mapping, denoise) and which remain CPU.
+	- [X] Decide [feature scope](dev/gpu-acceleration.md#7-feature-scope-decision): which post-processing operations should use GPU first (e.g. scaling, tone mapping, denoise) and which remain CPU.
 		- [ ] Revisit the deferred GPU scale/deinterlace fast-path once final-encode acceleration is implemented and benchmarked.
-	- [X] Add [runtime capability detection](gpu-acceleration.md#8-recommended-implementation-order) in Go (`GPUCapabilityService` in `gpu_capability.go`) and cache results by backend/vendor so unsupported paths are never selected.
-	- [X] Design [command builders](gpu-acceleration.md#7-feature-scope-decision) for GPU pipelines (`PlanEncoder`/`EncoderPlan` in `gpu_capability.go`) with safe CPU fallback equivalents.
-	- [X] Add a [user setting](gpu-acceleration.md#8-recommended-implementation-order): `Auto` (recommended), explicit backend selection, and `Off` for troubleshooting. ("Encoder Backend" selector in the Post-Processing window, wired through `applyFFmpegFilters`.)
-	- [X] Implement [strict fallback behavior](gpu-acceleration.md#6-pipeline-design-constraints): if GPU init fails, retry once with CPU and log a concise reason. (`PPEngine.retryWithCPU` in `pp_engine.go`.)
+	- [X] Add [runtime capability detection](dev/gpu-acceleration.md#8-recommended-implementation-order) in Go (`GPUCapabilityService` in `gpu_capability.go`) and cache results by backend/vendor so unsupported paths are never selected.
+	- [X] Design [command builders](dev/gpu-acceleration.md#7-feature-scope-decision) for GPU pipelines (`PlanEncoder`/`EncoderPlan` in `gpu_capability.go`) with safe CPU fallback equivalents.
+	- [X] Add a [user setting](dev/gpu-acceleration.md#8-recommended-implementation-order): `Auto` (recommended), explicit backend selection, and `Off` for troubleshooting. ("Encoder Backend" selector in the Post-Processing window, wired through `applyFFmpegFilters`.)
+	- [X] Implement [strict fallback behavior](dev/gpu-acceleration.md#6-pipeline-design-constraints): if GPU init fails, retry once with CPU and log a concise reason. (`PPEngine.retryWithCPU` in `pp_engine.go`.)
 	- [ ] Benchmark representative jobs (1080p, 1440p, 4K; short and long clips) for speed, quality, and failure rate versus CPU.
-	- [X] Add [guardrails for known edge cases](gpu-acceleration.md#10-runtime-guardrails): a concurrent hardware-encoder-session cap and a stall watchdog with CPU fallback. (`PPEngine.gpuSem`/`gpuStallTimeout` in `pp_engine.go`.)
+	- [X] Add [guardrails for known edge cases](dev/gpu-acceleration.md#10-runtime-guardrails): a concurrent hardware-encoder-session cap and a stall watchdog with CPU fallback. (`PPEngine.gpuSem`/`gpuStallTimeout` in `pp_engine.go`.)
 	- [X] Expose diagnostics in logs (detected backend, selected path, fallback reason) to simplify bug reports.
 	- [X] Document platform prerequisites (driver versions, required FFmpeg features) and add a quick verification checklist to release docs.
 
@@ -333,7 +341,7 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 ### Named Constants for Magic Numbers
 > Replace unexplained numeric literals with self-documenting names.
 
-- [ ] Define constants for dialog window sizes (`prefsWindowWidth`, `postProcessWindowHeight`, etc.) currently scattered across ui.go.
+- [ ] Define constants for dialog window sizes (`prefsWindowWidth`, `postProcessWindowHeight`, etc.). They are 24 `fyne.NewSize` literals in 14 files: `ui.go`, `ui_manager.go`, the `*_window.go` files, and the fixed-width prompts in `disk_space.go`, `duplicates.go`, `live_dialog.go`, `playlist_dialog.go`, `preset_ui.go`, and `release_dialog.go`.
 - [x] Define constants for post-processing load thresholds (e.g. `loadLightThreshold = 15`, `loadModerateThreshold = 35`) in postprocess.go. (`loadThresholdLight`/`Moderate`/`Heavy`/`VeryHeavy` = 20/50/80/120, plus `loadBlockThresholds` for the block indicator.)
 - [x] Define constants for per-filter processing cost values (e.g. `costSmoothMotionFast`, `costDenoiseHQ`) in postprocess.go. (16 `cost*` constants.)
 - [X] Replace the `1<<31 - 1` unlimited sentinel in `parseLogLimit` with `math.MaxInt32` for clarity.
@@ -349,7 +357,7 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 - [x] Split `runYtDlp()` (~180 lines) into `buildYtDlpArgs()` and `parseYtDlpOutput()` in download.go. (Done differently: argument building is `DownloadEngine.BuildArgs` and output parsing is `watchOutput` in `logscanner.go`; `runYtDlp` is now a ~20-line wrapper around `DownloadEngine.Run`.)
 - [x] Split `createUI()` (~560 lines) into `createInputCard()`, `createStatusCard()`, and `createLogSection()` in ui.go. (`createUI` moved to `UIManager` and is composed of nine `build*`/`wire*` helpers, including `buildInputCard`, `buildStatusCard`, and `buildLogPane`.)
 - [x] Split `startDownload()` into `validateDownloadInputs()` and `initializeDownloadSession()` in download.go. (`startDownload` delegates to `readSession`, which validates the inputs, and `runSession`.)
-- [x] Split every function over 60 lines (guideline §1.4), such as `runJob`, `downloadItem`, `ApplyFilters`, and `BuildArgs`. (See CR-22 in [code_review_2026-10.md](code_review_2026-10.md).)
+- [x] Split every function over 60 lines (guideline §1.4), such as `runJob`, `downloadItem`, `ApplyFilters`, and `BuildArgs`. (See CR-22 in [code_review_2026-10.md](dev/archive/code_review_2026-10.md).)
 
 ### Naming Consistency
 > Align naming conventions across the codebase.
@@ -375,15 +383,15 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 ### Hand Checks for Finished Features
 > These features are done in code but still need a check by hand. Most fit into one session around the next real release, which the self-update check needs anyway.
 
-- [ ] HDR tone mapping: a real HDR YouTube video, after post-processing, matches the browser's SDR rendering side by side. ([priorities.md](priorities.md) #5)
-- [ ] Disk space pre-check: on a nearly full USB stick, the warning appears before the download starts. ([priorities.md](priorities.md) #8)
-- [ ] Metadata embedding: an MP3 download shows its title, artist, date, and cover in a music player. ([priorities.md](priorities.md) #10)
-- [ ] Subtitles: a real YouTube video downloaded with **Embed** has a selectable subtitle track in a player. ([priorities_2.md](priorities_2.md) #4)
-- [ ] Self-update: a release build one version behind updates itself from a real GitHub release and restarts on the new version. ([priorities_2.md](priorities_2.md) #10)
-- [ ] Cookies: with Firefox signed in to YouTube and Cookies set to From browser → Firefox, an age-restricted video downloads. (The error lines were recorded from the real yt-dlp against this machine's browsers, with a local URL so no cookie left the machine; no download was made with a real login.) ([priorities_3.md](priorities_3.md) #3)
-- [ ] Live streams: record a real YouTube live stream for a few minutes, press **Stop recording**, and play the saved file; try **Record from the start** and a scheduled premiere with **Wait and record**. The recording path was checked against a public live HLS test stream (yt-dlp's generic extractor), not YouTube, which asked this machine to sign in. ([priorities_3.md](priorities_3.md) #2)
-- [ ] Components: on a machine with no JavaScript runtime, the startup notice installs Deno, and the next YouTube download's verbose log shows `JS runtimes: deno-…` and no runtime warning; with `bin/ffmpeg.exe` deleted, Components → FFmpeg → **Install** restores it with `ffprobe.exe`, and post-processing shows a percentage again. The installer and yt-dlp with the installed Deno were checked against the real sources outside the GUI. ([priorities_3.md](priorities_3.md) #1)
-- [ ] System theme: with Theme set to **System**, switch Windows between light and dark mode (Settings → Personalization → Colors) while GoVid is open; the main window and any open Preferences window follow without a restart. The tests check the colours per variant, not a real switch. ([priorities_3.md](priorities_3.md) #9)
+- [ ] HDR tone mapping: a real HDR YouTube video, after post-processing, matches the browser's SDR rendering side by side. (See [Post-Processing Features](#post-processing-features).)
+- [ ] Disk space pre-check: on a nearly full USB stick, the warning appears before the download starts. (See [Disk Space Pre-check](#disk-space-pre-check).)
+- [ ] Metadata embedding: an MP3 download shows its title, artist, date, and cover in a music player. (See [Metadata & Thumbnail Embedding](#metadata--thumbnail-embedding).)
+- [ ] Subtitles: a real YouTube video downloaded with **Embed** has a selectable subtitle track in a player. (See [Subtitle Support](#subtitle-support).)
+- [ ] Self-update: a release build one version behind updates itself from a real GitHub release and restarts on the new version. (See [Self-Updating GoVid](#self-updating-govid).)
+- [ ] Cookies: with Firefox signed in to YouTube and Cookies set to From browser → Firefox, an age-restricted video downloads. (The error lines were recorded from the real yt-dlp against this machine's browsers, with a local URL so no cookie left the machine; no download was made with a real login.) (See [Authentication Support](#authentication-support).)
+- [ ] Live streams: record a real YouTube live stream for a few minutes, press **Stop recording**, and play the saved file; try **Record from the start** and a scheduled premiere with **Wait and record**. The recording path was checked against a public live HLS test stream (yt-dlp's generic extractor), not YouTube, which asked this machine to sign in. (See [Live Streams](#live-streams).)
+- [ ] Components: on a machine with no JavaScript runtime, the startup notice installs Deno, and the next YouTube download's verbose log shows `JS runtimes: deno-…` and no runtime warning; with `bin/ffmpeg.exe` deleted, Components → FFmpeg → **Install** restores it with `ffprobe.exe`, and post-processing shows a percentage again. The installer and yt-dlp with the installed Deno were checked against the real sources outside the GUI. (See [YouTube JavaScript Runtime](#youtube-javascript-runtime).)
+- [ ] System theme: with Theme set to **System**, switch Windows between light and dark mode (Settings → Personalization → Colors) while GoVid is open; the main window and any open Preferences window follow without a restart. The tests check the colours per variant, not a real switch. (See [Dark / Light Mode Toggle](#dark--light-mode-toggle).)
 
 ### Release Checklist
 > Run with the packaged release before publishing it.
@@ -409,7 +417,7 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 
 ### Automated
 - [ ] Measure coverage (`go test -coverprofile`), and add the least-covered files as follow-up items.
-- [ ] An opt-in integration test (`-tags integration`, skipped when `bin/yt-dlp.exe` is missing) that runs the real bundled yt-dlp and ffmpeg against a local HTTP server. Subtitles were checked this way by hand in [priorities_2.md](priorities_2.md) #4. The test would show when a yt-dlp upgrade changes flags or output, without contacting real sites.
+- [ ] An opt-in integration test (`-tags integration`, skipped when `bin/yt-dlp.exe` is missing) that runs the real bundled yt-dlp and ffmpeg against a local HTTP server. Subtitles were checked this way by hand; the results are in [DD-16](dev/design_decisions.md#dd-16-subtitle-flags) of the design decisions. The test would show when a yt-dlp upgrade changes flags or output, without contacting real sites.
 - [ ] Fuzz tests (Go's built-in fuzzing) for the parsers that read outside input: `parseURLList`, `shortcutURL`, `parseSHA256Sums`, the log scanner's line parsers, and `parseFFmpegColorInfo`.
 
 ---
@@ -434,7 +442,7 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 > Ensure background tickers/goroutines never outlive their intended state.
 
 - [x] Add lightweight lifecycle diagnostics (start/stop markers + goroutine count) around pulse, smoother, and post-process progress loops. (`markLoop` in `diagnostics.go`: with Debug Output on, the status pulse, progress smoother, recording monitor, FFmpeg progress readers, download workers, and heartbeat log start and stop markers with the goroutine count.)
-- [x] Audit all ticker-based loops to guarantee a single owner and deterministic stop path. (Done as a review: the table in [architecture.md](architecture.md) §7, "Background loops: owners and stop paths", lists each loop's owner and stop path. The heartbeat's stop now waits for it to end; nothing else needed changing.)
+- [x] Audit all ticker-based loops to guarantee a single owner and deterministic stop path. (Done as a review: the table in [architecture.md](dev/architecture.md) §7, "Background loops: owners and stop paths", lists each loop's owner and stop path. The heartbeat's stop now waits for it to end; nothing else needed changing.)
 - [x] Add a safe shutdown path that cancels active contexts and confirms worker completion before quit. (`DownloaderApp.Shutdown` stops the whole session, waits up to 5 s for it off the UI thread, closes the session log, then quits. Cancelling now kills the whole yt-dlp/ffmpeg process tree via `newToolCommand` in `process.go`, and a failed or cancelled download's partial `GOVID` files are removed.)
 
 ### UI Thread Safety Audit
@@ -468,7 +476,7 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 ### Custom Output Filename Template
 > Let power users control how downloaded files are named.
 
-- [x] Add an advanced "Filename Template" input in the options. (Preferences → **Filename Template**, in yt-dlp's output template syntax plus `{quality}` for the height label of capped downloads; `filenameTemplate` in `govid.json` and a presets group. GoVid still adds `_TRIM` and its download token, which `FinalizeFiles` strips. A template with `/` or ``, or an empty one, is refused, and one without `%(title)s` or `%(id)s` gets a warning.)
+- [x] Add an advanced "Filename Template" input in the options. (Preferences → **Filename Template**, in yt-dlp's output template syntax plus `{quality}` for the height label of capped downloads; `filenameTemplate` in `govid.json` and a presets group. GoVid still adds `_TRIM` and its download token, which `FinalizeFiles` strips. A template with `/` or `\`, or an empty one, is refused, and one without `%(title)s` or `%(id)s` gets a warning.)
 - [x] Pre-populate with the current default (`GoVid_%(title)s.%(ext)s`). (The default is `GoVid_%(title)s{quality}`, which gives the same names as before; **Reset** puts it back.)
 - [x] Show a live preview of what the filename will look like. (Below the field: the name a sample video gets with the current Format and Max Quality, with `title`, `id`, `uploader`, `upload_date`, `height`, and `ext` filled in the way yt-dlp does, including defaults, replacements, date formats, and truncation. Other fields are shown as written, with a note.)
 
@@ -491,7 +499,7 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 ### Structural Refactoring
 > Decouple core logic from the main UI controller.
 
-See the [refactoring roadmap](refactor_roadmap.md) for component-level status and detailed next steps.
+See the [refactoring roadmap](dev/archive/refactor_roadmap.md) for component-level status and detailed next steps.
 
 ### Log Management
 > Improve technical troubleshooting.

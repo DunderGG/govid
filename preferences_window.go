@@ -78,7 +78,7 @@ func (manager *UIManager) buildPreferencesForm() *widget.Form {
 	ui := manager.ui
 	return &widget.Form{
 		Items: []*widget.FormItem{
-			{Text: "Save Preferences", Widget: ui.prefs.savePrefs, HintText: "Remember format, quality, path, speed, and theme between sessions"},
+			{Text: "Save Preferences", Widget: ui.prefs.savePrefs, HintText: "Remember your settings between sessions"},
 			{Text: "Log Buffer Limit", Widget: ui.prefs.logLimit, HintText: "Max lines kept in the log view (never more than 5000); older entries are removed from the top"},
 			{Text: "Debug Output", Widget: ui.prefs.showDebug, HintText: "Show yt-dlp's [debug] lines in the log view; the log file always has them"},
 			{Text: "Updates", Widget: ui.prefs.checkUpdates, HintText: "Check GitHub once a day for newer yt-dlp and GoVid releases"},

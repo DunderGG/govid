@@ -167,23 +167,25 @@ func TestMergeConfigEmptyChoiceKeepsTheSetting(t *testing.T) {
 	}
 }
 
-func TestRepositoryConfigFileIsValid(t *testing.T) {
-	cfg, err := (&PreferenceService{}).LoadFromFile(configFileName)
+// exampleConfigFile is the repository's example settings file, which lists
+// every key. govid.json itself is the user's own file and is not committed.
+const exampleConfigFile = "govid.example.json"
+
+func TestExampleConfigFileIsValid(t *testing.T) {
+	cfg, err := (&PreferenceService{}).LoadFromFile(exampleConfigFile)
 	if err != nil {
-		t.Fatalf("the repository's %s does not load: %v", configFileName, err)
+		t.Fatalf("%s does not load: %v", exampleConfigFile, err)
 	}
-	data, _ := os.ReadFile(configFileName)
+	data, _ := os.ReadFile(exampleConfigFile)
 	var keys map[string]any
 	if err := json.Unmarshal(data, &keys); err != nil {
 		t.Fatal(err)
 	}
 	if want := reflect.TypeFor[AppConfig]().NumField(); len(keys) != want {
-		t.Errorf("%s lists %d keys, want all %d as an example", configFileName, len(keys), want)
+		t.Errorf("%s lists %d keys, want all %d as an example", exampleConfigFile, len(keys), want)
 	}
-	// Its path is the author's own folder, so only the other values are checked.
-	cfg.SavedPath = nil
 	if _, errs := (&PreferenceService{}).MergeConfig(cfg, AppPreferences{}); len(errs) != 0 {
-		t.Errorf("%s has invalid values: %q", configFileName, errs)
+		t.Errorf("%s has invalid values: %q", exampleConfigFile, errs)
 	}
 }
 

@@ -1,10 +1,10 @@
 {
   "savePrefs": true,
-  "path": "C:\\Users\\Dunder\\Videos",
+  "path": "",
   "format": "MP4",
   "quality": "Best Quality",
   "maxSpeed": "",
-  "themeMode": "Dark",
+  "themeMode": "System",
   "cookiesPath": "",
   "cookieSource": "None",
   "cookieBrowser": "Firefox",

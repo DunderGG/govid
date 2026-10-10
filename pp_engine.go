@@ -246,7 +246,7 @@ func (engine *PPEngine) resolveToneMap(ctx context.Context, inputPath string, fi
 
 // retryWithCPU rebuilds job's ffmpeg args using the CPU encoder and runs it
 // once more. Used when a GPU-accelerated encode fails at runtime despite
-// passing the earlier capability probe (docs/gpu-acceleration.md §8 — strict
+// passing the earlier capability probe (docs/dev/gpu-acceleration.md §8 — strict
 // fallback behavior).
 func (engine *PPEngine) retryWithCPU(ctx context.Context, job PostProcessJob, cb PPCallbacks, reason string) {
 	cb.OnLog(fmt.Sprintf("[SYSTEM] GPU encode failed (%s) — retrying with CPU.", reason), colWarning)

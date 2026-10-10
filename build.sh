@@ -2,7 +2,7 @@
 # build.sh — Build script for GoVid (Linux / Git Bash on Windows).
 #
 # Prerequisites:
-#   - Go 1.21+  https://go.dev/dl/
+#   - Go 1.26.1+  https://go.dev/dl/
 #   - GCC: required by Fyne (CGO). Install via your system package manager.
 #       Linux:  sudo apt install gcc  (Debian/Ubuntu)  or  sudo dnf install gcc  (Fedora)
 #       Windows (MSYS2): pacman -S mingw-w64-x86_64-gcc
@@ -12,7 +12,8 @@
 #   ./build.sh
 #
 # The output binary (GoVid or GoVid.exe) will be placed in the project root.
-# GoVid requires yt-dlp and ffmpeg to be available on your PATH at runtime.
+# At run time GoVid needs yt-dlp, ffmpeg, and a JavaScript runtime (Deno or
+# Node.js), in a bin/ folder beside the executable or on PATH.
 set -e
 
 # Check required tools are installed

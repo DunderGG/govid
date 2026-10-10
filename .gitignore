@@ -37,8 +37,10 @@ go.work.sum
 # Test fixtures are logs too, and CI needs them.
 !testdata/*.log
 *.zip
+SHA256SUMS
 *.ps1
 *.syso
 GoVid
 /release/*.exe
 download_history.json
+govid.json

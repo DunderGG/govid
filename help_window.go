@@ -121,7 +121,7 @@ var helpItems = []helpItem{
 		"  * **Esc** – close About, this guide, Preferences, Post-Processing, History, or Components\n\n" +
 		"The Ctrl shortcuts work everywhere in the main window, also while typing in the URL field; the menus show them too. **F1** and **Esc** work when no text field has the cursor: click outside the field first (on macOS, use Cmd instead of Ctrl)."},
 	{"Application Theme", "Found in **Tools → Preferences**. **System** (the default) follows your computer: light when Windows is set to light apps, dark otherwise, and GoVid switches along with it. **Dark** and **Light** keep that look whatever the system uses."},
-	{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your format, quality, save path, speed limit, and theme between sessions. The toggle itself is always remembered so the choice survives a restart."},
+	{"Save Preferences", "Found in **Tools → Preferences**. When checked, GoVid remembers your settings between sessions. The toggle itself is always remembered so the choice survives a restart."},
 	{"Max Download Speed", "Found in **Tools → Preferences**. Limits the bandwidth used by GoVid to prevent network saturation. Examples:\n  * `50K` – Very slow\n  * `5M` – Moderate (standard HD streaming speed)\n  * `10G` – Virtually unlimited\n\nLeave blank to use full available bandwidth."},
 	{"Cookies", "Found in **Tools → Preferences**. Cookies are your login: with them, yt-dlp can download age-restricted, members-only, and private videos you can watch when signed in, and get past YouTube's \"Sign in to confirm you're not a bot\" check. Choose where they come from:\n" +
 		"  * **" + cookieSourceNone + "** (default) – no login\n" +

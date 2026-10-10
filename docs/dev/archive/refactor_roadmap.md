@@ -96,10 +96,10 @@ Breaking down the `DownloaderApp` "God Object" into specialized components:
 - [x] **HistoryService** — download history persistence, schema evolution, and lookup helpers.
 - [x] **LogService** — session log/error log routing, rotation policy, and structured log helpers.
 - [x] **DependencyService** — binary discovery, dependency checks, and updater command execution.
-- [x] **GPUCapabilityService** — FFmpeg GPU backend detection, capability caching, and encoder-plan resolution (see [gpu-acceleration.md](gpu-acceleration.md)).
-- [x] **ToolInstaller** — downloads, checksums, and installs yt-dlp, FFmpeg, and Deno into `bin/` (`tool_installer.go`, added in [priorities_3.md](priorities_3.md) #1). It shares `httpFetcher` (`http_fetch.go`) with `SelfUpdater`, and has no Fyne dependency; the Components window and startup notices reach it through `UIManager` callbacks.
-- [x] **QueueStore** — reads and writes `queue.json`, the downloads left when GoVid quits (`queue_store.go`, [priorities_3.md](priorities_3.md) #4). Plain struct, no UI dependency, like `HistoryService`.
-- [x] **fileStore** — a `fyne.Preferences` kept in `settings.json` beside the exe for Portable Mode (`portable.go`, [priorities_3.md](priorities_3.md) #8). `PreferenceService` takes it in place of the Fyne store, so no other code knows which one is in use.
+- [x] **GPUCapabilityService** — FFmpeg GPU backend detection, capability caching, and encoder-plan resolution (see [gpu-acceleration.md](../gpu-acceleration.md)).
+- [x] **ToolInstaller** — downloads, checksums, and installs yt-dlp, FFmpeg, and Deno into `bin/` (`tool_installer.go`, added for the roadmap's [YouTube JavaScript Runtime](../../roadmap.md#youtube-javascript-runtime) item). It shares `httpFetcher` (`http_fetch.go`) with `SelfUpdater`, and has no Fyne dependency; the Components window and startup notices reach it through `UIManager` callbacks.
+- [x] **QueueStore** — reads and writes `queue.json`, the downloads left when GoVid quits (`queue_store.go`, for the roadmap's [Queue Manager](../../roadmap.md#queue-manager) item). Plain struct, no UI dependency, like `HistoryService`.
+- [x] **fileStore** — a `fyne.Preferences` kept in `settings.json` beside the exe for Portable Mode (`portable.go`, for the roadmap's [Portable Mode](../../roadmap.md#portable-mode) item). `PreferenceService` takes it in place of the Fyne store, so no other code knows which one is in use.
 - [x] **Update documentation** — architecture.md, classes.puml, and sequence diagrams fully reflect the extracted architecture.
 
 See the sections below for per-component details and open next steps.
@@ -121,7 +121,7 @@ See the sections below for per-component details and open next steps.
 
 ## PPEngine
 
-**Done:** `PPEngine` struct introduced in `pp_engine.go`. It owns the ffmpeg and ffprobe binary paths and exposes `ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks)`. `PPCallbacks` bridges log, status, and failure events to the UI. Private methods `detectCropFilter`, `resolveAutoCrop`, `runJob`, and `retryWithCPU` are fully engine-owned, and every terminal job failure goes through the shared `failJob` helper (see 4.4). The probe helpers (`probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, `parseRationalFPS`) and the argument builder `buildFFmpegArgs` moved from `postprocess.go` to `pp_engine.go` as private methods, dropping their explicit `ffprobePath` parameters. `patchThreadCount` was later deleted: the per-job thread count is now passed straight into `buildFFmpegArgsForBackend` (see 6.9). `postprocess.go` is now a thin layer. It holds the `PostProcessSettings` value struct, whose `newPostProcessSettings(ui)` translator moved to `ui_snapshot.go` (see 5.4). It also holds the free functions `buildPostProcessFilters` and `computeProcessingLoad` (both take `PostProcessSettings`, no `*UIWidgets` reads; the test-only `checkPostProcessingEnabled` was deleted in 7.1), the `applyFFmpegFilters` wrapper, and shared format/scan helpers (`formatFFmpegProgress`, `formatBytes`, `formatDuration`, `filterShortName`, `scanCRLF`, `lastLine`). `runJob` uses these helpers, and `lastLine` is also used by `gpu_capability.go` to extract a probe's failure reason. GPU acceleration for the final encode step has since been layered on: `PPEngine.GPUBackend`/`GPUCapabilities` feed `PlanEncoder` inside `buildFFmpegArgsForBackend`, and `runJob` delegates its GPU semaphore/watchdog bookkeeping to a dedicated `gpuJobGuard` type (`newGPUJobGuard`, `arm`, `pet`, `release`), falling back to `retryWithCPU` on failure for GPU-encoded jobs (see [gpu-acceleration.md](gpu-acceleration.md) §6/§10).
+**Done:** `PPEngine` struct introduced in `pp_engine.go`. It owns the ffmpeg and ffprobe binary paths and exposes `ApplyFilters(ctx, filePaths, vfFilters, afFilters, PPCallbacks)`. `PPCallbacks` bridges log, status, and failure events to the UI. Private methods `detectCropFilter`, `resolveAutoCrop`, `runJob`, and `retryWithCPU` are fully engine-owned, and every terminal job failure goes through the shared `failJob` helper (see 4.4). The probe helpers (`probeFrameCount`, `probeDuration`, `computeOutputFrameCount`, `parseRationalFPS`) and the argument builder `buildFFmpegArgs` moved from `postprocess.go` to `pp_engine.go` as private methods, dropping their explicit `ffprobePath` parameters. `patchThreadCount` was later deleted: the per-job thread count is now passed straight into `buildFFmpegArgsForBackend` (see 6.9). `postprocess.go` is now a thin layer. It holds the `PostProcessSettings` value struct, whose `newPostProcessSettings(ui)` translator moved to `ui_snapshot.go` (see 5.4). It also holds the free functions `buildPostProcessFilters` and `computeProcessingLoad` (both take `PostProcessSettings`, no `*UIWidgets` reads; the test-only `checkPostProcessingEnabled` was deleted in 7.1), the `applyFFmpegFilters` wrapper, and shared format/scan helpers (`formatFFmpegProgress`, `formatBytes`, `formatDuration`, `filterShortName`, `scanCRLF`, `lastLine`). `runJob` uses these helpers, and `lastLine` is also used by `gpu_capability.go` to extract a probe's failure reason. GPU acceleration for the final encode step has since been layered on: `PPEngine.GPUBackend`/`GPUCapabilities` feed `PlanEncoder` inside `buildFFmpegArgsForBackend`, and `runJob` delegates its GPU semaphore/watchdog bookkeeping to a dedicated `gpuJobGuard` type (`newGPUJobGuard`, `arm`, `pet`, `release`), falling back to `retryWithCPU` on failure for GPU-encoded jobs (see [gpu-acceleration.md](../gpu-acceleration.md) §6/§10).
 
 **Next steps:**
 
@@ -220,7 +220,7 @@ The package-level `UpdateYtDlpCLI()` replaces the old `updateYtDlp()` free funct
 
 ## GPUCapabilityService
 
-**Done:** `GPUCapabilityService` struct introduced in `gpu_capability.go`, following the same plain-struct-plus-cache pattern as the other extracted services. It owns `ffmpegPath` and a mutex-guarded cache keyed by `GPUBackend`, populated once per app run by `Detect(ctx) map[GPUBackend]BackendCapability` (checks `ffmpeg -encoders` output, then runs a short synthetic-frame probe per applicable backend). Later `Detect` calls return a copy of the cache; the test-only `Capability(backend)` accessor was deleted in 7.1. `PlanEncoder(requested, capabilities, containerExt) EncoderPlan` is a pure function that always resolves to a runnable `-c:v` argument set, falling back to the CPU encoder when the requested/auto backend is unavailable. `GPUBackendOptions()`/`GPUBackendFromLabel()` map the UI selector's OS-filtered labels to `GPUBackend` values, and `FormatGPUDiagnostics()` renders per-backend availability lines for the session log. `DownloaderApp` holds `gpuSvc *GPUCapabilityService`, constructed in `main.go`; `PreferenceService` owns the `gpuBackend` preference key/default; `PostProcessControls` gained a `gpuBackend *widget.Select` field (`UIWidgets.postProcess.gpuBackend`) for the Post-Processing window's "Encoder Backend" selector. See [gpu-acceleration.md](gpu-acceleration.md) for the full design.
+**Done:** `GPUCapabilityService` struct introduced in `gpu_capability.go`, following the same plain-struct-plus-cache pattern as the other extracted services. It owns `ffmpegPath` and a mutex-guarded cache keyed by `GPUBackend`, populated once per app run by `Detect(ctx) map[GPUBackend]BackendCapability` (checks `ffmpeg -encoders` output, then runs a short synthetic-frame probe per applicable backend). Later `Detect` calls return a copy of the cache; the test-only `Capability(backend)` accessor was deleted in 7.1. `PlanEncoder(requested, capabilities, containerExt) EncoderPlan` is a pure function that always resolves to a runnable `-c:v` argument set, falling back to the CPU encoder when the requested/auto backend is unavailable. `GPUBackendOptions()`/`GPUBackendFromLabel()` map the UI selector's OS-filtered labels to `GPUBackend` values, and `FormatGPUDiagnostics()` renders per-backend availability lines for the session log. `DownloaderApp` holds `gpuSvc *GPUCapabilityService`, constructed in `main.go`; `PreferenceService` owns the `gpuBackend` preference key/default; `PostProcessControls` gained a `gpuBackend *widget.Select` field (`UIWidgets.postProcess.gpuBackend`) for the Post-Processing window's "Encoder Backend" selector. See [gpu-acceleration.md](../gpu-acceleration.md) for the full design.
 
 **No open next steps** — the service itself is fully self-contained and requires no further extraction. Its consumers are done as well: PPEngine step 4 moved `runJob`'s GPU semaphore/watchdog bookkeeping into `gpuJobGuard`, and `showPostProcessing` never needed a direct `gpuSvc` reference since it only reads `ui.postProcess.gpuBackend`/`prefs.GPUBackend`.
 
@@ -249,16 +249,16 @@ However, the audit identified three categories of items that were either missed 
 Although `PreferenceService` was extracted and the four primary toggle handlers were migrated, raw access to `fyne.CurrentApp().Preferences()` and unexported magic string literals still remain in several areas.
 
 #### 1.1 Fix `batchMode.OnChanged` in `ui_manager.go`
-* ~~**File:** [`ui_manager.go`](../ui_manager.go#L843-L858)~~ — *Done. `batchMode.OnChanged` now calls `manager.savePreferences(ui.download.path.Text)` instead of the raw `Preferences().SetBool("batchMode", checked)` call; `BatchMode` is persisted via `savePreferences`'s existing `ui.download.batchMode.Checked` read.*
+* ~~**File:** [`ui_manager.go`](../../../ui_manager.go#L843-L858)~~ — *Done. `batchMode.OnChanged` now calls `manager.savePreferences(ui.download.path.Text)` instead of the raw `Preferences().SetBool("batchMode", checked)` call; `BatchMode` is persisted via `savePreferences`'s existing `ui.download.batchMode.Checked` read.*
 
 #### 1.2 Fix `ui.download.path.OnChanged` in `ui_manager.go`
-* ~~**File:** [`ui_manager.go`](../ui_manager.go#L878-L880)~~ — *Done. `ui.download.path.OnChanged` now delegates to `manager.savePreferences(text)`, keeping path persistence under the centralized preference service flow.*
+* ~~**File:** [`ui_manager.go`](../../../ui_manager.go#L878-L880)~~ — *Done. `ui.download.path.OnChanged` now delegates to `manager.savePreferences(text)`, keeping path persistence under the centralized preference service flow.*
 
 #### 1.3 Fix speed limit fallback in `download.go`
-* ~~**File:** [`download.go`](../download.go#L244-L248)~~ — *Done. `runYtDlp()` now falls back to `app.prefSvc.Load().MaxSpeed` when the UI speed limit is empty, keeping preference access behind `PreferenceService`.*
+* ~~**File:** [`download.go`](../../../download.go#L244-L248)~~ — *Done. `runYtDlp()` now falls back to `app.prefSvc.Load().MaxSpeed` when the UI speed limit is empty, keeping preference access behind `PreferenceService`.*
 
 #### 1.4 Centralize or document `themedIcon` preference read in `icons.go`
-* ~~**File:** [`icons.go`](../icons.go#L78-L83)~~ — *Done. `themedIcon` now receives the resolved `ThemeMode` from `createUI` instead of reading the global Fyne preference store, keeping icon selection deterministic and independent of `PreferenceService`.*
+* ~~**File:** [`icons.go`](../../../icons.go#L78-L83)~~ — *Done. `themedIcon` now receives the resolved `ThemeMode` from `createUI` instead of reading the global Fyne preference store, keeping icon selection deterministic and independent of `PreferenceService`.*
 
 ---
 
@@ -267,13 +267,13 @@ Although `PreferenceService` was extracted and the four primary toggle handlers 
 The "Update documentation" task was marked done, but `classes.puml`, `sequence-full.puml`, and `architecture.md` are out of sync with the refactored code.
 
 #### 2.1 Synchronize `docs/classes.puml`
-* ~~**File:** [`docs/classes.puml`](classes.puml)~~ — *Done. Synchronized the diagram with the current grouped UI controls, coordinator/UIManager ownership and callbacks, download lifecycle value types, history and logging records, dependency versioning, GPU helper functions, and relationships.*
+* ~~**File:** [`docs/classes.puml`](../classes.puml)~~ — *Done. Synchronized the diagram with the current grouped UI controls, coordinator/UIManager ownership and callbacks, download lifecycle value types, history and logging records, dependency versioning, GPU helper functions, and relationships.*
 
 #### 2.2 Synchronize `docs/sequence-full.puml`
-* ~~**File:** [`docs/sequence-full.puml`](sequence-full.puml)~~ — *Done. Startup now shows `UIManager` ownership for UI creation and dependency checks, missing dependencies are logged as warnings, session logging uses `LogService.OpenSessionLog`/`WriteSessionConfig`, and teardown calls `LogService.CloseSessionLog`.*
+* ~~**File:** [`docs/sequence-full.puml`](../sequence-full.puml)~~ — *Done. Startup now shows `UIManager` ownership for UI creation and dependency checks, missing dependencies are logged as warnings, session logging uses `LogService.OpenSessionLog`/`WriteSessionConfig`, and teardown calls `LogService.CloseSessionLog`.*
 
 #### 2.3 Synchronize `docs/architecture.md`
-* ~~**File:** [`docs/architecture.md`](architecture.md)~~ — *Done. Updated the `DownloaderApp` cancellation/logging fields, documented the grouped `UIWidgets` structure, and synchronized `HistoryService.AppendAll` plus its callback-based UIManager boundary.*
+* ~~**File:** [`docs/architecture.md`](../architecture.md)~~ — *Done. Updated the `DownloaderApp` cancellation/logging fields, documented the grouped `UIWidgets` structure, and synchronized `HistoryService.AppendAll` plus its callback-based UIManager boundary.*
 
 ---
 
@@ -315,43 +315,43 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
 #### ~~4.1 Fix data races on progress state~~
 * *Done (`7ae8bf2`). Every `DownloadStats` field is now guarded by a mutex and accessed only through methods (`setTarget`, `takeTarget`, `recordSize`, `reset`). `runProgressSmoother` in `helpers.go` tracks the displayed value itself, never reads the widget, and only calls `progress.SetValue` inside `fyne.Do`. CI runs `go test -race ./...` (see 7.6), and the suite passes under the race detector. A related race in the status-dot pulse was fixed in `aab615e`.*
-* **Files:** [`download.go`](../download.go#L99-L125), [`helpers.go`](../helpers.go#L181-L198), [`types.go`](../types.go#L163-L168)
+* **Files:** [`download.go`](../../../download.go#L99-L125), [`helpers.go`](../../../helpers.go#L181-L198), [`types.go`](../../../types.go#L163-L168)
 * **Issue:** The progress-smoother goroutine in `startDownload` reads `app.ui.download.progress.Value` outside `fyne.Do` and reads `app.stats.targetPct` without synchronization. Meanwhile `setProgress` (called from the yt-dlp output goroutine via `OnProgress`) and `setProgressNow` write `targetPct`. `updateProgress` also writes `lastSize`/`downloadedRaw`/`unit` from the engine goroutine, and `runYtDlp` reads them. This violates coding guidelines §2.3 and §2.5.
 * **Fix:** Store `targetPct` as an atomic value, or guard `DownloadStats` with a mutex. Have the smoother track its own `current` value instead of reading the widget, and only call `progress.SetValue` inside `fyne.Do`. Then add `go test -race ./...` to CI (see 7.6).
 
 #### ~~4.2 Fix the `LogService.bufferLimit` race~~
 * *Done (`cbbca79`). `SetBufferLimit` and `BufferLimit` now take `svc.mutex`.*
-* **File:** [`log_service.go`](../log_service.go#L143-L150)
+* **File:** [`log_service.go`](../../../log_service.go#L143-L150)
 * **Issue:** `SetBufferLimit` and `BufferLimit` access `bufferLimit` without the mutex. `WriteToFile` reads it under `svc.mutex` from background goroutines. Tests don't exercise this path, but it is a real race.
 * **Fix:** Take `svc.mutex` in both accessors, or make the field an `atomic.Int64`.
 
 #### ~~4.3 Reset `DownloadStats` between downloads~~
 * *Done (`5b5d18d`). `DownloadStats.reset()` clears the size, downloaded amount, unit, and target, and requests a snap to 0. It is called at session start and before each batch item.*
-* **Files:** [`download.go`](../download.go#L66-L69), [`download.go`](../download.go#L174-L178)
+* **Files:** [`download.go`](../../../download.go#L66-L69), [`download.go`](../../../download.go#L174-L178)
 * **Issue:** Only `targetPct` is reset at session start and between batch items. `lastSize`, `downloadedRaw`, and `unit` carry over. If a later URL fails before reporting progress, its ABORTED/COMPLETE summary shows the previous download's size and average speed.
 * **Fix:** Add a `DownloadStats.reset()` method (or assign a fresh `DownloadStats{}`) at both reset points.
 
 #### ~~4.4 Report every post-processing failure through `OnFailure`~~
 * *Done (`9138d3c`). The terminal failure paths in `runJob` go through a shared `failJob(job, cb, msg, output)` helper, which calls `cb.OnFailure()`, logs the output, and removes the temp file.*
-* **File:** [`pp_engine.go`](../pp_engine.go#L254-L300)
+* **File:** [`pp_engine.go`](../../../pp_engine.go#L254-L300)
 * **Issue:** In `runJob`, the non-streaming fallback path (`CombinedOutput` error) and the CPU-job `cmd.Start()` failure both log and return without calling `cb.OnFailure()`. The streaming `Wait()` failure path does call it. So these two failure paths never turn the Download button into "Retry".
 * **Fix:** Call `cb.OnFailure()` on every terminal failure path. Better, merge the failure handling into a single `failJob(job, cb, err, output)` helper so the three paths cannot drift apart again.
 
 #### ~~4.5 Make the `-update` CLI path use the bundled yt-dlp~~
 * *Done (`eee8dda`). `UpdateYtDlpCLI` became `(svc *DependencyService) UpdateCLI() error`, which runs `svc.Resolve("yt-dlp")`. `main()` calls `NewDependencyService().UpdateCLI()`.*
-* **File:** [`dependency_service.go`](../dependency_service.go#L145-L158)
+* **File:** [`dependency_service.go`](../../../dependency_service.go#L145-L158)
 * **Issue:** `UpdateYtDlpCLI` runs the bare `"yt-dlp"` from PATH. The in-app `RunUpdate` uses `svc.Resolve("yt-dlp")`. For a packaged release, which ships `bin/yt-dlp.exe`, `GoVid.exe -update` therefore updates the wrong binary or fails.
 * **Fix:** Construct a `DependencyService` in the CLI path and run `Resolve("yt-dlp")`. Simplest is to make it a method: `(svc *DependencyService) UpdateCLI() error`.
 
 #### ~~4.6 Restore `smoothMotionFPS` when the Post-Processing window opens~~
 * *Done (`f8b7c96`, superseded by 6.4). `showPostProcessing` now reloads the whole post-processing group through `applyPostProcessPrefs`, which includes `smoothMotionFPS`.*
-* **File:** [`ui_manager.go`](../ui_manager.go#L527-L546)
+* **File:** [`ui_manager.go`](../../../ui_manager.go#L527-L546)
 * **Issue:** `showPostProcessing` re-applies every persisted post-processing preference to its widget except `SmoothFPS`. This is the same class of bug as the sharpen-intensity fix in `b26f422`.
 * **Fix:** Add `ui.postProcess.smoothMotionFPS.SetValue(prefs.SmoothFPS)`. Ideally this is resolved by 6.4, which removes the duplicated reload list entirely.
 
 #### ~~4.7 Write history atomically~~
 * *Done (`43bcea9`). `AppendAll` writes to a temp file in the same directory and then `os.Rename`s it over `download_history.json`, so the "single atomic write" comment now holds.*
-* **File:** [`history_service.go`](../history_service.go#L79-L94)
+* **File:** [`history_service.go`](../../../history_service.go#L79-L94)
 * **Issue:** The `AppendAll` doc comment says "single atomic write", but `os.WriteFile` truncates the file and then writes it. A crash or power loss mid-write corrupts `download_history.json`, and from then on every `Load` fails.
 * **Fix:** Write to `download_history.json.tmp` and then `os.Rename` it over the original. Alternatively, correct the comment.
 
@@ -361,31 +361,31 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
 #### ~~5.1 `main.go` still reads the theme preference directly~~
 * *Done (`b930ffa`). `main()` now applies the startup theme with `applyTheme(mainApp, dlApp.prefSvc.Load().ThemeMode)`. The only remaining direct store access is the `NewPreferenceService(fyne.CurrentApp().Preferences())` construction in `newDownloaderApp`.*
-* **File:** [`main.go`](../main.go#L108-L116)
+* **File:** [`main.go`](../../../main.go#L108-L116)
 * **Issue:** This was missed by Category 1. `main()` calls `mainApp.Preferences().StringWithFallback(prefThemeMode, defaultThemeMode)` directly instead of going through `PreferenceService`.
 * **Fix:** Construct the `PreferenceService` before `newDownloaderApp` (or have `newDownloaderApp` return the loaded prefs) and use `prefs.ThemeMode`. Combine this with 6.6 (`applyTheme`).
 
 #### ~~5.2 `DownloadEngine` still imports Fyne~~
 * *Done (`625059f`). Plain output lines are reported with a `nil` colour, and `UIManager.appendLogLine` substitutes the theme foreground. Neither `logscanner.go` nor `download_engine.go` imports Fyne.*
-* **File:** [`logscanner.go`](../logscanner.go#L22)
+* **File:** [`logscanner.go`](../../../logscanner.go#L22)
 * **Issue:** The roadmap and the `ProcessCallbacks` doc both say the engine reports events "without importing Fyne". But `watchOutput` imports `fyne.io/fyne/v2/theme` and calls `theme.ForegroundColor()`, a deprecated API, for plain output lines.
 * **Fix:** Give these lines a named palette colour (e.g. reuse `colOutputLine`), or pass `nil` and let `appendLogLine` substitute the theme foreground. That puts the theme lookup on the UI side and removes the Fyne import from the engine.
 
 #### ~~5.3 `runYtDlp` is not yet a thin wrapper~~
 * *Done (`dd7ca23`). `runYtDlp` is now ~40 lines: it builds the request, calls `engine.Run`, then calls `recordHistory` and `reportDownloadResult`. The summary is built by `logDownloadSummary` and the pure `describeOutputFormat`, which has a table-driven test.*
-* **File:** [`download.go`](../download.go#L239-L379)
+* **File:** [`download.go`](../../../download.go#L239-L379)
 * **Issue:** The roadmap describes `runYtDlp` as "a thin wrapper", but it is still ~140 lines. About 70 of those build the COMPLETE/ABORTED summary and the "WEBM+M4A → MP4 (remuxed)" format line inline inside `fyne.Do`.
 * **Fix:** Extract a pure, table-testable `describeOutputFormat(extension string, scan scanResult) string` and a `logDownloadSummary(...)` helper. Then `runYtDlp` is just: build the request, call `engine.Run`, record history, report the result.
 
 #### ~~5.4 Services still depend on `*UIWidgets`~~
 * *Done (`c354052`). `newSessionConfig`, `newPostProcessSettings`, `applyPreferencesToWidgets`, and the new `snapshotPreferences` now live in `ui_snapshot.go`. No service or engine file references `*UIWidgets`.*
-* **Files:** [`log_service.go`](../log_service.go#L181-L207), [`postprocess.go`](../postprocess.go#L79-L101)
+* **Files:** [`log_service.go`](../../../log_service.go#L181-L207), [`postprocess.go`](../../../postprocess.go#L79-L101)
 * **Issue:** `newSessionConfig` and `newPostProcessSettings` are UI→value translators, but they live in service and engine files. As a result, `log_service.go` and `postprocess.go` can't be reasoned about, or moved into their own package later, without the widget bag.
 * **Fix:** Move both translators (and `applyPreferencesToWidgets` from `helpers.go`) into one UI-side file, e.g. `ui_snapshot.go`, alongside `UIManager.savePreferences`, which already does the same widget→struct job for `AppPreferences`.
 
 #### ~~5.5 Remaining hard-coded preference defaults~~
 * *Done (`d240597`). `LogService` uses a shared `defaultLogBufferLimit` constant for both `NewLogService` and `ParseBufferLimit`. Restore Defaults is now `UIManager.restoreDefaults`, which calls `Reset()` and then applies `onLoadPreferences()`, so no default value is repeated in UI code.*
-* **Files:** [`ui_manager.go`](../ui_manager.go#L418-L431), [`ui_manager.go`](../ui_manager.go#L505-L508), [`log_service.go`](../log_service.go#L35-L38), [`log_service.go`](../log_service.go#L262-L271)
+* **Files:** [`ui_manager.go`](../../../ui_manager.go#L418-L431), [`ui_manager.go`](../../../ui_manager.go#L505-L508), [`log_service.go`](../../../log_service.go#L35-L38), [`log_service.go`](../../../log_service.go#L262-L271)
 * **Issue:** "Restore Defaults" hard-codes `"Dark"` and `"200"`, `resetPreferences` hard-codes `200`, and `NewLogService`/`ParseBufferLimit` each hard-code `200`. These duplicate `defaultThemeMode` and `defaultLogLimit` in `preference_service.go`.
 * **Fix:** Use `defaultThemeMode` and `defaultLogLimit`, and add a `defaultLogBufferLimit = 200` int constant shared by `LogService`. Better still, have the reset handler call `applyPreferencesToWidgets(ui, manager.onLoadPreferences())` after `Reset()` so no defaults are repeated at all.
 
@@ -395,7 +395,7 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
 #### ~~6.1 Split `startDownload`~~
 * *Done (`71972a9`). `startDownload` is now a ~25-line composition. It calls `readSession`, which uses the pure, tested `collectURLs`, then `resetSession`, `openSessionLog`, `runProgressSmoother`, and `runSession`. `runSession` drives `runQueue`/`downloadItem`, `runPostProcessing`, and `notifyCompletion`, whose notification text comes from the pure `completionNotification`.*
-* **File:** [`download.go`](../download.go#L26-L230)
+* **File:** [`download.go`](../../../download.go#L26-L230)
 * **Issue:** At ~200 lines, `startDownload` is now the longest function in the codebase. It handles URL collection, validation, UI reset, session-log setup, the progress smoother goroutine, the batch loop with per-item contexts, post-processing, and three notification variants.
 * **Fix:** Extract:
   * `collectURLs(text string, batch bool) ([]string, error)`: pure and testable.
@@ -409,7 +409,7 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
 #### ~~6.2 Split `showPostProcessing`~~
 * *Done (`d11220c`). `showPostProcessing` now composes `applyPostProcessPrefs` (in place of `loadPostProcessState`; see 6.4), `wirePostProcessHandlers`, `buildLoadIndicator`, `buildPostProcessForm`, and `buildPostProcessFooter`. `sectionHeader` and `sectionDivider` moved to `ui.go`. The block thresholds are the package-level `loadBlockThresholds`, next to the `loadThreshold*` constants in `postprocess.go`.*
-* **File:** [`ui_manager.go`](../ui_manager.go#L519-L782)
+* **File:** [`ui_manager.go`](../../../ui_manager.go#L519-L782)
 * **Issue:** At ~265 lines, this is the largest UI function left. It mixes widget state reload, enable/disable wiring for 13 controls, the load-indicator construction, form layout, and window setup.
 * **Fix:** Apply the same treatment `createUI` got:
   * `loadPostProcessState(prefs)`
@@ -422,19 +422,19 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
 #### ~~6.3 Split `showPreferences` and extract history formatting~~
 * *Done (`c09910c`). `showPreferences` now uses `buildCookiesRow`, `confirmRestoreDefaults`/`restoreDefaults`, and `loadConfigFile`, which is the `onLoadConfig` flow. History text comes from the pure `formatHistoryEntries`, which has a table-driven test in `ui_manager_test.go`.*
-* **File:** [`ui_manager.go`](../ui_manager.go#L217-L285), [`ui_manager.go`](../ui_manager.go#L349-L461)
+* **File:** [`ui_manager.go`](../../../ui_manager.go#L217-L285), [`ui_manager.go`](../../../ui_manager.go#L349-L461)
 * **Issue:** `showPreferences` (~110 lines) inlines the form, the cookie picker, Restore Defaults, and the whole "Load from Config" flow. `showHistory` builds its display text inline. That text is pure logic, and it was flagged in [audit_review.md](audit_review.md) ("String formatting in history display") but never actioned.
 * **Fix:** Extract `buildCookiesRow`, `onRestoreDefaults`, and `onLoadConfig` from `showPreferences`. Add a pure `formatHistoryEntries([]DownloadHistoryEntry) string` with a table-driven test.
 
 #### ~~6.4 Single source of truth for preference→widget application~~
 * *Done (`d03ea61`). The format and quality `Options` are set in `NewDownloadControls`. `PreferenceService.Load()` resolves the platform defaults for save path and format. `applyPreferencesToWidgets` is the only writer: it composes `applyMainWindowPrefs`, `applyGeneralPrefs`, and `applyPostProcessPrefs`, and the two dialogs call their own group when they open.*
-* **Files:** [`helpers.go`](../helpers.go#L204-L243), [`ui_manager.go`](../ui_manager.go#L357-L392), [`ui_manager.go`](../ui_manager.go#L527-L546), [`ui_manager.go`](../ui_manager.go#L893-L919)
+* **Files:** [`helpers.go`](../../../helpers.go#L204-L243), [`ui_manager.go`](../../../ui_manager.go#L357-L392), [`ui_manager.go`](../../../ui_manager.go#L527-L546), [`ui_manager.go`](../../../ui_manager.go#L893-L919)
 * **Issue:** Preferences are written to widgets in four places with overlapping subsets: `applyPreferencesToWidgets`, the top of `showPreferences`, the top of `showPostProcessing`, and `loadMainWindowState`. The subsets have already drifted apart (see 4.6). At startup, `format`/`quality` are applied before their `Options` exist, so `newDownloaderApp` silently drops them and `loadMainWindowState` sets them a second time.
 * **Fix:** Set the `Options` in the widget constructors (`NewDownloadControls`). Make `applyPreferencesToWidgets` the only writer, with platform defaults resolved in `PreferenceService.Load()` or a `resolveDefaults` step. Have the dialogs call it, or a per-group variant such as `applyPostProcessPrefs`.
 
 #### ~~6.5 Centralize option lists and enum-like strings~~
 * *Done (`338b92b`). The new `options.go` defines named constants and ordered option slices (`formatOptions`, `qualityOptions`, theme, log-limit, and post-processing mode labels). The widget constructors, preference defaults, the yt-dlp and FFmpeg argument builders, and the `showConfigHelp` text all reference them.*
-* **Files:** [`ui_manager.go`](../ui_manager.go#L904-L917), [`download_engine.go`](../download_engine.go#L71-L107), [`history_service.go`](../history_service.go#L138), [`types.go`](../types.go#L91-L94), [`icons.go`](../icons.go#L79), [`postprocess.go`](../postprocess.go#L109-L182)
+* **Files:** [`ui_manager.go`](../../../ui_manager.go#L904-L917), [`download_engine.go`](../../../download_engine.go#L71-L107), [`history_service.go`](../../../history_service.go#L138), [`types.go`](../../../types.go#L91-L94), [`icons.go`](../../../icons.go#L79), [`postprocess.go`](../../../postprocess.go#L109-L182)
 * **Issue:** Many string literals are repeated across files:
   * Format names (`"MP4"`, `"MP3"`…) and quality names (`"Best Quality"`, `"1080p"`…)
   * Theme names (`"Dark"`/`"Light"`)
@@ -446,37 +446,37 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
 #### ~~6.6 Deduplicate theme application~~
 * *Done (`b930ffa`, together with 5.1). `applyTheme(app fyne.App, mode string)` in `theme.go` is the only `SetTheme` caller. It is used by `main()`, `submitPreferences`, and `restoreDefaults`.*
-* **Files:** [`main.go`](../main.go#L108-L116), [`ui_manager.go`](../ui_manager.go#L406-L413), [`ui_manager.go`](../ui_manager.go#L510-L515)
+* **Files:** [`main.go`](../../../main.go#L108-L116), [`ui_manager.go`](../../../ui_manager.go#L406-L413), [`ui_manager.go`](../../../ui_manager.go#L510-L515)
 * **Issue:** The `switch mode { case "Light": SetTheme(&lightTheme{}) default: SetTheme(&darkTheme{}) }` block appears three times.
 * **Fix:** Add `applyTheme(app fyne.App, mode string)` in `theme.go`.
 
 #### ~~6.7 Type the status-indicator states and deduplicate the pulse goroutine~~
 * *Done (`36601e7`). `type StatusState int` with `StatusIdle`, `StatusActive`, `StatusProcessing`, `StatusSuccess`, `StatusFailed`, and `StatusCanceled`. Both pulsing states share `startStatusPulse(base color.RGBA)`, and `onSetStatusIndicator` now takes a `StatusState`.*
-* **File:** [`helpers.go`](../helpers.go#L107-L177)
+* **File:** [`helpers.go`](../../../helpers.go#L107-L177)
 * **Issue:** `setStatusIndicator` takes free-form strings (`"active"`, `"processing"`, …) passed from `download.go` and `ui_manager.go`. Its `"active"` and `"processing"` branches are two copies of the same ~20-line pulse goroutine that differ only in colour.
 * **Fix:** Add `type StatusState int` with named constants (or string constants), and extract `startPulse(base color.RGBA)`. Update the `onSetStatusIndicator` callback type to match.
 
 #### ~~6.8 Name the auto-crop sentinel and the audio-only check~~
 * *Done (`072b90b`). `const autoCropSentinel` lives in `postprocess.go`. `isAudioOnlyExt(ext)` in `options.go` is used by both `DownloadEngine.BuildArgs` and `PPEngine.ApplyFilters`.*
-* **Files:** [`postprocess.go`](../postprocess.go#L166), [`pp_engine.go`](../pp_engine.go#L169-L199), [`pp_engine.go`](../pp_engine.go#L577-L578), [`download_engine.go`](../download_engine.go#L146)
+* **Files:** [`postprocess.go`](../../../postprocess.go#L166), [`pp_engine.go`](../../../pp_engine.go#L169-L199), [`pp_engine.go`](../../../pp_engine.go#L577-L578), [`download_engine.go`](../../../download_engine.go#L146)
 * **Issue:** The `"__autocrop__"` magic string appears in three places across two files. The "mp3 or m4a means audio-only" rule is written out separately in `DownloadEngine.BuildArgs` and `PPEngine.ApplyFilters`.
 * **Fix:** Add `const autoCropSentinel = "__autocrop__"` and `func isAudioOnlyExt(ext string) bool`.
 
 #### ~~6.9 Thread count passed directly instead of patched~~
 * *Done (`168525d`). The per-job thread count is computed before the jobs are built and passed into `buildFFmpegArgs`/`buildFFmpegArgsForBackend`. `patchThreadCount` was deleted.*
-* **File:** [`pp_engine.go`](../pp_engine.go#L524-L562), [`pp_engine.go`](../pp_engine.go#L645-L649)
+* **File:** [`pp_engine.go`](../../../pp_engine.go#L524-L562), [`pp_engine.go`](../../../pp_engine.go#L645-L649)
 * **Issue:** `buildFFmpegArgs` emits a `-threads 0` placeholder that `patchThreadCount` rewrites later, both in `ApplyFilters` and in `retryWithCPU`. That is two passes over the argument slice and a hidden coupling between the builder and the patcher.
 * **Fix:** Compute `threadsPerJob` before building jobs and pass it to `buildFFmpegArgsForBackend`. Then delete `patchThreadCount`.
 
 #### ~~6.10 Move single-owner types next to their owners~~
 * *Done (`5c8806a`). `AppConfig` moved to `preference_service.go` and `PostProcessJob` to `pp_engine.go`.*
-* **File:** [`types.go`](../types.go#L193-L213)
+* **File:** [`types.go`](../../../types.go#L193-L213)
 * **Issue:** `AppConfig` belongs to `preference_service.go` and `PostProcessJob` belongs to `pp_engine.go`, but both live in `types.go`. Meanwhile every newer type (`DownloadRequest`, `SessionConfig`, `DownloadRecord`, …) is defined in its owner's file.
 * **Fix:** Move both types. `types.go` then contains only the shared app/widget types.
 
 #### ~~6.11 Rename `ppFailed`~~
 * *Done (`2a688d4`). Renamed to `sessionFailed` and changed to an `atomic.Bool`.*
-* **Files:** [`types.go`](../types.go#L187-L189), [`download.go`](../download.go#L328)
+* **Files:** [`types.go`](../../../types.go#L187-L189), [`download.go`](../../../download.go#L328)
 * **Issue:** `ppFailed` is also set when a *download* fails (`runYtDlp` stores 1 on yt-dlp failure). It means "any job in this session failed", so the name misleads.
 * **Fix:** Rename it to `sessionFailed` (or `jobFailed`) and change it from `atomic.Int32` to `atomic.Bool`, since it is only ever 0/1.
 
@@ -486,36 +486,36 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
 #### ~~7.1 Remove dead code~~
 * *Done (`5e291ba`). Deleted the unused `DownloaderApp` delegates (only `clearTerminalOutput` remains), `ExitOK`/`ExitUnexpected`, the test-only `checkPostProcessingEnabled`, `LogService.IsActive`, and `GPUCapabilityService.Capability`, and the `atadenoise` case in `filterShortName`.*
-* **Unused `DownloaderApp` delegates in [`ui.go`](../ui.go#L18-L49):** `showHistory`, `showPreferences`, `showConfigHelp`, `showAbout`, `showPostProcessing`, and `getPostProcessingButton` have no production callers. `getPostProcessingButton` is the only caller of `showPostProcessing`. Only `clearTerminalOutput` is used, by `download.go`. Roadmap Phase 6 describes these as "thin delegates", but they can simply be deleted.
-* **`ExitOK`/`ExitUnexpected`** in [`types.go`](../types.go#L18-L25) are never referenced.
-* **Test-only production code:** `checkPostProcessingEnabled` ([`postprocess.go`](../postprocess.go#L343-L351)), `LogService.IsActive` ([`log_service.go`](../log_service.go#L87-L92)), and `GPUCapabilityService.Capability` ([`gpu_capability.go`](../gpu_capability.go#L121-L132)) are only called from tests. Either wire each one in where it was intended (e.g. `hasPostProcess` in `startDownload` could use `checkPostProcessingEnabled`) or delete it.
-* **`atadenoise`** case in `filterShortName` ([`postprocess.go`](../postprocess.go#L322)): no code path generates this filter any more.
+* **Unused `DownloaderApp` delegates in [`ui.go`](../../../ui.go#L18-L49):** `showHistory`, `showPreferences`, `showConfigHelp`, `showAbout`, `showPostProcessing`, and `getPostProcessingButton` have no production callers. `getPostProcessingButton` is the only caller of `showPostProcessing`. Only `clearTerminalOutput` is used, by `download.go`. Roadmap Phase 6 describes these as "thin delegates", but they can simply be deleted.
+* **`ExitOK`/`ExitUnexpected`** in [`types.go`](../../../types.go#L18-L25) are never referenced.
+* **Test-only production code:** `checkPostProcessingEnabled` ([`postprocess.go`](../../../postprocess.go#L343-L351)), `LogService.IsActive` ([`log_service.go`](../../../log_service.go#L87-L92)), and `GPUCapabilityService.Capability` ([`gpu_capability.go`](../../../gpu_capability.go#L121-L132)) are only called from tests. Either wire each one in where it was intended (e.g. `hasPostProcess` in `startDownload` could use `checkPostProcessingEnabled`) or delete it.
+* **`atadenoise`** case in `filterShortName` ([`postprocess.go`](../../../postprocess.go#L322)): no code path generates this filter any more.
 
 #### ~~7.2 Fix stale file and doc comments~~
 * *Done (`59a6daa`). Every comment in the table now matches the code. For the GPU diagnostics, the About-window claim was dropped; the diagnostics go to the session log only. The `history_service.go` comment is accurate since 4.7, and `coding_guidelines.md` §2.5 now names `LogService`.*
 | Location | Stale claim | Reality |
 |---|---|---|
-| [`download.go`](../download.go#L1-L9) header | Builds yt-dlp args and streams/parses output | Both now live in `DownloadEngine` / `logscanner.go` |
-| [`ui_manager.go`](../ui_manager.go#L41) | "owns references to all (non-main, for now) windows" | It owns the main window too |
-| [`ui_manager.go`](../ui_manager.go#L50-L51) | `prefsWindow`/`ppWindow` "opened by DownloaderApp" | Opened by `UIManager` |
-| [`types.go`](../types.go#L180) | `uiManager` "Owns secondary window state" | Owns main window layout too |
-| [`types.go`](../types.go#L110) | denoise "ATADenoise = Fast" | Options are NLMeans / hqdn3d |
-| [`postprocess.go`](../postprocess.go#L47) | "block indicator in ui.go" | `ui_manager.go` (`showPostProcessing`) |
-| [`pp_engine.go`](../pp_engine.go#L35-L37) | GPU fields zero-value "until the 'Add a user setting' roadmap item…" | Wired in `applyFFmpegFilters` |
-| [`gpu_capability.go`](../gpu_capability.go#L9-L11) | "No command-builder integration, user-facing settings, or fallback logic yet" | All three exist |
-| [`gpu_capability.go`](../gpu_capability.go#L358-L360) | Diagnostics shown in "the About window's GPU Acceleration section" | `showAbout` has no GPU section — either add it or drop the claim |
-| [`ui.go`](../ui.go#L38) | `// showPostProcessingButton …` | Function is `getPostProcessingButton` (and dead, see 7.1) |
-| [`history_service.go`](../history_service.go#L79-L81) | "single atomic write" | See 4.7 |
-| [`docs/coding_guidelines.md`](coding_guidelines.md) §2.5 | "`LogManager` uses a `sync.Mutex`" | `LogService` |
+| [`download.go`](../../../download.go#L1-L9) header | Builds yt-dlp args and streams/parses output | Both now live in `DownloadEngine` / `logscanner.go` |
+| [`ui_manager.go`](../../../ui_manager.go#L41) | "owns references to all (non-main, for now) windows" | It owns the main window too |
+| [`ui_manager.go`](../../../ui_manager.go#L50-L51) | `prefsWindow`/`ppWindow` "opened by DownloaderApp" | Opened by `UIManager` |
+| [`types.go`](../../../types.go#L180) | `uiManager` "Owns secondary window state" | Owns main window layout too |
+| [`types.go`](../../../types.go#L110) | denoise "ATADenoise = Fast" | Options are NLMeans / hqdn3d |
+| [`postprocess.go`](../../../postprocess.go#L47) | "block indicator in ui.go" | `ui_manager.go` (`showPostProcessing`) |
+| [`pp_engine.go`](../../../pp_engine.go#L35-L37) | GPU fields zero-value "until the 'Add a user setting' roadmap item…" | Wired in `applyFFmpegFilters` |
+| [`gpu_capability.go`](../../../gpu_capability.go#L9-L11) | "No command-builder integration, user-facing settings, or fallback logic yet" | All three exist |
+| [`gpu_capability.go`](../../../gpu_capability.go#L358-L360) | Diagnostics shown in "the About window's GPU Acceleration section" | `showAbout` has no GPU section — either add it or drop the claim |
+| [`ui.go`](../../../ui.go#L38) | `// showPostProcessingButton …` | Function is `getPostProcessingButton` (and dead, see 7.1) |
+| [`history_service.go`](../../../history_service.go#L79-L81) | "single atomic write" | See 4.7 |
+| [`docs/coding_guidelines.md`](../coding_guidelines.md) §2.5 | "`LogManager` uses a `sync.Mutex`" | `LogService` |
 
 #### ~~7.3 Replace deprecated Fyne APIs~~
 * *Done. `theme.PrimaryColor()` in the About window was replaced in `f3f998d`, and the `theme.ForegroundColor()` calls went away with 5.2. No deprecated Fyne colour accessors remain.*
-* `theme.PrimaryColor()` in [`ui_manager.go`](../ui_manager.go#L186-L187), which already has a `//TODO`. Use `theme.Color(theme.ColorNamePrimary)` or `accentCyan`.
-* `theme.ForegroundColor()` in [`logscanner.go`](../logscanner.go#L69) and [`logscanner.go`](../logscanner.go#L104). Removed as part of 5.2.
+* `theme.PrimaryColor()` in [`ui_manager.go`](../../../ui_manager.go#L186-L187), which already has a `//TODO`. Use `theme.Color(theme.ColorNamePrimary)` or `accentCyan`.
+* `theme.ForegroundColor()` in [`logscanner.go`](../../../logscanner.go#L69) and [`logscanner.go`](../../../logscanner.go#L104). Removed as part of 5.2.
 
 #### ~~7.4 Document or migrate the legacy `prefSmoothMotion = "upscale"` key~~
 * *Done (`a19bb96`). Smooth Motion is now stored under `"smoothMotion"`. `PreferenceService.migrateLegacyKeys` copies a stored `"upscale"` value over and removes the legacy key, which remains documented as `legacyPrefSmoothMotion`.*
-* **File:** [`preference_service.go`](../preference_service.go#L40)
+* **File:** [`preference_service.go`](../../../preference_service.go#L40)
 * **Issue:** The Smooth Motion toggle is stored under the key `"upscale"`, a holdover from before the separate Upscale feature existed. Upscale itself uses `"upscaleVideo"`. This trips up anyone inspecting the preference store.
 * **Fix:** At minimum, add a comment explaining the legacy name. Optionally, add a one-time migration in `Load()` that copies `"upscale"` → `"smoothMotion"`.
 
@@ -526,7 +526,7 @@ A second pass over the full codebase against this roadmap. `go build`, `go vet`,
 
 #### ~~7.6 Strengthen CI~~
 * *Done. CI runs `go test -race ./...` (`1877598`) and `staticcheck` pinned to v0.8.1 (`50fba89`).*
-* **File:** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
+* **File:** [`.github/workflows/ci.yml`](../../../.github/workflows/ci.yml)
 * **Fix:** After 4.1/4.2 land, change the test step to `go test -race ./...`, at least on the Ubuntu runner where cgo is already available. Optionally add `staticcheck` (the locally installed copy was built with Go 1.24 and refuses to analyse this Go 1.26 module, so reinstall it with `go install honnef.co/go/tools/cmd/staticcheck@latest`).
 
 #### ~~7.7 Minor consistency items~~

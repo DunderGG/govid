@@ -1,7 +1,7 @@
 // gpu_capability.go — Runtime GPU acceleration capability detection.
 //
 // Responsibilities:
-//   - GPUBackend identifiers matching docs/gpu-acceleration.md §3.
+//   - GPUBackend identifiers matching docs/dev/gpu-acceleration.md §3.
 //   - GPUCapabilityService: probes the bundled ffmpeg binary once per app run
 //     and caches, per backend, whether the target H.264 encoder is compiled
 //     into ffmpeg and whether it actually initializes on this machine.
@@ -11,7 +11,7 @@
 //   - Backend labels for the Post-Processing window's GPU Acceleration setting.
 //   - FormatGPUDiagnostics: per-backend availability lines for the session log.
 //
-// Scope: final-encode acceleration only (docs/gpu-acceleration.md §7).
+// Scope: final-encode acceleration only (docs/dev/gpu-acceleration.md §7).
 package main
 
 import (
@@ -26,7 +26,7 @@ import (
 )
 
 // GPUBackend is a stable configuration identifier for a GPU acceleration
-// pipeline, as defined in docs/gpu-acceleration.md §3.
+// pipeline, as defined in docs/dev/gpu-acceleration.md §3.
 type GPUBackend string
 
 // The GPU backends. Each hardware backend is named after its H.264 encoder
@@ -52,7 +52,7 @@ type BackendCapability struct {
 }
 
 // backendDef pairs a backend with the OSes it targets and its H.264 encoder,
-// per the initial platform scope in docs/gpu-acceleration.md §3.
+// per the initial platform scope in docs/dev/gpu-acceleration.md §3.
 type backendDef struct {
 	Backend GPUBackend
 	OSes    []string
@@ -169,7 +169,7 @@ func osIn(oses []string, goos string) bool {
 // isEncoderCompiled reports whether encoderName appears as an exact encoder
 // name in the output of `ffmpeg -encoders`. Each encoder line has the form
 // " V....D <name>            <description>"; matching the exact name field
-// avoids false positives from substring matches (docs/gpu-acceleration.md §4).
+// avoids false positives from substring matches (docs/dev/gpu-acceleration.md §4).
 func isEncoderCompiled(encodersOutput, encoderName string) bool {
 	for _, line := range strings.Split(encodersOutput, "\n") {
 		fields := strings.Fields(line)
@@ -242,7 +242,7 @@ type EncoderPlan struct {
 // always returns a runnable plan: GPU args when the requested backend (or,
 // for "auto", the highest-priority available backend) is usable, otherwise
 // the existing CPU encoder for containerExt. WebM always stays on the CPU
-// VP9 encoder regardless of the requested backend (docs/gpu-acceleration.md
+// VP9 encoder regardless of the requested backend (docs/dev/gpu-acceleration.md
 // §7 — no NVENC/AMF VP9 encoder in the bundled build).
 func PlanEncoder(requested GPUBackend, capabilities map[GPUBackend]BackendCapability, containerExt string) EncoderPlan {
 	if strings.ToLower(containerExt) == ".webm" {

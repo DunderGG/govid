@@ -2,7 +2,7 @@
 :: build.bat — Build script for GoVid (Windows).
 ::
 :: Prerequisites:
-::   - Go 1.21+    https://go.dev/dl/
+::   - Go 1.26.1+  https://go.dev/dl/
 ::   - go-winres   https://github.com/tc-hib/go-winres
 ::   - GCC (MinGW-w64 via MSYS2)  https://www.msys2.org/
 ::
@@ -10,7 +10,8 @@
 ::   .\build.bat
 ::
 :: The output binary (GoVid.exe) will be placed in the project root.
-:: GoVid requires yt-dlp and ffmpeg to be available on your PATH at runtime.
+:: At run time GoVid needs yt-dlp, ffmpeg, and a JavaScript runtime (Deno or
+:: Node.js), in a bin folder beside GoVid.exe or on PATH.
 setlocal
 
 :: Check required tools are installed

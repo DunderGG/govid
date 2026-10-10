@@ -1,7 +1,8 @@
 # GoVid — Architecture Overview
 
 > **Audience:** contributors and maintainers.  
-> **Keep this file current:** update it after every refactoring step (see the bottom of this page for the checklist).
+> **Keep this file current:** update it after every refactoring step (see the bottom of this page for the checklist).  
+> **Why things are done this way:** the reasons behind choices that are not obvious from the code are in [design_decisions.md](design_decisions.md).
 
 ---
 
@@ -23,8 +24,8 @@ It provides a graphical interface, real-time progress feedback, optional FFmpeg 
 
 | Diagram | File | Description |
 |---|---|---|
-| Class diagram | `docs/classes.puml` | All major structs, their fields, methods, and relationships |
-| Download sequence | `docs/sequence-full.puml` | Full startup → download → post-process → teardown flow |
+| Class diagram | `docs/dev/classes.puml` | All major structs, their fields, methods, and relationships |
+| Download sequence | `docs/dev/sequence-full.puml` | Full startup → download → post-process → teardown flow |
 
 ---
 
@@ -66,7 +67,7 @@ govid/
 ├── postprocess_window.go   UIManager.showPostProcessing — the Post-Processing window and its load indicator
 ├── log_view.go             UIManager.appendLogLine / flushLog — the batched Terminal Output log view
 ├── notices.go              UIManager.showNotice / dismissNotice — the notices above the input card
-├── gpu_capability.go       GPUCapabilityService — GPU backend capability detection and cache (see docs/gpu-acceleration.md)
+├── gpu_capability.go       GPUCapabilityService — GPU backend capability detection and cache (see docs/dev/gpu-acceleration.md)
 ├── release_service.go      ReleaseService — latest GitHub release lookups with a daily cache; version comparison
 ├── update_check.go         Startup yt-dlp and GoVid update checks, their notices, installed/latest yt-dlp versions
 ├── self_update.go          SelfUpdater — Update now: download ZIP + SHA256SUMS, verify, swap GoVid.exe, restart; startup cleanup
@@ -106,7 +107,7 @@ govid/
 ├── sys_others.go           Non-Windows: no-op hideWindow; kill process trees via a process group; freeDiskBytes (statfs)
 │
 ├── ── Config / Build ──────────────────────────────────────────────
-├── govid.json              Optional override config (loaded via "Load from Config" in Preferences)
+├── govid.example.json      Example settings file listing every key (govid.json itself is the user's own, git-ignored)
 ├── go.mod / go.sum         Module definition
 ├── build.bat / build.sh    Release build scripts (inject version via -ldflags)
 ```
@@ -342,7 +343,7 @@ At startup `checkTools` shows a notice with **Install** for a missing yt-dlp or 
 ---
 
 ### 4.11 `GPUCapabilityService` — GPU backend capability detection
-*Defined in:* `gpu_capability.go`; see `docs/gpu-acceleration.md` for the design behind it.
+*Defined in:* `gpu_capability.go`; see `docs/dev/gpu-acceleration.md` for the design behind it.
 
 Detects, once per app run, which GPU acceleration backends the bundled ffmpeg binary can actually use for final-encode acceleration. Holds `ffmpegPath` and a mutex-guarded cache keyed by `GPUBackend` (`auto`/`off`/`nvidia`/`intel`/`amd`/`vaapi`/`videotoolbox`).
 
@@ -501,7 +502,7 @@ func classify(err error) Category {
 | Post-process worker pool | `PPEngine.ApplyFilters()`; GPU jobs additionally wait on `gpuSem` (capacity 2) | same context |
 | Recording monitor | `DownloadEngine.monitorRecording()` while a live or scheduled stream runs; reports once a second through `OnRecording` | the function it returns, called as soon as `Execute` returns |
 
-**Background loops: owners and stop paths.** Audited for [priorities_3.md](priorities_3.md) #7. Each loop below has one owner and one way to stop; "marker" means it logs `[DEBUG] Loop started/stopped: <name>` with the goroutine count while Debug Output is on (`markLoop`).
+**Background loops: owners and stop paths.** Audited for the roadmap's [Goroutine Lifecycle Hygiene](../roadmap.md#goroutine-lifecycle-hygiene) item. Each loop below has one owner and one way to stop; "marker" means it logs `[DEBUG] Loop started/stopped: <name>` with the goroutine count while Debug Output is on (`markLoop`).
 
 | Loop | Owner (starts it) | Stops when | Waited for | Marker |
 |---|---|---|---|---|
@@ -639,19 +640,3 @@ rather than cancelled and the queue is saved (see **Pause and resume**).
 Tools are resolved with `depSvc.Resolve(toolName)`: prefers `./bin/<tool>[.exe]` beside the executable, falls back to `$PATH`. If neither is found, `depSvc.Check()` (called via `uiManager.checkDependencies()` at startup) prints a warning to the log, and `checkTools` shows a notice offering to install it.
 
 ---
-
-## 10. Updating this document
-
-After each refactoring step:
-
-1. **`docs/classes.puml`** — add or update the class that changed; update its relationships and fields.
-2. **`docs/architecture.md`** (this file) — update the relevant section in §4; add a row to §8 if a new persistence store is introduced; update §5 if data flows change.
-3. **`docs/refactor_roadmap.md`** — mark completed items and add next-step notes for the new component.
-4. **`docs/sequence-full.puml`** — update if the startup or download sequence changes.
-
-If a new service is extracted, add it to:
-- The `File map` table (§3)
-- The `Component reference` (§4), following the same structure as existing entries
-- `docs/classes.puml` as a new `class` block with its relationships
-
-> Keep descriptions factual and code-level. Avoid prose that could go stale.
