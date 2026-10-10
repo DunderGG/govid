@@ -1,4 +1,4 @@
-# <img src="https://github.com/user-attachments/assets/d81ed71e-cc17-4944-aafc-d94f7af758b4" alt="GoVid icon" width="64" height="64" /> **GoVid**
+# <img src="appicon.png" alt="GoVid icon" width="64" height="64" /> **GoVid**
 
 Fast, cross-platform desktop video downloader, powered by `yt-dlp` with optional FFmpeg post-processing.
 
@@ -24,6 +24,10 @@ GoVid puts yt-dlp behind a native window: paste a link, pick a format and qualit
 - **Keeps itself working**: installs and updates yt-dlp, FFmpeg, and Deno, and updates GoVid itself, with every download checked against its published SHA-256 checksum.
 
 The [User Guide](docs/user-guide.md) describes every feature and setting.
+
+<p align="center">
+  <img src="docs/images/main-window.png" alt="GoVid's main window, with a YouTube link in the Video URL field, MP4 and Best Quality selected, and the Download Now! button" width="400" />
+</p>
 
 ## 📥 Download
 
