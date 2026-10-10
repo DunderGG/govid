@@ -86,17 +86,18 @@ type toolServer struct {
 
 // newToolServer serves yt-dlp 2026.09.26, Deno v2.9.7, and FFmpeg 9.0.2.
 // FFmpeg's ZIP keeps the tools in a versioned bin/ folder, as gyan.dev's
-// does.
+// does. The ZIPs' tools are named as on this platform, as the installer
+// looks for them under their bin/ names.
 func newToolServer(t *testing.T) *toolServer {
 	t.Helper()
 	ts := &toolServer{badHash: map[string]bool{}, files: map[string][]byte{}, ffmpegName: "ffmpeg-9.0.2-essentials_build.zip"}
 	ts.files["yt-dlp.exe"] = []byte("new yt-dlp")
-	ts.files[denoAsset] = zipBytes(t, map[string]string{"deno.exe": "new deno"})
+	ts.files[denoAsset] = zipBytes(t, map[string]string{exeName("deno"): "new deno"})
 	ts.files[ts.ffmpegName] = zipBytes(t, map[string]string{
-		"ffmpeg-9.0.2-essentials_build/bin/ffmpeg.exe":  "new ffmpeg",
-		"ffmpeg-9.0.2-essentials_build/bin/ffprobe.exe": "new ffprobe",
-		"ffmpeg-9.0.2-essentials_build/bin/ffplay.exe":  "ffplay",
-		"ffmpeg-9.0.2-essentials_build/LICENSE":         "license",
+		"ffmpeg-9.0.2-essentials_build/bin/" + exeName("ffmpeg"):  "new ffmpeg",
+		"ffmpeg-9.0.2-essentials_build/bin/" + exeName("ffprobe"): "new ffprobe",
+		"ffmpeg-9.0.2-essentials_build/bin/" + exeName("ffplay"):  "ffplay",
+		"ffmpeg-9.0.2-essentials_build/LICENSE":                   "license",
 	})
 
 	ts.mux = http.NewServeMux()
