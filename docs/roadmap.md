@@ -328,6 +328,19 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 	- [X] Expose diagnostics in logs (detected backend, selected path, fallback reason) to simplify bug reports.
 	- [X] Document platform prerequisites (driver versions, required FFmpeg features) and add a quick verification checklist to release docs.
 
+### Fyne Upgrade
+> Move from Fyne 2.7.3 to the latest release (2.8.1 on 2026-10-11).
+
+- [ ] Upgrade `fyne.io/fyne/v2` with `go get fyne.io/fyne/v2@latest` and `go mod tidy`. Fyne 2.8.1 fixes RichText's word wrap breaking a word into one letter per line: in 2.7.3, when a bold word, code span, or link starts with less than a letter's width left on its line, every letter of it gets a line of its own. The guide's topics show it at 230 of the widths from 300 to 700 px (Video URL, at 437 px, grows from 290 to 2573 px tall). 2.7.3's `lineBounds` never resets the line width after its one-letter fallback; 2.8.1's `wrapWordLines` moves the segment to a new line instead, and the same check finds no such widths. A trial upgrade builds and passes `go vet`; these need fixing or checking:
+  - [ ] Fix the shortcut tests (`TestShortcutsOpenTheirWindows`, `TestShortcutsActOnTheMainWindow`, `TestDownloadShortcutWaitsForTheButton`, and any other user of the helper): `shortcuts_test.go` casts the test window's canvas to `fyne.Shortcutable`, which 2.8.1's test canvas no longer is, so they panic.
+  - [ ] Fix `TestHighlightMatchesKeepsLineEnds` in `help_window_test.go`: 2.8.1 parses a `###` heading into three segments, not one. Check that the guide's find bar still colours matches in headings and scrolls to them.
+  - [ ] Track down a crash seen once in a full test run and not again: a panic inside RichText's `updateRowBounds` (through `MeasureText`) when `showStatus` (`helpers.go`) set the status label from the `latestValueThrottle` timer (`throttle.go`). Find out whether it is only the test driver running `fyne.Do` on the timer's goroutine, or a real thread-safety problem; run the tests with `-race`.
+  - [ ] Check the guide's find bar against 2.8.1's RichText: it relies on RichText laying out a zero-size inline segment (`matchMark` in `guide_search.go`) where the match starts, and on positions set by layout to scroll there (`scrollToMark` in `help_window.go`). `TestGuidePanelScrollsToMatch` covers it in the test driver; also step through matches in the real window.
+  - [ ] Check **Open in browser**: the upgrade also moves goldmark from 1.7.8 to 1.8.2, which renders the guide's web page (`guide_html.go`).
+  - [ ] Read Fyne's changelogs for 2.8.0 and 2.8.1 for changed behaviour and deprecations, and replace any deprecated calls.
+  - [ ] Go through the app by hand in both themes, following the [manual testing guide](dev/manual-testing.md): 2.8 rewrote text layout (wrapping and truncation), so look closely at the log view, Queue rows, the History list, the Info… window, dialogs, the guide window while resizing it, and the main window at small sizes.
+  - [ ] Remove the word-wrap entry from Known Limitations.
+
 ---
 
 ## 🧹 Code Quality & Refactoring
@@ -536,4 +549,4 @@ See the [refactoring roadmap](dev/archive/refactor_roadmap.md) for component-lev
 
 ## 🐛 Known Limitations
 
-> No known limitations at this time — all previously identified issues have been moved to the relevant roadmap sections above.
+- At some window widths, a bold word, code value, or link in the guide window is broken into one letter per line. This is a bug in Fyne 2.7.3's word wrap, fixed in 2.8.1; see [Fyne Upgrade](#fyne-upgrade). A slightly different window width, or **Open in browser**, avoids it.
