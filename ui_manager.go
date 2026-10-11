@@ -391,22 +391,22 @@ func (manager *UIManager) createUI() {
 	})
 }
 
-// buildHeader constructs the app logo/title header shown atop the main window.
+// buildHeader constructs the app logo/title header shown atop the main
+// window: one compact row, so it costs little of the window's height.
 func buildHeader() fyne.CanvasObject {
 	logo := canvas.NewImageFromResource(resourceAppiconPng)
 	logo.FillMode = canvas.ImageFillContain
-	logo.SetMinSize(fyne.NewSize(128, 128))
+	logo.SetMinSize(fyne.NewSize(40, 40))
 
 	titleText := canvas.NewText("GoVid", accentCyan)
-	titleText.TextSize = 38
+	titleText.TextSize = 24
 	titleText.TextStyle = fyne.TextStyle{Bold: true}
 
 	subtitleText := canvas.NewText("Video Downloader", theme.Color(theme.ColorNameDisabled))
-	subtitleText.TextSize = 23
+	subtitleText.TextSize = 16
 	subtitleText.TextStyle = fyne.TextStyle{Italic: true}
 
-	headerLeft := container.NewVBox(titleText, subtitleText)
-	return container.NewHBox(headerLeft, layout.NewSpacer(), logo)
+	return container.NewHBox(logo, container.NewCenter(titleText), container.NewCenter(subtitleText))
 }
 
 // configureEntryMode switches the URL entry between single-line and

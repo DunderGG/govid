@@ -25,7 +25,8 @@ func (app *DownloaderApp) clearTerminalOutput() {
 // roundedCard wraps content in a rounded-rectangle background panel, giving
 // cards a softer, more modern look than the default widget.Card. It renders
 // a themed background with a subtle 1px border and 10px corner radius, then
-// layers an optional italic subtitle and the provided content on top.
+// layers an optional italic subtitle and the provided content on top. An
+// empty subtitle takes no space.
 // Colors are sourced from the active theme so they work in both dark and light modes.
 func roundedCard(subtitle string, content fyne.CanvasObject) fyne.CanvasObject {
 	bg := canvas.NewRectangle(theme.Color(theme.ColorNameInputBackground))
@@ -33,8 +34,11 @@ func roundedCard(subtitle string, content fyne.CanvasObject) fyne.CanvasObject {
 	bg.StrokeColor = theme.Color(theme.ColorNameSeparator)
 	bg.StrokeWidth = 1
 
-	sub := widget.NewLabelWithStyle(subtitle, fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
-	inner := container.NewVBox(sub, content)
+	inner := content
+	if subtitle != "" {
+		sub := widget.NewLabelWithStyle(subtitle, fyne.TextAlignLeading, fyne.TextStyle{Italic: true})
+		inner = container.NewVBox(sub, content)
+	}
 	return container.NewStack(bg, container.NewPadded(inner))
 }
 
