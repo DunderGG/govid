@@ -113,11 +113,11 @@ type UIManager struct {
 	onPauseResume        func()                                                               // DownloaderApp.pauseOrResume: the main window's Pause / Resume button
 	onPauseItem          func(id int)                                                         // DownloaderApp.pauseItem: a queue row's Pause
 	onSkipItem           func(id int) bool                                                    // DownloaderApp.skipItem: a queue row's Skip
-	onShowFormats        func()                                                               // DownloaderApp.showFormatsForURL: the Formats… button
+	onShowFormats        func()                                                               // DownloaderApp.showFormatsForURL: the Info… button
 	onCopyDiagnostics    func()                                                               // DownloaderApp.copyDiagnostics: Help → Copy diagnostics
 	onIsPortable         func() bool                                                          // DownloaderApp.portable: settings are kept beside GoVid
 	onSetPortable        func(on bool, revert func())                                         // DownloaderApp.onPortableChanged: the Portable Mode toggle
-	onItemFormats        func(id int)                                                         // DownloaderApp.showFormatsForItem: a waiting row's Formats…
+	onItemFormats        func(id int)                                                         // DownloaderApp.showFormatsForItem: a waiting row's Info…
 	onDiscardPaused      func(id int)                                                         // DownloaderApp.discardPausedItem: a paused row's Remove
 	onLoadHistory        func() ([]DownloadHistoryEntry, error)                               // HistoryService.Load
 	onClearHistory       func() error                                                         // HistoryService.Clear
@@ -553,12 +553,12 @@ func (manager *UIManager) buildInputCard(themeMode string) fyne.CanvasObject {
 }
 
 // buildURLRows returns the input card's "Video URL:" header, with the
-// Formats…, Load from file…, and Batch Mode controls, and the URL field's
+// Info…, Load from file…, and Batch Mode controls, and the URL field's
 // row, with its paste and clear buttons.
 func (manager *UIManager) buildURLRows() (header, row fyne.CanvasObject) {
 	ui := manager.ui
 	loadFileBtn := widget.NewButtonWithIcon("Load from file…", theme.FileTextIcon(), manager.showLoadURLFile)
-	formatsBtn := widget.NewButtonWithIcon("Formats…", theme.ListIcon(), manager.onShowFormats)
+	formatsBtn := widget.NewButtonWithIcon("Info…", theme.InfoIcon(), manager.onShowFormats)
 	pasteBtn := widget.NewButtonWithIcon("", theme.ContentPasteIcon(), manager.pasteURLs)
 	clearBtn := widget.NewButtonWithIcon("", theme.ContentClearIcon(), func() {
 		ui.download.entry.SetText("")

@@ -4,15 +4,17 @@
 // Responsibilities:
 //   - UIManager.showFormatWindow: a table of a video's formats (see
 //     formatRows) with a filter (all / video only / audio only / video +
-//     audio). The rows the current settings would download are marked,
-//     and choosing a video row and an audio row (or one combined row) picks
-//     them: "Use these formats" passes the -f value ("247+251") back,
-//     "Automatic" clears it.
+//     audio), under the video's title and a line about it (videoSummary:
+//     uploader, length or live status, subtitles), all from the probe that
+//     lists the formats. The rows the current settings would download are
+//     marked, and choosing a video row and an audio row (or one combined
+//     row) picks them: "Use these formats" passes the -f value ("247+251")
+//     back, "Automatic" clears it.
 //   - formatChoice: the video and audio rows chosen so far.
-//   - DownloaderApp.showFormatsForURL / showFormatsForItem: the Formats…
+//   - DownloaderApp.showFormatsForURL / showFormatsForItem: the Info…
 //     button next to the URL field, for the single URL there (the pick is
 //     kept for that URL until a session queues it), and the Queue panel's
-//     Formats… on a waiting row (the pick is set on the item).
+//     Info… on a waiting row (the pick is set on the item).
 package main
 
 import (
@@ -29,7 +31,7 @@ import (
 
 // formatColumnWidths are the widths of the Format Browser's columns, in
 // formatColumns order.
-var formatColumnWidths = []float32{48, 96, 40, 56, 56, 56, 64, 72, 96}
+var formatColumnWidths = []float32{48, 96, 44, 56, 56, 60, 72, 92, 96}
 
 // formatChoice is the video and audio format chosen in the Format Browser.
 type formatChoice struct {
@@ -71,6 +73,41 @@ func choiceFor(info MediaInfo, pick string) formatChoice {
 		choice.choose(format)
 	}
 	return choice
+}
+
+// videoSummary describes the video for the Format Browser, under its title:
+// who uploaded it, its length (or that it is a live or scheduled stream),
+// and its subtitles, e.g. "Blender · 10m 30s · Subtitles: de, en;
+// auto-generated: 157 languages".
+func videoSummary(info MediaInfo) string {
+	var parts []string
+	if info.Uploader != "" {
+		parts = append(parts, info.Uploader)
+	}
+	switch {
+	case info.IsLive():
+		parts = append(parts, "Live now")
+	case info.IsUpcoming() && !info.releaseTime().IsZero():
+		parts = append(parts, "Scheduled stream, starts "+info.releaseTime().Format("2 Jan 15:04"))
+	case info.IsUpcoming():
+		parts = append(parts, "Scheduled stream")
+	case info.IsPostLive():
+		parts = append(parts, "Stream just ended")
+	case info.Duration > 0:
+		parts = append(parts, formatPlaylistLength(info.Duration))
+	}
+	manual, automatic := subtitleLanguages(info)
+	switch {
+	case len(manual) > 0 && len(automatic) > 0:
+		parts = append(parts, fmt.Sprintf("Subtitles: %s; auto-generated: %s", describeLanguages(manual), describeLanguages(automatic)))
+	case len(manual) > 0:
+		parts = append(parts, "Subtitles: "+describeLanguages(manual))
+	case len(automatic) > 0:
+		parts = append(parts, "Auto-generated subtitles: "+describeLanguages(automatic))
+	default:
+		parts = append(parts, "No subtitles")
+	}
+	return strings.Join(parts, " · ")
 }
 
 // showFormatWindow shows info's formats. extension is the output
@@ -122,13 +159,15 @@ func (manager *UIManager) showFormatWindow(info MediaInfo, pick, extension strin
 
 	title := widget.NewLabelWithStyle(info.Title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	title.Truncation = fyne.TextTruncateEllipsis
-	top := container.NewVBox(title,
+	details := widget.NewLabel(videoSummary(info))
+	details.Wrapping = fyne.TextWrapWord
+	top := container.NewVBox(title, details,
 		container.NewBorder(nil, nil, widget.NewLabel("Show:"), nil, fixedWidth(filterSelect, 160)),
 		widget.NewLabel("● marks what will download. Click a video row and an audio row (or one with both) to choose."),
 		newFormatHeader())
 	content := container.NewBorder(top, summary, nil, nil, list)
 
-	dlg := dialog.NewCustomWithoutButtons("Formats", content, manager.mainWindow)
+	dlg := dialog.NewCustomWithoutButtons("Video Info", content, manager.mainWindow)
 	// A closure, not the method value choice.pick, which would copy choice
 	// before any row is clicked.
 	setFormatButtons(dlg, useBtn, func() string { return choice.pick() }, onPick)
@@ -282,11 +321,11 @@ func (picks *formatPicks) take(url string) string {
 	return pick
 }
 
-// checkingFormatsStatus is the status while Formats… probes a URL outside a
+// checkingFormatsStatus is the status while Info… probes a URL outside a
 // session.
-const checkingFormatsStatus = "Status: Checking the formats…"
+const checkingFormatsStatus = "Status: Checking the link…"
 
-// showFormatsForURL is the Formats… button next to the URL field: it
+// showFormatsForURL is the Info… button next to the URL field: it
 // probes the single URL there, off the UI thread, and shows its formats;
 // a pick is kept for that URL until it is downloaded. Must be called on
 // the UI thread.
@@ -297,7 +336,7 @@ func (app *DownloaderApp) showFormatsForURL() {
 		dialog.ShowError(err, app.window)
 		return
 	case len(urls) > 1:
-		dialog.ShowInformation("Formats", "Formats… works on one URL. For videos in a batch, use the Formats button on their rows in the Queue panel once the queue has started.", app.window)
+		dialog.ShowInformation("Video Info", "Info… works on one URL. For videos in a batch, use the Info button on their rows in the Queue panel once the queue has started.", app.window)
 		return
 	}
 	url := urls[0]
@@ -324,7 +363,7 @@ func (app *DownloaderApp) probeFormatsForURL(url string, req DownloadRequest) <-
 		app.statusThrottle.Replace(checkingFormatsStatus, "Status: Idle")
 		fyne.DoAndWait(func() {
 			if err != nil {
-				dialog.ShowError(fmt.Errorf("could not list the formats: %w", err), app.window)
+				dialog.ShowError(fmt.Errorf("could not check the link: %w", err), app.window)
 				return
 			}
 			app.uiManager.showFormatWindow(info, req.FormatPick, formatExtension(req.Format), func(pick string) {
@@ -336,7 +375,7 @@ func (app *DownloaderApp) probeFormatsForURL(url string, req DownloadRequest) <-
 	return done
 }
 
-// showFormatsForItem is the Queue panel's Formats… on a waiting row: it
+// showFormatsForItem is the Queue panel's Info… on a waiting row: it
 // shows the item's formats, probing it first when its probe answer is
 // missing or old, and sets the pick on the item.
 func (app *DownloaderApp) showFormatsForItem(id int) {
@@ -354,7 +393,7 @@ func (app *DownloaderApp) showFormatsForItem(id int) {
 		if info == nil || len(info.Formats) == 0 {
 			probed, err := app.newDownloadEngine().ProbeVideo(context.Background(), req)
 			if err != nil {
-				fyne.Do(func() { dialog.ShowError(fmt.Errorf("could not list the formats: %w", err), app.window) })
+				fyne.Do(func() { dialog.ShowError(fmt.Errorf("could not check the link: %w", err), app.window) })
 				return
 			}
 			info = &probed

@@ -30,6 +30,7 @@ const probeMaxAge = 30 * time.Minute
 type MediaInfo struct {
 	Type     string          `json:"_type"` // "playlist" for playlists; "video" or "" for a single video
 	Title    string          `json:"title"`
+	Uploader string          `json:"uploader"` // the channel or account; "" when the site does not say
 	Duration float64         `json:"duration"` // seconds; 0 when unknown
 	Entries  []PlaylistEntry `json:"entries"`  // playlist items, in playlist order
 

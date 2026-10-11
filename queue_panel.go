@@ -71,7 +71,7 @@ func newQueueRow() *queueRow {
 		retry:   widget.NewButtonWithIcon("Retry", theme.ViewRefreshIcon(), nil),
 		pause:   widget.NewButtonWithIcon("Pause", theme.MediaPauseIcon(), nil),
 		resume:  widget.NewButtonWithIcon("Resume", theme.MediaPlayIcon(), nil),
-		formats: widget.NewButtonWithIcon("", theme.ListIcon(), nil),
+		formats: widget.NewButtonWithIcon("", theme.InfoIcon(), nil),
 	}
 	row.title.Truncation = fyne.TextTruncateEllipsis
 	row.ExtendBaseWidget(row)

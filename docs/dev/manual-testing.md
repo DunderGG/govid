@@ -103,7 +103,7 @@ For a scheduled stream or premiere (**Wait and record**), look for an upcoming p
 
 ## Checking a link
 
-To see whether a link still works, and what yt-dlp finds there, without downloading:
+In GoVid, **Info…** does this: it shows the title, uploader, length or live status, subtitles, and formats. To check a link outside the app, for example when GoVid itself fails on it:
 
 ```sh
 external/yt-dlp.exe --skip-download --print "%(title)s | %(duration)s s | %(live_status)s | %(dynamic_range)s" <URL>

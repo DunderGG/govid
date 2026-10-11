@@ -124,6 +124,41 @@ func TestDescribeDownload(t *testing.T) {
 	}
 }
 
+func TestVideoSummary(t *testing.T) {
+	langs := func(codes ...string) map[string]json.RawMessage {
+		m := map[string]json.RawMessage{}
+		for _, code := range codes {
+			m[code] = json.RawMessage(`[]`)
+		}
+		return m
+	}
+	many := make([]string, maxListedLanguages+1)
+	for i := range many {
+		many[i] = string(rune('a'+i)) + "x"
+	}
+	release := time.Date(2026, 10, 12, 18, 30, 0, 0, time.Local)
+	tests := []struct {
+		name string
+		info MediaInfo
+		want string
+	}{
+		{"fixture", fixtureInfo(t), "Rick Astley · 3m 33s · No subtitles"},
+		{"both kinds", MediaInfo{Uploader: "Blender", Duration: 630, Subtitles: langs("en", "de"), AutomaticCaptions: langs(many...)},
+			"Blender · 10m 30s · Subtitles: de, en; auto-generated: 13 languages"},
+		{"auto-generated only", MediaInfo{Duration: 263, AutomaticCaptions: langs("en")}, "4m 23s · Auto-generated subtitles: en"},
+		{"live", MediaInfo{Uploader: "Lofi Girl", LiveStatus: liveStatusLive}, "Lofi Girl · Live now · No subtitles"},
+		{"scheduled", MediaInfo{LiveStatus: liveStatusUpcoming, ReleaseTimestamp: float64(release.Unix())}, "Scheduled stream, starts 12 Oct 18:30 · No subtitles"},
+		{"scheduled, no time", MediaInfo{LiveStatus: liveStatusUpcoming}, "Scheduled stream · No subtitles"},
+		{"just ended", MediaInfo{LiveStatus: liveStatusPostLive, Duration: 3600}, "Stream just ended · No subtitles"},
+		{"nothing known", MediaInfo{}, "No subtitles"},
+	}
+	for _, tt := range tests {
+		if got := videoSummary(tt.info); got != tt.want {
+			t.Errorf("%s: videoSummary = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
 func TestFormatChoice(t *testing.T) {
 	info := fixtureInfo(t)
 	format := func(id string) FormatInfo {
@@ -175,6 +210,16 @@ func TestFormatArgs(t *testing.T) {
 	}
 }
 
+func TestFormatHeadersFitTheirColumns(t *testing.T) {
+	_ = test.NewApp()
+	for i, name := range formatColumns {
+		need := widget.NewLabelWithStyle(name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}).MinSize().Width
+		if need > formatColumnWidths[i] {
+			t.Errorf("column %q is %.0f wide, but its header needs %.1f", name, formatColumnWidths[i], need)
+		}
+	}
+}
+
 func TestFormatWindowPicksAVideoAndAnAudioRow(t *testing.T) {
 	_ = test.NewApp()
 	window := test.NewWindow(nil)
@@ -188,6 +233,7 @@ func TestFormatWindowPicksAVideoAndAnAudioRow(t *testing.T) {
 	overlay := window.Canvas().Overlays().Top()
 	var list *widget.List
 	var use *widget.Button
+	summaryShown := false
 	walkObjects(overlay, func(obj fyne.CanvasObject) {
 		switch o := obj.(type) {
 		case *widget.List:
@@ -196,10 +242,15 @@ func TestFormatWindowPicksAVideoAndAnAudioRow(t *testing.T) {
 			if o.Text == "Use these formats" {
 				use = o
 			}
+		case *widget.Label:
+			summaryShown = summaryShown || o.Text == videoSummary(info)
 		}
 	})
 	if list == nil || use == nil {
 		t.Fatal("the window has no format list or Use button")
+	}
+	if !summaryShown {
+		t.Errorf("the window does not show %q", videoSummary(info))
 	}
 	rows := formatRows(info, filterAll)
 	for i, row := range rows {

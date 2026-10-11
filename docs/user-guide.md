@@ -22,7 +22,7 @@ This guide covers everything GoVid can do, from a first download to post-process
 - [Choosing what to download](#choosing-what-to-download)
   - [Output format](#output-format)
   - [Max Quality](#max-quality)
-  - [Format browser and preferred codec](#format-browser-and-preferred-codec)
+  - [Video info, formats, and preferred codec](#video-info-formats-and-preferred-codec)
   - [Trimming](#trimming)
 - [What you get](#what-you-get)
   - [File names](#file-names)
@@ -72,7 +72,7 @@ Progress shows in the status line, the progress bar, and the **Terminal Output**
 
 | Control | What it does |
 | :--- | :--- |
-| **Video URL** | The link to download. Beside it: **Load from file…**, the paste button, the clear button, and **Formats…** |
+| **Video URL** | The link to download. Beside it: **Load from file…**, the paste button, the clear button, and **Info…** |
 | **Preset** | Applies a saved set of settings. See [Presets](#presets) |
 | **Output Format** / **Max Quality** | The file type and the highest resolution to download |
 | **Trim Start** / **Trim End** | Download only part of a video. See [Trimming](#trimming) |
@@ -143,7 +143,7 @@ Below the status line, the **Queue** and **Terminal Output** tabs share the rest
 
 While the queue runs, you can:
 
-- move **waiting** videos up or down (the list order is the download order), remove them, or open **Formats…** to choose their formats;
+- move **waiting** videos up or down (the list order is the download order), remove them, or open **Info…** to see what they are and choose their formats;
 - **Pause** or **Skip** the video that is downloading, and the queue moves on to the next one;
 - **Resume** a paused video, which moves it to the front of the waiting videos and continues where it stopped, or remove it, which deletes what it had downloaded;
 - **Retry** a video that failed or was skipped, which puts it back at the end of the queue.
@@ -196,9 +196,11 @@ GoVid remuxes or converts the download to the format you choose.
 
 A capped download is named after the resolution it actually got, for example `_720p`. When a video is not available at the cap, GoVid says so in the log and in a notice above the input card. It then downloads the best version below the cap. If the site has no version at or below the cap, GoVid downloads the best version available and warns you. Audio formats ignore this setting.
 
-### Format browser and preferred codec
+### Video info, formats, and preferred codec
 
-**Formats…** (next to the URL field, and on each waiting row of the Queue panel) lists every format the site offers. For each one it shows the resolution, frame rate, HDR, video and audio codec, bitrate, container, and size (`~` marks an estimate). **Show** narrows the list to video only, audio only, or video with audio.
+**Info…** (next to the URL field, and on each waiting row of the Queue panel) checks the link without downloading anything. At the top it shows the video's title and, below it, who uploaded it, how long it is (or that it is a live or scheduled stream), and which subtitles it has, for example "Blender · 10m 30s · Subtitles: de, en; auto-generated: 157 languages". Use it to make sure a link is the video you want before you download it.
+
+Below that it lists every format the site offers. For each one it shows the resolution, frame rate, HDR, video and audio codec, bitrate, container, and size (`~` marks an estimate). **Show** narrows the list to video only, audio only, or video with audio.
 
 ● marks what your **Output Format** and **Max Quality** would download. To choose for yourself, click a video row and an audio row, or one row that has both, then **Use these formats**. **Automatic** goes back to letting your settings choose. Either way, the file is still converted to your Output Format.
 
@@ -389,7 +391,7 @@ The **⋮** button beside the dropdown offers:
 | **Subtitles** / **Subtitle Languages** | See [Subtitles](#subtitles) |
 | **Portable Mode** | See [Portable Mode](#portable-mode) |
 | **Filename Template** | See [File names](#file-names) |
-| **Preferred Video Codec** | See [Format browser and preferred codec](#format-browser-and-preferred-codec) |
+| **Preferred Video Codec** | See [Video info, formats, and preferred codec](#video-info-formats-and-preferred-codec) |
 | **Simultaneous Downloads** | See [Simultaneous downloads](#simultaneous-downloads) |
 | **Max Download Speed** | Caps the download bandwidth, for example `50K`, `5M`, or `10G`. Leave it empty for no limit |
 | **Application Theme** | **System** (default) follows your computer's light or dark setting and switches along with it. **Dark** and **Light** stay fixed |
@@ -566,7 +568,7 @@ The Ctrl shortcuts work anywhere in the main window, also while you type in the 
 
 **YouTube offers fewer formats than expected.** Make sure a JavaScript runtime is installed. **Tools → Components** installs Deno.
 
-**The video is not available at my chosen quality.** GoVid downloads the closest version and says so in the log. Open **Formats…** to see what the site offers.
+**The video is not available at my chosen quality.** GoVid downloads the closest version and says so in the log. Open **Info…** to see what the site offers.
 
 **Post-processing is very slow.** Re-encoding is heavy work. Check the **Estimated Processing Load** meter, choose a GPU **Encoder Backend**, and avoid WebM, which always encodes on the CPU.
 
