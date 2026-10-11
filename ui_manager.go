@@ -72,23 +72,26 @@ type UIManager struct {
 	notices   []notice
 	noticeBox *fyne.Container
 
-	// The Queue panel; see queue_panel.go. queue, queueSnapshot, queueBox,
-	// and queuePanel are only touched on the UI thread.
+	// The Queue panel; see queue_panel.go. queue, queueSnapshot, and
+	// queuePanel are only touched on the UI thread.
 	queue         *QueueModel
 	queueSnapshot []queueEntry
-	queueBox      *fyne.Container
 	queuePanel    *queuePanel
 	queueThrottle *latestValueThrottle[int64] // coalesces redraws; the value is queueVersion
 	queueVersion  atomic.Int64
 
-	// The View menu's settings and the parts of the window it shows or
-	// hides; see view.go. Only touched on the UI thread.
+	// The View menu's settings and the tabs it shows or hides; see view.go.
+	// Only touched on the UI thread.
 	view             ViewSettings
-	terminal         *fyne.Container // the terminal output and its heading
+	tabs             *container.AppTabs
+	queueTab         *container.TabItem
+	terminalTab      *container.TabItem
+	queueSelected    bool // the Queue tab is selected, kept when the window is rebuilt
+	queueMenuItem    *fyne.MenuItem
 	terminalMenuItem *fyne.MenuItem
-	terminalHint     *widget.Button // "New warnings": shown while terminalUnseen
-	terminalUnseen   bool           // a warning or error was logged while the terminal output was hidden
-	shownHeight      float32        // the window's height when the terminal output was last hidden
+	terminalHint     *widget.Button // "New warnings": shown while terminalUnseen and the Terminal Output tab is removed
+	terminalUnseen   bool           // a warning or error was logged while the terminal output was out of sight
+	shownHeight      float32        // the window's height when the tabs were last hidden
 	windowMaximized  func(fyne.Window) bool
 
 	// Presets; see preset_ui.go. Only touched on the UI thread.
@@ -383,29 +386,21 @@ func (manager *UIManager) createUI() {
 
 	manager.noticeBox = container.NewVBox()
 	manager.renderNotices()
-	manager.queueBox = container.NewVBox()
-	manager.renderQueuePanel()
 
 	topContent := container.NewVBox(
 		header,
 		manager.noticeBox,
 		inputCard,
 		statusCard,
-		manager.queueBox,
 	)
 
-	// The terminal output fills the rest of the window; View → Terminal
-	// Output hides it.
-	manager.terminal = container.NewBorder(
-		container.NewVBox(
-			widget.NewSeparator(),
-			widget.NewLabelWithStyle("Terminal Output:", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
-		),
-		nil, nil, nil, logPane,
-	)
-	manager.applyTerminalShown()
+	// The Queue panel and the terminal output fill the rest of the window,
+	// as tabs; see view.go.
+	manager.queuePanel = manager.buildQueuePanel()
+	tabs := manager.buildTabs(manager.queuePanel.content, logPane)
+	manager.refreshQueue()
 
-	content := container.NewBorder(topContent, footer, nil, nil, manager.terminal)
+	content := container.NewBorder(topContent, footer, nil, nil, tabs)
 	manager.mainWindow.SetContent(container.NewPadded(content))
 	manager.mainWindow.SetOnDropped(func(_ fyne.Position, items []fyne.URI) {
 		manager.handleDrop(items)
@@ -655,7 +650,7 @@ func (manager *UIManager) buildLogPane() *container.Scroll {
 	spacer := canvas.NewRectangle(color.Transparent)
 	spacer.SetMinSize(fyne.NewSize(0, 10))
 	ui.download.output = container.NewScroll(container.NewVBox(ui.download.logList, spacer))
-	ui.download.output.SetMinSize(fyne.NewSize(0, 200))
+	ui.download.output.SetMinSize(fyne.NewSize(0, tabAreaMinHeight))
 	return ui.download.output
 }
 

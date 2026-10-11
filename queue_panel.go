@@ -1,10 +1,10 @@
-// queue_panel.go — The Queue panel above the log.
+// queue_panel.go — The Queue panel: the Queue tab below the status card.
 //
 // Responsibilities:
 //   - UIManager.showQueue: attaches a session's QueueModel to the panel. The
-//     panel is shown while the queue holds more than one item, as a
-//     collapsible card titled with the queue's progress ("Queue — 7 of 20
-//     done, 1 failed").
+//     panel lists the queue while it holds more than one item, and the tab
+//     is then titled with the queue's progress ("Queue — 7 of 20 done, 1
+//     failed"). The tabs themselves are in view.go.
 //   - queueRow: one row of the panel: the item's status and title, plus the
 //     actions its status allows: Move up / Move down / Remove while waiting,
 //     Skip while it runs, and Retry once it failed or was skipped (while the
@@ -25,14 +25,11 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// queueListHeight is the height of the Queue panel's list when it is open.
-const queueListHeight = 170
-
-// queuePanel holds the widgets of the Queue panel for one queue.
+// queuePanel holds the widgets of the Queue tab.
 type queuePanel struct {
-	accordion *widget.Accordion
-	item      *widget.AccordionItem
-	list      *widget.List
+	content fyne.CanvasObject // the tab's content
+	list    *widget.List
+	empty   *widget.Label // shown instead of the list while the queue holds at most one item
 }
 
 // queueActions are what a queue row's buttons do.
@@ -141,17 +138,23 @@ func (row *queueRow) show(entry queueEntry, running bool, actions queueActions) 
 			button.Hide()
 		}
 	}
+	// The list reuses rows, so lay this one out again: showing or hiding
+	// a button does not move the title and the buttons beside it.
+	row.Refresh()
 }
 
-// showQueue shows queue in the Queue panel and keeps the panel up to date
-// as it changes. Call it before the queue is shared with other goroutines,
-// since it sets queue.OnChanged.
+// showQueue shows queue in the Queue tab and keeps the tab up to date as it
+// changes, switching to the tab if the queue holds more than one item. Call
+// it before the queue is shared with other goroutines, since it sets
+// queue.OnChanged.
 func (manager *UIManager) showQueue(queue *QueueModel) {
 	queue.OnChanged = manager.queueChanged
 	fyne.Do(func() {
 		manager.queue = queue
-		manager.queueSnapshot = queue.Snapshot()
-		manager.renderQueuePanel()
+		manager.refreshQueue()
+		if len(manager.queueSnapshot) > 1 {
+			manager.selectTab(manager.queueTab)
+		}
 	})
 }
 
@@ -165,24 +168,9 @@ func (manager *UIManager) flushQueue() {
 	manager.queueThrottle.Flush()
 }
 
-// renderQueuePanel builds the panel for manager.queue into queueBox,
-// keeping it open or closed as it was. Must be called on the UI thread.
-func (manager *UIManager) renderQueuePanel() {
-	if manager.queueBox == nil {
-		return
-	}
-	open := manager.queuePanel == nil || manager.queuePanel.item.Open
-	manager.queuePanel = nil
-	manager.queueBox.Objects = nil
-	if manager.queue != nil {
-		manager.queuePanel = manager.buildQueuePanel(open)
-		manager.queueBox.Add(manager.queuePanel.accordion)
-	}
-	manager.refreshQueue()
-}
-
-// buildQueuePanel builds the collapsible card and its list.
-func (manager *UIManager) buildQueuePanel(open bool) *queuePanel {
+// buildQueuePanel builds the Queue tab's list, and the note shown instead
+// of it while there is no queue of several videos.
+func (manager *UIManager) buildQueuePanel() *queuePanel {
 	actions := queueActions{
 		move:    func(id, delta int) { manager.queueAction(func(queue *QueueModel) { queue.Move(id, delta) }) },
 		remove:  func(id int) { manager.queueAction(func(queue *QueueModel) { queue.Remove(id) }) },
@@ -209,12 +197,16 @@ func (manager *UIManager) buildQueuePanel(open bool) *queuePanel {
 			}
 		},
 	)
+	empty := widget.NewLabel("When you download several videos at once, they are listed here.")
+	empty.Importance = widget.LowImportance
+	empty.Wrapping = fyne.TextWrapWord
 	spacer := canvas.NewRectangle(color.Transparent)
-	spacer.SetMinSize(fyne.NewSize(0, queueListHeight))
-
-	item := widget.NewAccordionItem("Queue", container.NewStack(spacer, list))
-	item.Open = open
-	return &queuePanel{accordion: widget.NewAccordion(item), item: item, list: list}
+	spacer.SetMinSize(fyne.NewSize(0, tabAreaMinHeight))
+	return &queuePanel{
+		content: container.NewStack(spacer, container.NewVBox(empty), list),
+		list:    list,
+		empty:   empty,
+	}
 }
 
 // queueAction runs a row action on the queue and redraws the panel at once.
@@ -226,21 +218,30 @@ func (manager *UIManager) queueAction(action func(queue *QueueModel)) {
 	manager.refreshQueue()
 }
 
-// refreshQueue redraws the panel from the queue's current state. The panel
-// is hidden unless the queue holds more than one item. Must be called on
-// the UI thread.
+// refreshQueue redraws the Queue tab from the queue's current state. The
+// list, and the queue's progress in the tab's title, show only while the
+// queue holds more than one item. Must be called on the UI thread.
 func (manager *UIManager) refreshQueue() {
 	panel := manager.queuePanel
 	if panel == nil {
 		return
 	}
-	manager.queueSnapshot = manager.queue.Snapshot()
-	panel.item.Title = "Queue — " + manager.queue.Summary()
-	panel.accordion.Refresh()
-	panel.list.Refresh()
+	manager.queueSnapshot = nil
+	if manager.queue != nil {
+		manager.queueSnapshot = manager.queue.Snapshot()
+	}
+	title := "Queue"
 	if len(manager.queueSnapshot) > 1 {
-		panel.accordion.Show()
+		title = "Queue — " + manager.queue.Summary()
+		panel.list.Show()
+		panel.empty.Hide()
 	} else {
-		panel.accordion.Hide()
+		panel.list.Hide()
+		panel.empty.Show()
+	}
+	panel.list.Refresh()
+	if manager.queueTab != nil && manager.queueTab.Text != title {
+		manager.queueTab.Text = title
+		manager.tabs.Refresh()
 	}
 }

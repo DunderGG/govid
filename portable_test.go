@@ -187,7 +187,7 @@ func TestSwitchingPortableModeCopiesTheSettings(t *testing.T) {
 	h.app.ui.download.format.SetSelected(formatWebM)
 	h.app.uiManager.savePreferences(h.saveDir)
 	h.app.prefSvc.SavePresets([]Preset{{Name: "Travel"}})
-	h.app.prefSvc.SaveView(ViewSettings{ShowTerminal: false})
+	h.app.prefSvc.SaveView(ViewSettings{ShowQueue: true, ShowTerminal: false})
 
 	if err := h.app.setPortable(true); err != nil {
 		t.Fatalf("setPortable(true) = %v", err)

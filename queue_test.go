@@ -193,8 +193,8 @@ func TestQueuePanelShowsStatusAndSummary(t *testing.T) {
 	h.app.uiManager.showQueue(queue)
 	panelState := func() (title string, rows int) {
 		fyne.DoAndWait(func() {
-			panel := h.app.uiManager.queuePanel
-			title, rows = panel.item.Title, panel.list.Length()
+			manager := h.app.uiManager
+			title, rows = manager.queueTab.Text, manager.queuePanel.list.Length()
 		})
 		return title, rows
 	}
@@ -209,13 +209,44 @@ func TestQueuePanelShowsStatusAndSummary(t *testing.T) {
 	}
 }
 
-func TestQueuePanelHiddenForASingleItem(t *testing.T) {
+func TestQueueListHiddenForASingleItem(t *testing.T) {
 	h := newDownloadHarness(t, "ytdlp-download")
 	h.app.uiManager.showQueue(newTestQueue(1))
-	var visible bool
-	fyne.DoAndWait(func() { visible = h.app.uiManager.queuePanel.accordion.Visible() })
-	if visible {
-		t.Error("the Queue panel is shown for a single download")
+	var listed, selected bool
+	var title string
+	fyne.DoAndWait(func() {
+		manager := h.app.uiManager
+		listed, title = manager.queuePanel.list.Visible(), manager.queueTab.Text
+		selected = manager.tabs.Selected() == manager.queueTab
+	})
+	if listed || title != "Queue" || selected {
+		t.Errorf("for a single download, the list is shown: %v, the tab is titled %q, and selected: %v", listed, title, selected)
+	}
+}
+
+func TestQueueTabIsSelectedForSeveralItems(t *testing.T) {
+	h := newDownloadHarness(t, "ytdlp-download")
+	h.app.uiManager.showQueue(newTestQueue(3))
+	var selected bool
+	fyne.DoAndWait(func() { selected = h.app.uiManager.tabs.Selected() == h.app.uiManager.queueTab })
+	if !selected {
+		t.Error("the Queue tab is not selected when a queue of several videos starts")
+	}
+}
+
+func TestQueueRowIsLaidOutAgainWhenReused(t *testing.T) {
+	_ = test.NewApp()
+	row := newQueueRow()
+	test.NewWindow(row).Resize(fyne.NewSize(700, 60))
+	actions := queueActions{}
+	waiting := queueEntry{item: queueItem{title: "A video"}, status: queueWaiting}
+	done := queueEntry{item: queueItem{title: "A video"}, status: queueDone}
+
+	row.show(waiting, true, actions)
+	withButtons := row.title.Size().Width
+	row.show(done, true, actions)
+	if got := row.title.Size().Width; got <= withButtons {
+		t.Errorf("title width = %v once the buttons are hidden, want more than the %v it had beside them", got, withButtons)
 	}
 }
 

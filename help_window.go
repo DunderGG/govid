@@ -31,7 +31,7 @@ var helpItems = []helpItem{
 		"  * **Drop onto the window** – a `.txt` list, or an internet shortcut (`.url`). A link dragged straight from a browser is not received on Windows; drag it to the desktop first, then drop the shortcut that makes\n\n" +
 		"In Batch Mode, lines starting with `#` are comments and are not downloaded."},
 	{"Playlists", "Before downloading, GoVid checks each URL. When one is a playlist, it shows the playlist's title, number of videos, and total length, and asks which videos to download:\n  * Leave the range blank and click **Download** to get them all\n  * Enter a range such as `1-10`, `5-`, or `3,5,8` to get only those\n  * For a link to one video inside a playlist (`watch?v=…&list=…`), **Only this video** is the default\n\nEach chosen video becomes its own item in the queue, with its own progress, Cancel, and history entry."},
-	{"Queue", "When a session has more than one video (Batch Mode, or videos picked from a playlist), the **Queue** panel above Terminal Output lists them with their status: Waiting, Checking, Downloading with its percentage, Paused, Post-processing, Done, Failed, or Skipped. Its title counts progress, e.g. \"7 of 20 done, 1 failed\". Click the title to fold the panel away.\n\nWhile the queue runs:\n" +
+	{"Queue", "When a session has more than one video (Batch Mode, or videos picked from a playlist), GoVid switches to the **Queue** tab, beside Terminal Output, which lists them with their status: Waiting, Checking, Downloading with its percentage, Paused, Post-processing, Done, Failed, or Skipped. The tab's title counts progress, e.g. \"Queue — 7 of 20 done, 1 failed\". **View → Queue** removes or adds the tab.\n\nWhile the queue runs:\n" +
 		"  * **Waiting** videos can be moved up or down (the order is the download order) or removed\n" +
 		"  * The video **downloading** can be paused or skipped (the same as **Cancel**); the queue moves on\n" +
 		"  * A **paused** video can be resumed (it goes first among the waiting ones and continues where it stopped) or removed, which deletes what it had downloaded\n" +
@@ -117,7 +117,7 @@ var helpItems = []helpItem{
 		"  * **Ctrl+Shift+V** – paste URLs (as the paste button)\n" +
 		"  * **Ctrl+H** – History\n" +
 		"  * **Ctrl+,** – Preferences\n" +
-		"  * **Ctrl+T** – show or hide the terminal output\n" +
+		"  * **Ctrl+T** – show or remove the Terminal Output tab\n" +
 		"  * **F1** – this guide\n" +
 		"  * **Esc** – close About, this guide, Preferences, Post-Processing, History, or Components\n\n" +
 		"The Ctrl shortcuts work everywhere in the main window, also while typing in the URL field; the menus show them too. **F1** and **Esc** work when no text field has the cursor: click outside the field first (on macOS, use Cmd instead of Ctrl)."},

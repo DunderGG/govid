@@ -87,7 +87,9 @@ Progress shows in the status line, the progress bar, and the **Terminal Output**
 
 If you scroll up in the log while a download runs, it stays where you left it. Scroll back to the bottom to follow new lines again. **File → Clear Terminal Output** empties it.
 
-**View → Terminal Output** (**Ctrl+T**) hides the log and shrinks the window to fit, which helps on small screens. A maximized window keeps its size. GoVid keeps logging while the log is hidden, so showing it again shows everything you missed. If a warning or an error is logged while it is hidden, a **New warnings** button appears beside the status; click it to show the log. GoVid remembers whether the log is shown.
+The log and the [Queue panel](#the-queue-panel) are tabs below the status line. If a warning or an error is logged while you are on the **Queue** tab, the **Terminal Output** tab shows a warning sign until you look.
+
+**View → Queue** and **View → Terminal Output** (**Ctrl+T**) remove or add their tab. With both removed, the window shrinks to fit, which helps on small screens; a maximized window keeps its size. GoVid keeps logging while the log is removed, so showing it again shows everything you missed. If a warning or an error is logged meanwhile, a **New warnings** button appears beside the status; click it to show the log. GoVid remembers which tabs are shown.
 
 ---
 
@@ -137,7 +139,7 @@ Live recordings cannot be paused. For a stream that has just ended and is still 
 
 ### The Queue panel
 
-When there is more than one video to download, through Batch Mode or a playlist, the **Queue** panel appears above the log. It lists each video with its status: Waiting, Checking, Downloading (with a percentage), Paused, Post-processing, Done, Failed, or Skipped. Its title counts progress, for example "7 of 20 done, 1 failed". Click the title to fold the panel away.
+Below the status line, the **Queue** and **Terminal Output** tabs share the rest of the window. When there is more than one video to download, through Batch Mode or a playlist, GoVid switches to the **Queue** tab. It lists each video with its status: Waiting, Checking, Downloading (with a percentage), Paused, Post-processing, Done, Failed, or Skipped. The tab's title counts progress, for example "Queue — 7 of 20 done, 1 failed", so you can follow it from the other tab too.
 
 While the queue runs, you can:
 
@@ -538,7 +540,7 @@ Antivirus software or Windows SmartScreen may scan the new `GoVid.exe` the first
 | **Ctrl+Shift+V** | Paste URLs |
 | **Ctrl+H** | History |
 | **Ctrl+,** | Preferences |
-| **Ctrl+T** | Show or hide the terminal output |
+| **Ctrl+T** | Show or remove the Terminal Output tab |
 | **F1** | GoVid Guide |
 | **Esc** | Close the current window (About, Guide, Preferences, Post-Processing, History, or Components) |
 
