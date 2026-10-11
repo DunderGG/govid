@@ -4,6 +4,38 @@ Videos to try GoVid against by hand, chosen per feature, and how to test without
 
 The automated tests never touch the network. They run a fake yt-dlp (`fake_tool_test.go`) against fixtures in `testdata/`. Manual testing is for what the fake cannot show: real sites, real formats, and how the app looks and feels while it works.
 
+## Accounts and cookies
+
+> **Never test with cookies from your main Google account.** yt-dlp's documentation warns that an account used with yt-dlp can be banned, for a while or for good, and testing sends the bursts of requests that get noticed. Create a separate Google account for testing, without payment details or anything you would miss, and sign in to YouTube with it only for GoVid.
+
+Most tests need no cookies. They are for videos that need you to be signed in (age-restricted, members-only, private) and for getting past "Sign in to confirm you're not a bot". Cookies are a login: anyone with them is signed in as that account. Keep cookie files outside the repository and never share them. (`*.txt` is in `.gitignore`, but backups and copies of the folder still take a file along.)
+
+GoVid reads cookies in two ways (**Tools → Preferences → Cookies**). With a test account, a browser profile is the easier one.
+
+### From a browser profile (recommended)
+
+A separate Firefox profile keeps the test account apart from your everyday browsing, and GoVid reads its cookies fresh at every download, so they never go stale.
+
+1. In Firefox, open `about:profiles` and click **Create a New Profile**. Name it, for example, `govid-test`.
+2. Click **Launch profile in new browser** beside it, and sign in to YouTube with the test account in that window.
+3. In GoVid, set **Tools → Preferences → Cookies** to **From browser**, the browser to **Firefox**, and the profile to `govid-test`.
+
+Use Firefox rather than Chrome or Edge: on Windows, Chromium browsers lock their cookies while they are open and encrypt them in a way yt-dlp cannot read.
+
+### From a cookies.txt file
+
+A `cookies.txt` file in Netscape format, exported with a browser extension. yt-dlp's FAQ suggests [cookies.txt](https://addons.mozilla.org/en-US/firefox/addon/cookies-txt/) for Firefox and [Get cookies.txt LOCALLY](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) for Chrome. A cookie extension can read every cookie in the browser, and malicious ones have been published under similar names, so install only these, and remove the extension when you are done.
+
+YouTube replaces ("rotates") the cookies of a signed-in session while a YouTube tab is open, which makes an exported file stop working within minutes. yt-dlp's wiki gives a way around it:
+
+1. Open a private window (Firefox: **Ctrl+Shift+P**; Chrome: **Ctrl+Shift+N**), and allow the extension in private windows.
+2. Sign in to YouTube with the test account.
+3. In the same tab, open `https://www.youtube.com/robots.txt`. Keep it the only tab in the private window.
+4. Export the cookies for `youtube.com` with the extension, and save the file outside the repository.
+5. Close the private window. Never open that session in a browser again, or its cookies rotate.
+
+Then set **Tools → Preferences → Cookies** to **From file** and choose the file. When it stops working (the log says the site asks you to sign in), export a new one the same way.
+
 ## Ground rules
 
 YouTube rarely bans anyone for testing, but it does throttle an IP address that sends many requests in a short time. You then see "Sign in to confirm you're not a bot", HTTP 429 (Too Many Requests), or refused download links (HTTP 403). GoVid handles all three, but testing anything else is slow until it clears, usually within a few hours.
@@ -15,7 +47,7 @@ GoVid sends more requests than it looks like: each URL is probed before it downl
 - **Keep Simultaneous Downloads at 1**, except when testing it, and then on the short videos below.
 - **Do not download the same video over and over.** For duplicate detection, one repeat is enough.
 - **Limit subtitle languages** to one or two (`en`, not `all`).
-- If you get throttled, stop testing YouTube for a while rather than retrying. Sign-in cookies (**Tools → Preferences → Cookies**) get past the bot check, but they tie the requests to an account, so use a spare one.
+- If you get throttled, stop testing YouTube for a while rather than retrying. Cookies from the test account get past the bot check (see [Accounts and cookies](#accounts-and-cookies)), but they tie the requests to that account, so do not lean on them to keep testing at the same pace.
 
 ## Test videos
 
