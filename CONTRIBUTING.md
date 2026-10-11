@@ -62,6 +62,8 @@ go test -race ./...
 
 The unit tests do not need yt-dlp, FFmpeg, or network access. Tests that exercise external tools use the fake-tool harness in `fake_tool_test.go`: when the `GOVID_FAKE_TOOL` environment variable is set, the test binary behaves as a scripted stand-in for the tool instead of running the suite. Use `installFakeTool` to place it where a service looks for a binary and `useFakeTool` to pick its behaviour. Put shared test inputs in `testdata/` (see [testdata/README.md](testdata/README.md)).
 
+To try a change against real sites, [docs/dev/manual-testing.md](docs/dev/manual-testing.md) lists test videos for each feature and how to test without getting throttled by YouTube.
+
 The race detector needs cgo (a C compiler on `PATH`), which building Fyne already requires. CI runs the suite with `-race`, so any race report is a bug and should be fixed.
 
 Format changed Go files with `gofmt`.
