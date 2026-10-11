@@ -48,6 +48,13 @@ var (
 	colDotProcessing = color.RGBA{R: 180, G: 80, B: 255, A: 255}  // post-processing pulse base (alpha varies)
 )
 
+// Colour names GoVid's themes add to Fyne's: the guide's search matches
+// (help_window.go), and the one the search is on.
+const (
+	colorNameSearchMatch   fyne.ThemeColorName = "govidSearchMatch"
+	colorNameSearchCurrent fyne.ThemeColorName = "govidSearchCurrent"
+)
+
 // ── Extended colour palette ───────────────────────────────────────────────────
 var (
 	colOutputLine    = color.RGBA{R: 220, G: 220, B: 220, A: 255} // raw tool output (e.g. yt-dlp update lines)
@@ -118,6 +125,10 @@ func (t *darkTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.C
 		return color.RGBA{R: 220, G: 60, B: 60, A: 255}
 	case theme.ColorNameSelection:
 		return color.RGBA{R: 28, G: 155, B: 190, A: 60}
+	case colorNameSearchMatch:
+		return color.RGBA{R: 110, G: 230, B: 90, A: 255} // green
+	case colorNameSearchCurrent:
+		return color.RGBA{R: 255, G: 95, B: 210, A: 255} // pink
 	}
 	// Fall through to the built-in default dark theme for anything not explicitly overridden.
 	return theme.DefaultTheme().Color(name, theme.VariantDark)
@@ -161,8 +172,15 @@ type lightTheme struct{}
 
 var _ fyne.Theme = (*lightTheme)(nil)
 
-// Color returns Fyne's light colour for name, whatever the variant.
+// Color returns Fyne's light colour for name, or GoVid's for its own names,
+// whatever the variant.
 func (t *lightTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
+	switch name {
+	case colorNameSearchMatch:
+		return color.RGBA{R: 0, G: 130, B: 50, A: 255} // green
+	case colorNameSearchCurrent:
+		return color.RGBA{R: 200, G: 0, B: 150, A: 255} // magenta
+	}
 	return theme.DefaultTheme().Color(name, theme.VariantLight)
 }
 

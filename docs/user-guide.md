@@ -1,6 +1,6 @@
 # GoVid User Guide
 
-This guide covers everything GoVid can do, from a first download to post-processing and configuration files. For a short introduction, see the [README](../README.md). GoVid has the same guide built in: press **F1** or open **Help → GoVid Guide**.
+This guide covers everything GoVid can do, from a first download to post-processing and configuration files. For a short introduction, see the [README](../README.md). GoVid has a shorter guide built in, one topic per setting: press **F1** or open **Help → GoVid Guide**, and type in the field at the top to find text in it, as in an editor: every match is highlighted, and **Enter** and **Shift+Enter** step through them. **Open in browser** shows the built-in guide as a web page, where text can be selected and copied.
 
 ## Contents
 
@@ -544,6 +544,7 @@ Antivirus software or Windows SmartScreen may scan the new `GoVid.exe` the first
 | **Ctrl+,** | Preferences |
 | **Ctrl+T** | Show or remove the Terminal Output tab |
 | **F1** | GoVid Guide |
+| **Ctrl+F** | In the GoVid Guide: find text. **Enter** and **Shift+Enter** go to the next and previous match, **Esc** clears the search |
 | **Esc** | Close the current window (About, Guide, Preferences, Post-Processing, History, or Components) |
 
 The Ctrl shortcuts work anywhere in the main window, also while you type in the URL field. **F1** and **Esc** work only when no text field has the cursor, so click outside the field first. On macOS, use Cmd instead of Ctrl.

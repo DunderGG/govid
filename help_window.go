@@ -4,14 +4,23 @@
 //   - helpItems: the guide's text, one Markdown topic per setting in the
 //     main window, Preferences, and Post-Processing.
 //   - UIManager.showConfigHelp: the scrollable window that shows them.
+//   - guidePanel: the window's content, with a find bar that highlights
+//     every match of what is typed and steps through them, as an editor
+//     does (the matching itself is in guide_search.go).
+//   - guideSearchEntry: the find bar's field: Enter, Shift+Enter, and Esc.
 //   - codeList: renders a list of options as Markdown code spans.
 package main
 
 import (
+	"fmt"
+	"image/color"
+	"slices"
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -119,7 +128,7 @@ var helpItems = []helpItem{
 		"  * **Ctrl+H** – History\n" +
 		"  * **Ctrl+,** – Preferences\n" +
 		"  * **Ctrl+T** – show or remove the Terminal Output tab\n" +
-		"  * **F1** – this guide\n" +
+		"  * **F1** – this guide. Type in the field at the top to find text in it: every match turns green and the current one pink; **Enter** and **Shift+Enter** (or the arrow buttons) go to the next and previous match, **Ctrl+F** returns to the field, and **Esc** clears it\n" +
 		"  * **Esc** – close About, this guide, Preferences, Post-Processing, History, or Components\n\n" +
 		"The Ctrl shortcuts work everywhere in the main window, also while typing in the URL field; the menus show them too. **F1** and **Esc** work when no text field has the cursor: click outside the field first (on macOS, use Cmd instead of Ctrl)."},
 	{"Application Theme", "Found in **Tools → Preferences**. **System** (the default) follows your computer: light when Windows is set to light apps, dark otherwise, and GoVid switches along with it. **Dark** and **Light** keep that look whatever the system uses."},
@@ -158,41 +167,254 @@ var helpItems = []helpItem{
 }
 
 // showConfigHelp opens a scrollable window explaining all configuration
-// options (helpItems). It is a singleton: if already open, the existing
-// window is focused instead.
+// options (helpItems), with a search field that finds text in it as an
+// editor does. It is a singleton: if already open, the existing window is
+// focused instead.
 func (manager *UIManager) showConfigHelp() {
 	if focusOrCreate(&manager.helpWindow) {
 		return
 	}
 
-	content := container.NewVBox()
-	for _, item := range helpItems {
-		title := widget.NewRichTextFromMarkdown("### " + item.label)
-		title.Wrapping = fyne.TextWrapOff
-
-		content.Add(title)
-		content.Add(newHelpBody(item.desc))
-		content.Add(widget.NewSeparator())
-	}
-
-	scroll := container.NewScroll(content)
-	scroll.SetMinSize(fyne.NewSize(520, 420))
-
-	manager.helpWindow = fyne.CurrentApp().NewWindow("GoVid Guide")
-	manager.helpWindow.SetContent(container.NewPadded(scroll))
-	manager.helpWindow.Resize(fyne.NewSize(550, 500))
-	manager.helpWindow.SetOnClosed(onWindowClosed(&manager.helpWindow))
-	closeOnEscape(manager.helpWindow)
-	manager.helpWindow.Show()
+	window := fyne.CurrentApp().NewWindow("GoVid Guide")
+	panel := newGuidePanel(window.Close, manager.openGuideInBrowser)
+	manager.helpWindow = window
+	window.SetContent(container.NewPadded(panel.content))
+	window.Resize(fyne.NewSize(620, 520))
+	window.SetOnClosed(onWindowClosed(&manager.helpWindow))
+	closeOnEscape(window)
+	window.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyF, Modifier: fyne.KeyModifierShortcutDefault}, func(fyne.Shortcut) {
+		window.Canvas().Focus(panel.search)
+		panel.search.TypedShortcut(&fyne.ShortcutSelectAll{})
+	})
+	window.Show()
+	window.Canvas().Focus(panel.search)
 }
 
-// newHelpBody renders a help topic's Markdown text, wrapped, with bold text
-// in the primary colour and code in the warning colour, so names of
-// settings and values stand out.
-func newHelpBody(markdown string) *widget.RichText {
-	body := widget.NewRichTextFromMarkdown(markdown)
-	for segIdx := range body.Segments {
-		if segment, ok := body.Segments[segIdx].(*widget.TextSegment); ok {
+// guideBlock is one RichText of the guide: a topic's heading or its text.
+type guideBlock struct {
+	text     *widget.RichText
+	topic    *fyne.Container                 // the topic's box in the guide, which holds text
+	segments func() []widget.RichTextSegment // freshly parsed, without highlights
+	folded   []rune                          // foldedText of the segments, for searching
+}
+
+// guidePanel is the guide window's content: the find bar above the topics.
+type guidePanel struct {
+	blocks  []guideBlock
+	matches []guideMatch // of the search, in reading order
+	current int          // index into matches of the match shown
+	mark    *matchMark   // just before the current match
+
+	list       *fyne.Container
+	scroll     *container.Scroll
+	countLabel *widget.Label
+	prevBtn    *widget.Button
+	nextBtn    *widget.Button
+	search     *guideSearchEntry
+	content    fyne.CanvasObject
+}
+
+// newGuidePanel returns the panel showing every topic. close closes the
+// window, for Esc in an empty search field; openInBrowser is the Open in
+// browser button.
+func newGuidePanel(close, openInBrowser func()) *guidePanel {
+	panel := &guidePanel{list: container.NewVBox()}
+	intro := widget.NewRichTextFromMarkdown(guideIntro)
+	intro.Wrapping = fyne.TextWrapWord
+	panel.list.Add(container.NewVBox(intro, widget.NewSeparator()))
+	for _, item := range helpItems {
+		heading := panel.addBlock(func() []widget.RichTextSegment {
+			return widget.NewRichTextFromMarkdown("### " + item.label).Segments
+		})
+		heading.Wrapping = fyne.TextWrapOff
+		body := panel.addBlock(func() []widget.RichTextSegment { return helpBodySegments(item.desc) })
+		body.Wrapping = fyne.TextWrapWord
+		topic := container.NewVBox(heading, body, widget.NewSeparator())
+		panel.blocks[len(panel.blocks)-2].topic = topic
+		panel.blocks[len(panel.blocks)-1].topic = topic
+		panel.list.Add(topic)
+	}
+
+	panel.countLabel = widget.NewLabel("")
+	panel.countLabel.Alignment = fyne.TextAlignTrailing
+	// Wide enough for the longest count, so the field does not change width
+	// as it changes.
+	countWidth := canvas.NewRectangle(color.Transparent)
+	countWidth.SetMinSize(fyne.NewSize(fyne.MeasureText("888 of 888", theme.TextSize(), fyne.TextStyle{}).Width+2*theme.InnerPadding(), 0))
+	panel.prevBtn = widget.NewButtonWithIcon("", theme.MoveUpIcon(), func() { panel.step(-1) })
+	panel.nextBtn = widget.NewButtonWithIcon("", theme.MoveDownIcon(), func() { panel.step(1) })
+	panel.search = newGuideSearchEntry(close, func() { panel.step(1) }, func() { panel.step(-1) })
+	panel.search.SetPlaceHolder("Find in the guide…")
+	panel.search.OnChanged = panel.find
+
+	panel.scroll = container.NewScroll(panel.list)
+	panel.scroll.SetMinSize(fyne.NewSize(520, 420))
+	browserBtn := widget.NewButton("Open in browser", openInBrowser)
+	controls := container.NewHBox(browserBtn, container.NewStack(countWidth, panel.countLabel), panel.prevBtn, panel.nextBtn)
+	top := container.NewBorder(nil, nil, nil, controls, panel.search)
+	panel.content = container.NewBorder(top, nil, nil, nil, panel.scroll)
+	panel.showCurrent()
+	return panel
+}
+
+// addBlock adds a RichText showing segments to the panel's blocks and
+// returns it.
+func (panel *guidePanel) addBlock(segments func() []widget.RichTextSegment) *widget.RichText {
+	text := widget.NewRichText(segments()...)
+	panel.blocks = append(panel.blocks, guideBlock{text: text, segments: segments, folded: foldedText(segments())})
+	return text
+}
+
+// find highlights every match of query and goes to the first one.
+func (panel *guidePanel) find(query string) {
+	stale := panel.matches
+	texts := make([][]rune, len(panel.blocks))
+	for i, block := range panel.blocks {
+		texts[i] = block.folded
+	}
+	panel.matches = findMatches(texts, query)
+	panel.current = 0
+
+	redraw := map[int]bool{}
+	for _, match := range slices.Concat(stale, panel.matches) {
+		redraw[match.block] = true
+	}
+	for block := range redraw {
+		panel.redraw(block)
+	}
+	panel.showCurrent()
+}
+
+// step goes to the next match (by 1) or the previous one (by -1), wrapping
+// around at either end.
+func (panel *guidePanel) step(by int) {
+	if len(panel.matches) == 0 {
+		return
+	}
+	previous := panel.matches[panel.current].block
+	panel.current = (panel.current + by + len(panel.matches)) % len(panel.matches)
+	panel.redraw(previous)
+	if block := panel.matches[panel.current].block; block != previous {
+		panel.redraw(block)
+	}
+	panel.showCurrent()
+}
+
+// redraw shows block with its matches highlighted, and a new mark before
+// the current match when it is in block.
+func (panel *guidePanel) redraw(block int) {
+	var matches []guideMatch
+	current := -1
+	for i, match := range panel.matches {
+		if match.block != block {
+			continue
+		}
+		if i == panel.current {
+			current = len(matches)
+			panel.mark = newMatchMark()
+		}
+		matches = append(matches, match)
+	}
+	text := panel.blocks[block].text
+	text.Segments = highlightMatches(panel.blocks[block].segments(), matches, current, panel.mark)
+	text.Refresh()
+}
+
+// showCurrent updates the count and the buttons, and scrolls to the current
+// match.
+func (panel *guidePanel) showCurrent() {
+	switch {
+	case panel.search.Text == "":
+		panel.countLabel.SetText("")
+	case len(panel.matches) == 0:
+		panel.countLabel.SetText("No matches")
+	default:
+		panel.countLabel.SetText(fmt.Sprintf("%d of %d", panel.current+1, len(panel.matches)))
+	}
+	if len(panel.matches) == 0 {
+		panel.prevBtn.Disable()
+		panel.nextBtn.Disable()
+		return
+	}
+	panel.prevBtn.Enable()
+	panel.nextBtn.Enable()
+	panel.scrollToMark()
+}
+
+// scrollToMark scrolls the current match a third of the way down the view,
+// unless it is in view already. The mark's place in the guide is added up
+// from the positions layout gave it, its block, and its topic: the driver
+// cannot place a mark it has not drawn yet, and a new one never has been.
+func (panel *guidePanel) scrollToMark() {
+	block := panel.blocks[panel.matches[panel.current].block]
+	y := block.topic.Position().Y + block.text.Position().Y + panel.mark.visual.Position().Y
+	view := panel.scroll.Size().Height
+	margin := 2 * theme.Size(theme.SizeNameText)
+	if y >= panel.scroll.Offset.Y+margin && y <= panel.scroll.Offset.Y+view-2*margin {
+		return
+	}
+	panel.scroll.ScrollToOffset(fyne.NewPos(0, max(0, y-view/3)))
+}
+
+// guideSearchEntry is the guide's search field. Enter goes to the next
+// match and Shift+Enter to the previous one. Esc clears the field, or
+// closes the window when it is already empty, since a focused field gets
+// Esc before closeOnEscape can.
+type guideSearchEntry struct {
+	widget.Entry
+	close, next, previous func()
+	shift                 bool // a Shift key is down
+}
+
+func newGuideSearchEntry(close, next, previous func()) *guideSearchEntry {
+	entry := &guideSearchEntry{close: close, next: next, previous: previous}
+	entry.ExtendBaseWidget(entry)
+	return entry
+}
+
+// TypedKey handles Enter and Esc and passes every other key to the entry.
+func (entry *guideSearchEntry) TypedKey(key *fyne.KeyEvent) {
+	switch key.Name {
+	case fyne.KeyReturn, fyne.KeyEnter:
+		if entry.shift {
+			entry.previous()
+		} else {
+			entry.next()
+		}
+	case fyne.KeyEscape:
+		if entry.Text != "" {
+			entry.SetText("")
+		} else {
+			entry.close()
+		}
+	default:
+		entry.Entry.TypedKey(key)
+	}
+}
+
+// KeyDown notes when Shift goes down, for Shift+Enter.
+func (entry *guideSearchEntry) KeyDown(key *fyne.KeyEvent) {
+	if key.Name == desktop.KeyShiftLeft || key.Name == desktop.KeyShiftRight {
+		entry.shift = true
+	}
+	entry.Entry.KeyDown(key)
+}
+
+// KeyUp notes when Shift comes up.
+func (entry *guideSearchEntry) KeyUp(key *fyne.KeyEvent) {
+	if key.Name == desktop.KeyShiftLeft || key.Name == desktop.KeyShiftRight {
+		entry.shift = false
+	}
+	entry.Entry.KeyUp(key)
+}
+
+// helpBodySegments renders a help topic's Markdown text, with bold text in
+// the primary colour and code in the warning colour, so names of settings
+// and values stand out.
+func helpBodySegments(markdown string) []widget.RichTextSegment {
+	segments := widget.NewRichTextFromMarkdown(markdown).Segments
+	for _, seg := range segments {
+		if segment, ok := seg.(*widget.TextSegment); ok {
 			if segment.Style.TextStyle.Bold {
 				segment.Style.ColorName = theme.ColorNamePrimary
 			}
@@ -201,8 +423,7 @@ func newHelpBody(markdown string) *widget.RichText {
 			}
 		}
 	}
-	body.Wrapping = fyne.TextWrapWord
-	return body
+	return segments
 }
 
 // codeList renders options as a comma-separated list of Markdown code spans,
