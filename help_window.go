@@ -117,6 +117,7 @@ var helpItems = []helpItem{
 		"  * **Ctrl+Shift+V** – paste URLs (as the paste button)\n" +
 		"  * **Ctrl+H** – History\n" +
 		"  * **Ctrl+,** – Preferences\n" +
+		"  * **Ctrl+T** – show or hide the terminal output\n" +
 		"  * **F1** – this guide\n" +
 		"  * **Esc** – close About, this guide, Preferences, Post-Processing, History, or Components\n\n" +
 		"The Ctrl shortcuts work everywhere in the main window, also while typing in the URL field; the menus show them too. **F1** and **Esc** work when no text field has the cursor: click outside the field first (on macOS, use Cmd instead of Ctrl)."},

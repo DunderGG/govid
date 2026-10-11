@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"syscall"
 
+	"fyne.io/fyne/v2"
 	"golang.org/x/sys/unix"
 )
 
@@ -62,4 +63,10 @@ func revealFileCommand(path string) *exec.Cmd {
 		return exec.Command("open", "-R", path)
 	}
 	return exec.Command("xdg-open", filepath.Dir(path))
+}
+
+// windowMaximized reports whether window is maximized. GLFW knows, but Fyne
+// does not pass it on, so elsewhere than on Windows it reports false.
+func windowMaximized(fyne.Window) bool {
+	return false
 }

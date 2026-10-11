@@ -126,6 +126,7 @@ func (manager *UIManager) renderLogLines(lines []pendingLogLine) {
 	}
 
 	logList.Refresh()
+	manager.noteHiddenWarnings(lines)
 	if follow {
 		// Resize the content now, as the scroll's next layout pass would:
 		// ScrollToBottom clamps the offset to the content's current size,
@@ -158,6 +159,8 @@ func (manager *UIManager) clearTerminalOutput() {
 		ui.download.logList.Objects = nil
 		ui.download.logList.Refresh()
 		clear(manager.progressLines)
+		manager.terminalUnseen = false
+		manager.applyTerminalHint()
 		if ui.download.output != nil {
 			ui.download.output.ScrollToTop()
 		}

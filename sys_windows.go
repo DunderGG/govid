@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"syscall"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/driver"
 	"golang.org/x/sys/windows"
 )
 
@@ -72,4 +74,26 @@ func revealFileCommand(path string) *exec.Cmd {
 	cmd := exec.Command("explorer")
 	cmd.SysProcAttr = &syscall.SysProcAttr{CmdLine: `explorer /select,"` + path + `"`}
 	return cmd
+}
+
+// procIsZoomed is user32's IsZoomed, which reports whether a window is
+// maximized.
+var procIsZoomed = windows.NewLazySystemDLL("user32.dll").NewProc("IsZoomed")
+
+// windowMaximized reports whether window is maximized. Windows keeps a
+// maximized window maximized when it is resized, so it then cannot be
+// resized by hand until it is restored.
+func windowMaximized(window fyne.Window) bool {
+	native, ok := window.(driver.NativeWindow)
+	if !ok {
+		return false
+	}
+	maximized := false
+	native.RunNative(func(context any) {
+		if win, ok := context.(driver.WindowsWindowContext); ok && win.HWND != 0 {
+			zoomed, _, _ := procIsZoomed.Call(win.HWND)
+			maximized = zoomed != 0
+		}
+	})
+	return maximized
 }

@@ -86,7 +86,10 @@ type UIManager struct {
 	view             ViewSettings
 	terminal         *fyne.Container // the terminal output and its heading
 	terminalMenuItem *fyne.MenuItem
-	terminalHeight   float32 // the terminal's height when last hidden, given back when it is shown
+	terminalHint     *widget.Button // "New warnings": shown while terminalUnseen
+	terminalUnseen   bool           // a warning or error was logged while the terminal output was hidden
+	shownHeight      float32        // the window's height when the terminal output was last hidden
+	windowMaximized  func(fyne.Window) bool
 
 	// Presets; see preset_ui.go. Only touched on the UI thread.
 	presets       []Preset
@@ -145,7 +148,7 @@ type UIManager struct {
 
 // NewUIManager returns a UIManager bound to the given primary window.
 func NewUIManager(mainWindow fyne.Window) *UIManager {
-	manager := &UIManager{mainWindow: mainWindow, afterFunc: time.AfterFunc, progressLines: map[string]*canvas.Text{}}
+	manager := &UIManager{mainWindow: mainWindow, afterFunc: time.AfterFunc, progressLines: map[string]*canvas.Text{}, windowMaximized: windowMaximized}
 	manager.queueThrottle = newLatestValueThrottle(statusThrottleInterval, func(int64) {
 		fyne.Do(manager.refreshQueue)
 	})
@@ -634,7 +637,7 @@ func (manager *UIManager) buildStatusCard() fyne.CanvasObject {
 	statusCard := roundedCard("",
 		container.NewVBox(
 			container.NewStack(ui.download.progressBox, ui.download.progressLive),
-			container.NewHBox(dotContainer, ui.download.status),
+			container.NewBorder(nil, nil, container.NewHBox(dotContainer, ui.download.status), manager.buildTerminalHint()),
 		),
 	)
 	return container.NewBorder(nil, nil, accentBar(), nil, statusCard)

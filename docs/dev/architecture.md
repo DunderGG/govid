@@ -45,7 +45,7 @@ govid/
 ├── config_file.go          AppConfig / configRules — govid.json: LoadFromFile, MergeConfig, ExportConfig, WriteConfigFile
 ├── presets.go              Preset — starter presets, groups, list edits; LoadPresets / SavePresets / ReadPresetFile / WritePresetFile
 ├── preset_ui.go            UIManager preset dropdown, "(modified)" marker, Save / Manage / Import / Export dialogs
-├── view.go                 ViewSettings (LoadView / SaveView) and the View menu: show or hide the terminal output, resizing the window to suit
+├── view.go                 ViewSettings (LoadView / SaveView) and the View menu: show or hide the terminal output (Ctrl+T), resizing the window unless it is maximized; the "New warnings" hint
 ├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadRecord and DownloadHistoryEntry types
 ├── history_window.go       UIManager.showHistory — the searchable History list with Re-add / Show in folder / Copy URL, loaded off the UI thread
 ├── duplicates.go           skipDownloaded / askDuplicate — "Already downloaded" check before a session downloads
@@ -101,7 +101,7 @@ govid/
 ├── ── Assets / Platform ───────────────────────────────────────────
 ├── theme.go                darkTheme, lightTheme, and systemTheme (implement fyne.Theme); resolveThemeMode
 ├── icons.go                SVG icon registry; themedIcon() helper
-├── shortcuts.go            Keyboard shortcuts: menu items and canvas shortcuts (Ctrl+Enter, Ctrl+O, Ctrl+L, Ctrl+Shift+V, Ctrl+H, Ctrl+,), F1, closeOnEscape
+├── shortcuts.go            Keyboard shortcuts: menu items and canvas shortcuts (Ctrl+Enter, Ctrl+O, Ctrl+L, Ctrl+Shift+V, Ctrl+H, Ctrl+,, Ctrl+T), F1, closeOnEscape
 ├── embedded_icon.go        Bundled app icon (resourceAppiconPng)
 ├── process.go              newToolCommand, newOutputScanner / drainOutput — starts yt-dlp/FFmpeg so cancelling kills the whole process tree; reads their output; startReaped for the file manager
 ├── sys_windows.go          Windows-only: hide console windows; kill process trees with taskkill /T; freeDiskBytes (GetDiskFreeSpaceEx)
@@ -339,7 +339,7 @@ At startup `checkTools` shows a notice with **Install** for a missing yt-dlp or 
 
 `darkTheme`, `lightTheme`, and `systemTheme` implement `fyne.Theme`. `systemTheme`, the default for new installs ("System"), passes each `Color(name, variant)` call to the light or dark theme by the variant Fyne passes in, which on Windows follows the "apps use light theme" setting; its sizes, fonts, and icons follow the current variant (`systemVariant`). `resolveThemeMode` turns "System" into the variant showing, for `themedIcon`. `UIManager.followSystemTheme` listens to Fyne's settings and rebuilds the main window when the variant changes while the theme is System, because the window's own colours and icons are chosen when it is built. The active theme is stored as a preference and applied at startup before the window is created; saved Dark and Light choices are kept.
 
-**Shortcuts** (`shortcuts.go`). The main window's shortcuts are `desktop.CustomShortcut`s with `KeyModifierShortcutDefault`, set on File, Tools, and Help menu items, which Fyne runs before the focused widget sees the keys (so Ctrl+Enter works in the URL field), and added to the canvas (`registerShortcuts`). Keys without a modifier are never shortcuts to Fyne and go to the focused widget, or to the canvas's typed-key handler when nothing has the focus: F1 opens the guide from there, and `closeOnEscape` makes Esc close About, the guide, Preferences, Post-Processing, History, and Components.
+**Shortcuts** (`shortcuts.go`). The main window's shortcuts are `desktop.CustomShortcut`s with `KeyModifierShortcutDefault`, set on File, View, Tools, and Help menu items, which Fyne runs before the focused widget sees the keys (so Ctrl+Enter works in the URL field), and added to the canvas (`registerShortcuts`). Keys without a modifier are never shortcuts to Fyne and go to the focused widget, or to the canvas's typed-key handler when nothing has the focus: F1 opens the guide from there, and `closeOnEscape` makes Esc close About, the guide, Preferences, Post-Processing, History, and Components.
 
 ---
 

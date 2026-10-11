@@ -87,7 +87,7 @@ Progress shows in the status line, the progress bar, and the **Terminal Output**
 
 If you scroll up in the log while a download runs, it stays where you left it. Scroll back to the bottom to follow new lines again. **File → Clear Terminal Output** empties it.
 
-**View → Terminal Output** hides the log and shrinks the window to fit, which helps on small screens. GoVid keeps logging while it is hidden, so choosing it again shows everything you missed. GoVid remembers whether the log is shown.
+**View → Terminal Output** (**Ctrl+T**) hides the log and shrinks the window to fit, which helps on small screens. A maximized window keeps its size. GoVid keeps logging while the log is hidden, so showing it again shows everything you missed. If a warning or an error is logged while it is hidden, a **New warnings** button appears beside the status; click it to show the log. GoVid remembers whether the log is shown.
 
 ---
 
@@ -538,6 +538,7 @@ Antivirus software or Windows SmartScreen may scan the new `GoVid.exe` the first
 | **Ctrl+Shift+V** | Paste URLs |
 | **Ctrl+H** | History |
 | **Ctrl+,** | Preferences |
+| **Ctrl+T** | Show or hide the terminal output |
 | **F1** | GoVid Guide |
 | **Esc** | Close the current window (About, Guide, Preferences, Post-Processing, History, or Components) |
 

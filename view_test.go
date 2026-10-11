@@ -95,3 +95,96 @@ func TestStartingWithTheTerminalHiddenLeavesItOutOfTheMinimumSize(t *testing.T) 
 		t.Errorf("window height = %v after showing the terminal output, below its minimum %v", got, min)
 	}
 }
+
+func TestAMaximizedWindowKeepsItsSize(t *testing.T) {
+	app, window := newViewTestManager(t)
+	mgr := app.uiManager
+	mgr.windowMaximized = func(fyne.Window) bool { return true }
+	before := window.Canvas().Size()
+
+	mgr.setTerminalShown(false)
+	if mgr.terminal.Visible() {
+		t.Error("the terminal output is still shown")
+	}
+	if got := window.Canvas().Size(); got != before {
+		t.Errorf("maximized window resized to %v when hiding, want %v", got, before)
+	}
+	mgr.setTerminalShown(true)
+	if got := window.Canvas().Size(); got != before {
+		t.Errorf("maximized window resized to %v when showing, want %v", got, before)
+	}
+}
+
+func TestShowingTheTerminalUsesRoomTheWindowAlreadyHas(t *testing.T) {
+	app, window := newViewTestManager(t)
+	mgr := app.uiManager
+	normal := window.Canvas().Size()
+
+	// Hidden while maximized, then restored to the size it had before.
+	mgr.windowMaximized = func(fyne.Window) bool { return true }
+	window.Resize(fyne.NewSize(normal.Width, normal.Height+400))
+	mgr.setTerminalShown(false)
+	mgr.windowMaximized = func(fyne.Window) bool { return false }
+	window.Resize(normal)
+
+	mgr.setTerminalShown(true)
+	if got := window.Canvas().Size(); got != normal {
+		t.Errorf("window size = %v after showing, want it unchanged at %v", got, normal)
+	}
+}
+
+func TestHintShowsWhenAWarningIsLoggedWhileTheTerminalIsHidden(t *testing.T) {
+	app, _ := newViewTestManager(t)
+	mgr := app.uiManager
+	mgr.setTerminalShown(false)
+
+	mgr.renderLogLines([]pendingLogLine{{text: "[download] Destination: a.mp4"}})
+	if mgr.terminalHint.Visible() {
+		t.Error("the hint shows for a plain line")
+	}
+	mgr.renderLogLines([]pendingLogLine{{text: "[WARNING] something", col: colWarning}})
+	if !mgr.terminalHint.Visible() {
+		t.Fatal("the hint does not show for a warning")
+	}
+
+	mgr.createUI() // as a theme change does
+	if !mgr.terminalHint.Visible() {
+		t.Error("the rebuilt window lost the hint")
+	}
+
+	test.Tap(mgr.terminalHint)
+	if !mgr.terminal.Visible() || mgr.terminalHint.Visible() {
+		t.Error("tapping the hint did not show the terminal output and hide the hint")
+	}
+
+	mgr.renderLogLines([]pendingLogLine{{text: "[ERROR] shown", col: colError}})
+	if mgr.terminalHint.Visible() {
+		t.Error("the hint shows for an error logged while the terminal output is shown")
+	}
+}
+
+func TestClearingTheTerminalHidesTheHint(t *testing.T) {
+	app, _ := newViewTestManager(t)
+	mgr := app.uiManager
+	mgr.setTerminalShown(false)
+	mgr.renderLogLines([]pendingLogLine{{text: "[ERROR] failed", col: colError}})
+
+	mgr.clearTerminalOutput()
+	if mgr.terminalHint.Visible() {
+		t.Error("the hint still shows after clearing the terminal output")
+	}
+}
+
+func TestCtrlTTogglesTheTerminal(t *testing.T) {
+	app, window := newViewTestManager(t)
+	press := func() { window.Canvas().(fyne.Shortcutable).TypedShortcut(shortcutTerminal) }
+
+	press()
+	if app.uiManager.terminal.Visible() {
+		t.Error("Ctrl+T did not hide the terminal output")
+	}
+	press()
+	if !app.uiManager.terminal.Visible() {
+		t.Error("Ctrl+T did not show the terminal output again")
+	}
+}

@@ -2,7 +2,7 @@
 //
 // Responsibilities:
 //   - The main window's shortcuts (Ctrl+Enter, Ctrl+O, Ctrl+L,
-//     Ctrl+Shift+V, Ctrl+H, Ctrl+,, F1), shown on their menu items. Fyne
+//     Ctrl+Shift+V, Ctrl+H, Ctrl+,, Ctrl+T, F1), shown on their menu items. Fyne
 //     runs a menu item's shortcut before the focused widget sees the keys,
 //     so they work while typing in the URL field. They are also added to
 //     the window's canvas (registerShortcuts).
@@ -26,6 +26,7 @@ var (
 	shortcutPasteURLs   = &desktop.CustomShortcut{KeyName: fyne.KeyV, Modifier: fyne.KeyModifierShortcutDefault | fyne.KeyModifierShift}
 	shortcutHistory     = &desktop.CustomShortcut{KeyName: fyne.KeyH, Modifier: fyne.KeyModifierShortcutDefault}
 	shortcutPreferences = &desktop.CustomShortcut{KeyName: fyne.KeyComma, Modifier: fyne.KeyModifierShortcutDefault}
+	shortcutTerminal    = &desktop.CustomShortcut{KeyName: fyne.KeyT, Modifier: fyne.KeyModifierShortcutDefault}
 	// shortcutGuide is shown on the Guide menu item; F1 itself is handled
 	// by the window (see registerShortcuts), as a key without a modifier
 	// is never a shortcut to Fyne.
@@ -47,6 +48,7 @@ func (manager *UIManager) mainShortcuts() []mainShortcut {
 		{shortcutPasteURLs, manager.pasteURLs},
 		{shortcutHistory, manager.showHistory},
 		{shortcutPreferences, manager.showPreferences},
+		{shortcutTerminal, manager.toggleTerminal},
 	}
 }
 
