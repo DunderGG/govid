@@ -358,7 +358,8 @@ func chooseSettingsStore(exeDir string, appStore func() fyne.Preferences, writab
 // ── Switching ────────────────────────────────────────────────────────────────
 
 // copySettings copies the settings in use, whether or not "Save
-// preferences" is on, and the presets from source's store to another store.
+// preferences" is on, the presets, and the View menu's settings from
+// source's store to another store.
 // The settings come from source.Load, not its store, which with "Save
 // preferences" off does not hold this session's changes.
 func copySettings(source *PreferenceService, to fyne.Preferences) error {
@@ -366,6 +367,7 @@ func copySettings(source *PreferenceService, to fyne.Preferences) error {
 	if raw := source.store.String(prefPresets); raw != "" {
 		to.SetString(prefPresets, raw)
 	}
+	NewPreferenceService(to).SaveView(source.LoadView())
 	if file, ok := to.(*fileStore); ok {
 		return file.Flush()
 	}

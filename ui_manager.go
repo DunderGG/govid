@@ -81,6 +81,13 @@ type UIManager struct {
 	queueThrottle *latestValueThrottle[int64] // coalesces redraws; the value is queueVersion
 	queueVersion  atomic.Int64
 
+	// The View menu's settings and the parts of the window it shows or
+	// hides; see view.go. Only touched on the UI thread.
+	view             ViewSettings
+	terminal         *fyne.Container // the terminal output and its heading
+	terminalMenuItem *fyne.MenuItem
+	terminalHeight   float32 // the terminal's height when last hidden, given back when it is shown
+
 	// Presets; see preset_ui.go. Only touched on the UI thread.
 	presets       []Preset
 	appliedPreset *Preset // the preset last applied or saved, for "(modified)"; nil for none
@@ -128,6 +135,7 @@ type UIManager struct {
 	onSavePresets        func([]Preset)                                                       // PreferenceService.SavePresets
 	onReadPresets        func(path string) ([]Preset, []string, error)                        // PreferenceService.ReadPresetFile
 	onWritePresets       func(path string, presets []Preset) error                            // PreferenceService.WritePresetFile
+	onSaveView           func(ViewSettings)                                                   // PreferenceService.SaveView
 	onSetLogBufferLimit  func(limit int)                                                      // LogService.SetBufferLimit
 	onLogBufferLimit     func() int                                                           // LogService.BufferLimit
 	onSetShowDebug       func(show bool)                                                      // DownloaderApp.setDebug
@@ -209,6 +217,7 @@ func (manager *UIManager) createMainMenu() {
 			fyne.NewMenuItemSeparator(),
 			clearLogMenu,
 		),
+		manager.buildViewMenu(),
 		fyne.NewMenu("Tools",
 			updateMenu,
 			fyne.NewMenuItem("Components…", manager.showComponents),
@@ -380,11 +389,20 @@ func (manager *UIManager) createUI() {
 		inputCard,
 		statusCard,
 		manager.queueBox,
-		widget.NewSeparator(),
-		widget.NewLabelWithStyle("Terminal Output:", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
 	)
 
-	content := container.NewBorder(topContent, footer, nil, nil, logPane)
+	// The terminal output fills the rest of the window; View → Terminal
+	// Output hides it.
+	manager.terminal = container.NewBorder(
+		container.NewVBox(
+			widget.NewSeparator(),
+			widget.NewLabelWithStyle("Terminal Output:", fyne.TextAlignLeading, fyne.TextStyle{Italic: true}),
+		),
+		nil, nil, nil, logPane,
+	)
+	manager.applyTerminalShown()
+
+	content := container.NewBorder(topContent, footer, nil, nil, manager.terminal)
 	manager.mainWindow.SetContent(container.NewPadded(content))
 	manager.mainWindow.SetOnDropped(func(_ fyne.Position, items []fyne.URI) {
 		manager.handleDrop(items)

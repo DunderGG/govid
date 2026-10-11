@@ -45,6 +45,7 @@ govid/
 ├── config_file.go          AppConfig / configRules — govid.json: LoadFromFile, MergeConfig, ExportConfig, WriteConfigFile
 ├── presets.go              Preset — starter presets, groups, list edits; LoadPresets / SavePresets / ReadPresetFile / WritePresetFile
 ├── preset_ui.go            UIManager preset dropdown, "(modified)" marker, Save / Manage / Import / Export dialogs
+├── view.go                 ViewSettings (LoadView / SaveView) and the View menu: show or hide the terminal output, resizing the window to suit
 ├── history_service.go      HistoryService — Load/AppendAll/Clear; DownloadRecord and DownloadHistoryEntry types
 ├── history_window.go       UIManager.showHistory — the searchable History list with Re-add / Show in folder / Copy URL, loaded off the UI thread
 ├── duplicates.go           skipDownloaded / askDuplicate — "Already downloaded" check before a session downloads
@@ -173,7 +174,7 @@ Widgets are wired with callbacks in `UIManager.createUI()` and accessed through 
 ---
 
 ### 4.3 `UIManager` — main window and secondary window owner  
-*Defined in:* `ui_manager.go`; its windows and parts of the main window have their own files: `help_window.go`, `preferences_window.go`, `postprocess_window.go`, `history_window.go`, `components_window.go`, `formats_window.go`, `queue_panel.go`, `log_view.go`, and `notices.go`
+*Defined in:* `ui_manager.go`; its windows and parts of the main window have their own files: `help_window.go`, `preferences_window.go`, `postprocess_window.go`, `history_window.go`, `components_window.go`, `formats_window.go`, `queue_panel.go`, `log_view.go`, `notices.go`, and `view.go`
 
 Owns the primary window reference (`mainWindow`) plus the singleton secondary windows (About, Help, History, Preferences, Post-Processing, Components). Calling a `show*` method re-focuses an already-open window rather than opening a duplicate, via the shared `focusOrCreate`/`onWindowClosed` helpers. `UIManager` holds no direct service references — every service access is bridged through injected callbacks (`onLoadHistory`, `onCheckDependencies`, `onSavePreferences`, etc.), wired once in `newDownloaderApp`.
 

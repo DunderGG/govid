@@ -187,6 +187,7 @@ func TestSwitchingPortableModeCopiesTheSettings(t *testing.T) {
 	h.app.ui.download.format.SetSelected(formatWebM)
 	h.app.uiManager.savePreferences(h.saveDir)
 	h.app.prefSvc.SavePresets([]Preset{{Name: "Travel"}})
+	h.app.prefSvc.SaveView(ViewSettings{ShowTerminal: false})
 
 	if err := h.app.setPortable(true); err != nil {
 		t.Fatalf("setPortable(true) = %v", err)
@@ -204,6 +205,9 @@ func TestSwitchingPortableModeCopiesTheSettings(t *testing.T) {
 	next := NewPreferenceService(store)
 	if !portable || next.Load().Format != formatWebM || len(next.LoadPresets()) != 1 || next.LoadPresets()[0].Name != "Travel" {
 		t.Errorf("the copied folder starts with format %q and presets %q", next.Load().Format, presetNames(next.LoadPresets()))
+	}
+	if next.LoadView().ShowTerminal {
+		t.Error("the copied folder shows the terminal output, which was hidden")
 	}
 
 	// And back: settings.json's values go to the user profile store.

@@ -87,6 +87,8 @@ Progress shows in the status line, the progress bar, and the **Terminal Output**
 
 If you scroll up in the log while a download runs, it stays where you left it. Scroll back to the bottom to follow new lines again. **File → Clear Terminal Output** empties it.
 
+**View → Terminal Output** hides the log and shrinks the window to fit, which helps on small screens. GoVid keeps logging while it is hidden, so choosing it again shows everything you missed. GoVid remembers whether the log is shown.
+
 ---
 
 ## Adding videos

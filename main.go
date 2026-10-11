@@ -99,6 +99,8 @@ func wireSettingsCallbacks(dlApp *DownloaderApp) {
 	dlApp.uiManager.onSavePresets = dlApp.prefSvc.SavePresets
 	dlApp.uiManager.onReadPresets = dlApp.prefSvc.ReadPresetFile
 	dlApp.uiManager.onWritePresets = dlApp.prefSvc.WritePresetFile
+	dlApp.uiManager.view = dlApp.prefSvc.LoadView()
+	dlApp.uiManager.onSaveView = dlApp.prefSvc.SaveView
 	dlApp.uiManager.onSetLogBufferLimit = dlApp.logSvc.SetBufferLimit
 	dlApp.uiManager.onLogBufferLimit = dlApp.logSvc.BufferLimit
 	dlApp.uiManager.onSetShowDebug = dlApp.setDebug
