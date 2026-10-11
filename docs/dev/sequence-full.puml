@@ -144,7 +144,7 @@ group loop [while QueueModel.Next() returns a waiting item]
             App -> App : embed unique downloadID token in output template
             App -> App : append ""--ffmpeg-location"", ""--limit-rate"", ""--cookies"" if set
             App -> App : append ""--download-sections"" / ""--force-keyframes-at-cuts"" if trimming
-            App -> App : append ""--merge-output-format"", ""--remux-video"", ""--recode-video""
+            App -> App : append ""--merge-output-format"", ""--recode-video""
             App -> App : append ""--load-info-json <file>"" instead of the URL when InfoJSON is set
         end
 

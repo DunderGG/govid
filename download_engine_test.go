@@ -53,7 +53,6 @@ func TestBuildArgsDefaults(t *testing.T) {
 	}
 	for flag, want := range map[string]string{
 		"--merge-output-format": "mp4",
-		"--remux-video":         "mp4",
 		"--recode-video":        "mp4",
 	} {
 		if got := argAfter(args, flag); got != want {

@@ -298,14 +298,17 @@ func inputArgs(req DownloadRequest) []string {
 
 // containerArgs returns the yt-dlp flags that give the download the
 // container extension: for an audio format the audio is extracted and
-// converted to it, and a video's streams are merged and remuxed, or
-// recoded, into it.
+// converted to it, and a video's streams are merged into it, or recoded
+// when yt-dlp downloads a single file in another container. yt-dlp ignores
+// --remux-video whenever --recode-video is given, and recoding already
+// leaves a file that is in the container alone, so only --recode-video is
+// passed.
 func containerArgs(extension string) []string {
 	switch {
 	case isAudioOnlyExt(extension):
 		return []string{"--extract-audio", "--audio-format", extension, "--audio-quality", "0"}
 	case extension != "":
-		return []string{"--merge-output-format", extension, "--remux-video", extension, "--recode-video", extension}
+		return []string{"--merge-output-format", extension, "--recode-video", extension}
 	default:
 		return nil
 	}
