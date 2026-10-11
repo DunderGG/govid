@@ -208,6 +208,17 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 
 - [ ] The guide window should be searchable.
 - [ ] Allow for changing color themes. Load a json file where each app color is defined, and apply it to the UI elements dynamically. Also provide a few default color themes in a themes folder.
+- [ ] Make the main window fit on small or highly scaled screens. Fyne will not make a window shorter than its content's minimum height, and everything above the log sat in the Border's fixed top slot, so every part's height added up. Only the log stretched, and it had a 200 px minimum. The minimum was about 1022 px, and about 1230 px with the Queue panel open, while a 1080p screen at 125% scaling has about 860 px to use, and at 150% about 690 px.
+  - [x] Shrink the header to one compact row. (The 128 px logo and two-line title became a 40 px logo with the title beside it, and `roundedCard` no longer reserves a row for an empty subtitle, which left a blank strip above the progress bar. Minimum about 895 px. Commit `9f3c76a`.)
+  - [x] **View → Terminal Output** (Ctrl+T) shows or hides the log. (`view.go`. Hiding only hides the view; lines are still logged and kept. The choice is saved under `showTerminal`, whether or not "Save preferences" is on, and copied by Portable Mode. Hidden, the minimum is about 647 px. Commits `cd98acf` and `67c0065`.)
+    - [x] A maximized or full-screen window keeps its size. Resizing it left Windows treating it as maximized at half the screen, so it could not be resized by hand. (`windowMaximized` asks Windows through `RunNative` and `IsZoomed`; on Linux and macOS it always reports false.)
+    - [x] Showing the log gives back the height the window had before hiding it, but only if the window is still at its compact size. If it has spare room, for example after being restored from maximized, the log fills that room instead of adding its height again.
+    - [x] When a warning or error is logged while the log is hidden, a "New warnings: show Terminal Output" button appears beside the status. Showing or clearing the log hides it.
+  - [x] Hand-check the View menu in the real app: hide and show while maximized, restore, then show again.
+  - [ ] Move the Queue panel out of the fixed top area into the stretchable area, sharing it with the log in a `container.NewVSplit` (or tabs, which need only the larger of the two minimum heights). Lower both minimums to about three rows. Add **View → Queue**.
+  - [ ] Make the input card more compact (about 456 px, now the largest part), for example by putting the labels beside their fields instead of above them.
+  - Rejected: making the whole window scrollable. The log and the queue list scroll on their own, and Fyne does not pass the mouse wheel from an inner scroll area to an outer one, so the window would not scroll while the cursor is over them. It could still serve as a last-resort safety net.
+  - Rejected: the queue as a side panel or a separate window. Each queue row needs nearly the window's full width for its status and up to eight buttons, so a side panel would roughly double the window's width. Fyne has no docked or child windows, so a separate window would get lost behind the main one, and the queue is the main progress view during a playlist download.
 
 ---
 
