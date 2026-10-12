@@ -179,7 +179,11 @@ func (manager *UIManager) showConfigHelp() {
 	panel := newGuidePanel(window.Close, manager.openGuideInBrowser)
 	manager.helpWindow = window
 	window.SetContent(container.NewPadded(panel.content))
-	window.Resize(fyne.NewSize(620, 520))
+	// 649 wide dodges Fyne 2.7.3's one-letter-per-line word wrap: at this
+	// width no topic shows it in either theme (see Known Limitations in
+	// the roadmap). A few pixels either way still keep the first topics
+	// clear, where 620 broke Video URL, the first topic.
+	window.Resize(fyne.NewSize(649, 520))
 	window.SetOnClosed(onWindowClosed(&manager.helpWindow))
 	closeOnEscape(window)
 	window.Canvas().AddShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyF, Modifier: fyne.KeyModifierShortcutDefault}, func(fyne.Shortcut) {
