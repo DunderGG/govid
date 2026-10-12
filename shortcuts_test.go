@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -23,7 +25,21 @@ func shortcutHarness(t *testing.T) *downloadHarness {
 // press types shortcut on the harness's main window, as the driver does
 // when nothing claims it first.
 func press(h *downloadHarness, shortcut fyne.Shortcut) {
-	h.window.Canvas().(fyne.Shortcutable).TypedShortcut(shortcut)
+	shortcutTarget(h.window.Canvas()).TypedShortcut(shortcut)
+}
+
+// shortcutTarget returns what handles the shortcuts added to c. Since Fyne
+// 2.8 the test canvas wraps a software canvas in an interface field, which
+// hides its TypedShortcut; the shortcuts live in the wrapped canvas.
+func shortcutTarget(c fyne.Canvas) fyne.Shortcutable {
+	if target, ok := c.(fyne.Shortcutable); ok {
+		return target
+	}
+	inner := reflect.ValueOf(c).Elem().FieldByName("WindowlessCanvas")
+	if !inner.IsValid() {
+		panic(fmt.Sprintf("%T has no WindowlessCanvas to take shortcuts", c))
+	}
+	return inner.Interface().(fyne.Shortcutable)
 }
 
 // typeKey types a key without a modifier on window.

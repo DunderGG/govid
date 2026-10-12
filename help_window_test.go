@@ -94,8 +94,10 @@ func TestHighlightMatchesSplitsAcrossSegments(t *testing.T) {
 }
 
 func TestHighlightMatchesKeepsLineEnds(t *testing.T) {
-	// A heading is one segment that ends its line; only its last piece may.
-	segs := widget.NewRichTextFromMarkdown("### Video URL").Segments
+	// A segment that ends its line, such as a code block; only its last
+	// piece may. (Since Fyne 2.8 a heading is inline text and an empty
+	// segment that ends the line.)
+	segs := []widget.RichTextSegment{&widget.TextSegment{Style: widget.RichTextStyleCodeBlock, Text: "Video URL"}}
 	matches := findMatches([][]rune{foldedText(segs)}, "video")
 	segs = highlightMatches(segs, matches, 0, newMatchMark())
 	pieces := textSegments(segs)

@@ -235,7 +235,7 @@ func TestClearingTheTerminalClearsTheMark(t *testing.T) {
 
 func TestCtrlTTogglesTheTerminal(t *testing.T) {
 	app, window := newViewTestManager(t)
-	press := func() { window.Canvas().(fyne.Shortcutable).TypedShortcut(shortcutTerminal) }
+	press := func() { shortcutTarget(window.Canvas()).TypedShortcut(shortcutTerminal) }
 
 	press()
 	if app.uiManager.tabShown(app.uiManager.terminalTab) {
