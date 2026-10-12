@@ -87,6 +87,7 @@ The commit named in an entry has the full context. The first entries were collec
   - [DD-47: What the diagnostics report hides](#dd-47-what-the-diagnostics-report-hides)
 - [Tests](#tests)
   - [DD-48: The Fyne test driver runs `fyne.Do` inline](#dd-48-the-fyne-test-driver-runs-fynedo-inline)
+  - [DD-49: Staying on Fyne 2.7.3](#dd-49-staying-on-fyne-273)
 
 ---
 
@@ -594,3 +595,11 @@ Code: `diagnostics.go` (`anonymizer`) · Commit: `9e3e538`
 **Why.** The Fyne test driver runs `fyne.Do` on the calling goroutine instead of a UI thread. A throttle's timer goroutine would therefore race with the session's own UI updates under `-race`. In the app, `fyne.Do` runs on the UI thread, so the race only exists in tests.
 
 Code: `download_test.go`, `formats_test.go`, `throttle.go` · Commit: `dda1c22`
+
+### DD-49: Staying on Fyne 2.7.3
+
+**Decision.** GoVid stays on Fyne 2.7.3 until a Fyne release fixes `walkString` in `internal/painter/font.go`. It does not carry a patched Fyne meanwhile.
+
+**Why.** Fyne 2.8.1 measures all text with one shared shaper, but `walkString` looks up a font face and shapes a space before it takes the lock that guards it, and does not unlock after a panic. Because the test driver runs `fyne.Do` inline (DD-48), the tests measure text from several goroutines at once: on 2.8.1, `go test -race ./...` reported 184 races in `go-text/typesetting` and panicked, and without `-race` the suite hung until the 10-minute timeout. The app itself is not affected. A three-line patch fixes it, but carrying it means a fork or a 12 MB copy of Fyne in the repo, and 2.8's only gain for GoVid is a word-wrap fix that has workarounds. Tested on 2026-10-12. The details, the patch, and how to tell a release has fixed it are in [fyne-upgrade.md](fyne-upgrade.md).
+
+Code: `go.mod` · Notes: [fyne-upgrade.md](fyne-upgrade.md)
