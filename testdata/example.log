@@ -1,0 +1,13 @@
+[youtube] Extracting URL: https://www.youtube.com/watch?v=example123
+[youtube] example123: Downloading webpage
+[info] example123: Downloading 1 format(s): 137+140
+[download] Destination: Example Video.f137.mp4
+[download]   0.0% of   10.00MiB at  500.00KiB/s ETA 00:20
+[download]  50.0% of   10.00MiB at    1.00MiB/s ETA 00:05
+[download] 100% of   10.00MiB in 00:10 at    1.00MiB/s
+[Merger] Merging formats into "Example Video.mp4"
+ffmpeg version N-000000-g0000000000 Copyright (c) FFmpeg developers
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'Example Video.mp4':
+frame=  240 fps= 60 q=23.0 size=    2048KiB time=00:00:10.00 bitrate=1677.7kbits/s speed=2.50x
+frame=  480 fps= 60 q=23.0 size=    4096KiB time=00:00:20.00 bitrate=1677.7kbits/s speed=2.50x
+video:4000KiB audio:128KiB subtitle:0KiB other streams:0KiB muxing overhead: 1.000000%
