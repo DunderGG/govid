@@ -546,9 +546,3 @@ See the [refactoring roadmap](dev/archive/refactor_roadmap.md) for component-lev
 > Keep the initial download size small.
 
 - [x] Offer to download/extract FFmpeg on-demand if missing instead of bundling. (Done as part of Tools → Components under YouTube JavaScript Runtime: FFmpeg stays bundled, and a startup notice or the window installs, updates, or repairs it, with ffprobe.)
-
----
-
-## 🐛 Known Limitations
-
-- At some window widths, a bold word, code value, or link in the guide window is broken into one letter per line. This is a bug in Fyne 2.7.3's word wrap, fixed in 2.8.1, but the upgrade is on hold; see [Fyne Upgrade](#fyne-upgrade). The guide opens at a width (649 px, `showConfigHelp` in `help_window.go`) where no topic shows it, in either theme; after resizing the window, a slightly different width, or **Open in browser**, avoids it.
