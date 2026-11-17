@@ -311,7 +311,6 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 > Any general improvements we can think of
 - [X] Make sure only one Preferences window can be opened.
 - [x] We may want to start limiting how much we are logging. There is a lot of "noise" we don't care about. (yt-dlp's `[debug]` lines go to the log file only unless the new "Debug Output" preference is on, and the log view shows one in-place progress line per file instead of one line per update. `--verbose` is kept so the log file stays complete for bug reports.)
-- [ ] The code for the guide window needs improving. Get rid of extremely long text strings.
 - [X] Errors from ffmpeg sometimes gets buried in the verbose logs. Maybe Errors should be logged to separate file?
 - [ ] Investigate GPU acceleration for FFmpeg.
 	- [X] Identify [target acceleration backends](dev/gpu-acceleration.md) per OS: `nvenc`/`cuda` (NVIDIA), `qsv` (Intel), `amf` (AMD), and `vaapi` (Linux).
@@ -341,7 +340,6 @@ Fyne 2.7 cannot remove the frame from a normal window. `CreateSplashWindow()` is
 - [ ] Check the warning 2.8 prints on launch for apps that have not declared the `fyne.Do` migration (GoVid has no `FyneApp.toml`). Do not build with the `migrated_fynedo` tag.
 - [ ] Go through the app by hand in both themes, following the [manual testing guide](dev/manual-testing.md): 2.8 rewrote text layout (wrapping and truncation), so look closely at the log view, Queue rows, the History list, the Info… window, dialogs, the guide window while resizing it, and the main window at small sizes. Also the status dot (`canvas.Circle` changed), the presets menu (popups lost their padding), and, for GLFW 3.4, moving and resizing windows, a second monitor or scaled display if there is one, and keyboard input.
 - [ ] Test again the design decisions written against Fyne 2.7, and update or delete each one with its workaround: [DD-42](dev/design_decisions.md#dd-42-dropping-links-from-a-browser) (dropped links), [DD-43](dev/design_decisions.md#dd-43-f1-and-esc-outside-text-fields) (F1 and Esc), and [DD-45](dev/design_decisions.md#dd-45-fyne-dialog-and-scrolling-quirks) (dialog and scrolling quirks). Also check whether 2.8's RichText can be selected now (the guide-selection item under Miscellaneous Improvements).
-- [ ] Remove the word-wrap entry from Known Limitations, and mark [fyne-upgrade.md](dev/fyne-upgrade.md) done or move it to `dev/archive/`.
 
 ---
 
